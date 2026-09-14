@@ -45,15 +45,25 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float gravity        = -9.81f;
     [SerializeField] private float speedDampTime  = 0.1f;   // Blend-tree smoothing
 
+    [Header("Ground Check")]
+    [SerializeField] private LayerMask groundMask;          // LayerMask to define what is "Ground"
+    [SerializeField] private float groundCheckRadius = 0.25f; // Radius of the ground check sphere
+    [SerializeField] private float groundCheckOffset = 0.1f;  // Offset from the bottom of the CharacterController
+
     [Header("Camera")]
     [SerializeField] private Transform cameraTransform;     // Main Camera transform
 
     [Header("Health")]
     [SerializeField] private int maxHealth = 100;
 
-    [Header("Weapon GameObjects (optional – for showing/hiding meshes)")]
-    [SerializeField] private GameObject swordObject;        // Sword mesh in hand
+    [Header("Weapon Systems")]
+    public bool hasSword = false;                           // Tracks if player picked up the sword
+    [SerializeField] private GameObject swordObject;        // The actual sword mesh/gameobject
     [SerializeField] private GameObject gunObject;          // Gun  mesh in hand
+    [SerializeField] private Transform swordHandTransform;  // Empty GameObject in the player's Hand
+    [SerializeField] private Transform swordBackTransform;  // Empty GameObject on the player's Back (pith)
+    [SerializeField] private float equipGrabDelay = 0.4f;   // Time until hand reaches back to grab sword
+    [SerializeField] private float unequipPutDelay = 0.4f;  // Time until hand puts sword back
 
     // ─── Private State ─────────────────────────────────────────────────────────
 
@@ -84,6 +94,12 @@ public class PlayerController : MonoBehaviour
     // Physics
     private Vector3 _velocity;
     private bool    _isGrounded;
+    
+    // Jump Buffer & Cooldown
+    private float _jumpBufferCounter;
+    private float jumpBufferTime = 0.2f;
+    private float _jumpCooldownTimer;
+    private float jumpCooldown = 0.15f; // Brief delay before we can be grounded again
 
     // ─── Unity Lifecycle ───────────────────────────────────────────────────────
 
@@ -93,8 +109,10 @@ public class PlayerController : MonoBehaviour
         _cc     = GetComponent<CharacterController>();
         _health = maxHealth;
 
-        // Start with no weapon
-        SetWeaponVisuals(WeaponState.Unarmed);
+        // Start with no weapon and sword hidden until picked up
+        hasSword = false;
+        if (swordObject) swordObject.SetActive(false);
+        if (gunObject) gunObject.SetActive(false);
         _anim.SetInteger(HashWeaponState, (int)WeaponState.Unarmed);
     }
 
@@ -102,26 +120,71 @@ public class PlayerController : MonoBehaviour
     {
         if (_isDead) return;
 
-        HandleGravity();
-        HandleMovement();
+        // Step 1: Check if player is grounded using improved logic
+        CalculateGroundCheck();
+
+        // Step 2: Apply Gravity
+        CalculateGravity();
+
+        // Step 3: Handle Jump input (overrides Y velocity if jumping)
         HandleJump();
+
+        // Step 4: Handle Horizontal Movement (sets X and Z velocity)
+        CalculateHorizontalMovement();
+
+        // Step 5: APPLY MOVEMENT ONCE (Combines X, Y, and Z)
+        _cc.Move(_velocity * Time.deltaTime);
+
+        // Step 6: Update Animator
+        _anim.SetBool("IsGrounded", _isGrounded);
+
         HandleWeaponSwitch();
         HandleAttack();
     }
 
     // ─── Movement ─────────────────────────────────────────────────────────────
 
-    private void HandleGravity()
+    private void CalculateGroundCheck()
     {
-        _isGrounded = _cc.isGrounded;
-        if (_isGrounded && _velocity.y < 0f)
-            _velocity.y = -2f;                // Keep grounded
+        // If we recently jumped, force player to be un-grounded for a short time
+        if (_jumpCooldownTimer > 0f)
+        {
+            _jumpCooldownTimer -= Time.deltaTime;
+            _isGrounded = false;
+            return;
+        }
 
-        _velocity.y += gravity * Time.deltaTime;
-        _cc.Move(_velocity * Time.deltaTime);
+        // Default check using CharacterController
+        _isGrounded = _cc.isGrounded;
+        
+        // 100% Pivot-Independent check: SphereCast/CheckSphere
+        // Better than Raycast because a thin ray can easily miss edges.
+        if (!_isGrounded)
+        {
+            // Position the sphere at the bottom of the capsule controller
+            Vector3 spherePosition = _cc.bounds.center;
+            spherePosition.y -= _cc.bounds.extents.y;     // Go to the base
+            spherePosition.y += groundCheckRadius - groundCheckOffset; // Offset it slightly up
+
+            // Use LayerMask so we don't accidentally hit the player's own triggers/weapons
+            _isGrounded = Physics.CheckSphere(spherePosition, groundCheckRadius, groundMask);
+        }
     }
 
-    private void HandleMovement()
+    private void CalculateGravity()
+    {
+        if (_isGrounded && _velocity.y < 0f)
+        {
+            // Setting a small negative value like -2f is perfectly correct! 
+            // It ensures the CharacterController stays snapped to the ground next frame.
+            _velocity.y = -2f; 
+        }
+
+        // Accumulate gravity
+        _velocity.y += gravity * Time.deltaTime;
+    }
+
+    private void CalculateHorizontalMovement()
     {
         // Raw input
         float h = Input.GetAxisRaw("Horizontal");
@@ -145,7 +208,10 @@ public class PlayerController : MonoBehaviour
         {
             float   moveSpeed = running ? runSpeed : walkSpeed;
             Vector3 dir       = GetMoveDirection(h, v);
-            _cc.Move(dir * moveSpeed * Time.deltaTime);
+            
+            // Assign horizontal velocity instead of calling _cc.Move() here
+            _velocity.x = dir.x * moveSpeed;
+            _velocity.z = dir.z * moveSpeed;
 
             // Rotate player to face move direction
             if (dir != Vector3.zero)
@@ -154,6 +220,12 @@ public class PlayerController : MonoBehaviour
                     Quaternion.LookRotation(dir),
                     10f * Time.deltaTime
                 );
+        }
+        else 
+        {
+            // Reset horizontal velocity when no input
+            _velocity.x = 0f;
+            _velocity.z = 0f;
         }
     }
 
@@ -175,10 +247,27 @@ public class PlayerController : MonoBehaviour
 
     private void HandleJump()
     {
-        if (_isGrounded && Input.GetKeyDown(KeyCode.Space))
+        // Jump Buffer Logic: Hawa me space dabane par bhi yaad rakhega
+        if (Input.GetKeyDown(KeyCode.Space))
         {
+            _jumpBufferCounter = jumpBufferTime;
+        }
+        else
+        {
+            _jumpBufferCounter -= Time.deltaTime;
+        }
+
+        // Jaise hi player zameen chuega, turant jump kar dega
+        if (_jumpBufferCounter > 0f && _isGrounded)
+        {
+            _jumpBufferCounter = 0f;  // Buffer clear
             _velocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
             _anim.SetTrigger(HashJump);
+            
+            // Start the jump cooldown so the ground check sphere doesn't immediately 
+            // touch the ground in the next few frames while we're starting to rise up.
+            _jumpCooldownTimer = jumpCooldown;
+            _isGrounded = false;
         }
     }
 
@@ -192,7 +281,12 @@ public class PlayerController : MonoBehaviour
             StartCoroutine(SwitchWeapon(WeaponState.Unarmed));
 
         else if (Input.GetKeyDown(KeyCode.Alpha2))
-            StartCoroutine(SwitchWeapon(WeaponState.Sword));
+        {
+            if (hasSword)
+                StartCoroutine(SwitchWeapon(WeaponState.Sword));
+            else
+                Debug.Log("Abhi tumhare paas sword nahi hai!");
+        }
 
         else if (Input.GetKeyDown(KeyCode.Alpha3))
             StartCoroutine(SwitchWeapon(WeaponState.Gun));
@@ -215,11 +309,15 @@ public class PlayerController : MonoBehaviour
         {
             _anim.SetTrigger(HashUnequip);
             yield return WaitForAnimationState("Unequip");  // Wait until Unequip state starts
+            
+            // Animation ke beech me (jaise 0.4 seconds baad) sword ko wapas pith par rakh do
+            yield return new WaitForSeconds(_currentWeapon == WeaponState.Sword ? unequipPutDelay : 0.2f);
+            
+            if (_currentWeapon == WeaponState.Sword) MoveSwordTo(swordBackTransform);
+            if (_currentWeapon == WeaponState.Gun && gunObject) gunObject.SetActive(false);
+
             yield return WaitForAnimationEnd("Unequip");    // Wait until it finishes
         }
-
-        // Hide old weapon meshes now
-        SetWeaponVisuals(WeaponState.Unarmed);
 
         // Step 2 – Change weapon state parameter so blend tree switches layers
         _currentWeapon = target;
@@ -230,10 +328,14 @@ public class PlayerController : MonoBehaviour
         {
             _anim.SetTrigger(HashEquip);
             yield return WaitForAnimationState("Equip");    // Wait until Equip state starts
-            yield return WaitForAnimationEnd("Equip");      // Wait until it finishes
+            
+            // Animation ke beech me (jaise hi hath pith tak pahuche), sword ko hath me le lo
+            yield return new WaitForSeconds(_currentWeapon == WeaponState.Sword ? equipGrabDelay : 0.2f);
 
-            // Show new weapon mesh only after equip animation completes
-            SetWeaponVisuals(_currentWeapon);
+            if (_currentWeapon == WeaponState.Sword) MoveSwordTo(swordHandTransform);
+            if (_currentWeapon == WeaponState.Gun && gunObject) gunObject.SetActive(true);
+
+            yield return WaitForAnimationEnd("Equip");      // Wait until it finishes
         }
 
         _isEquipping = false;
@@ -293,12 +395,27 @@ public class PlayerController : MonoBehaviour
         _cc.enabled = false;
     }
 
-    // ─── Helper: Weapon Visuals ───────────────────────────────────────────────
+    // ─── Pickup System ────────────────────────────────────────────────────────
 
-    private void SetWeaponVisuals(WeaponState state)
+    public void PickupSword()
     {
-        if (swordObject) swordObject.SetActive(state == WeaponState.Sword);
-        if (gunObject)   gunObject.SetActive(state == WeaponState.Gun);
+        hasSword = true;
+        if (swordObject) 
+        {
+            swordObject.SetActive(true);
+            // Starting me sword ko pith (back) par rakh do
+            MoveSwordTo(swordBackTransform);
+        }
+    }
+
+    private void MoveSwordTo(Transform targetParent)
+    {
+        if (swordObject != null && targetParent != null)
+        {
+            swordObject.transform.SetParent(targetParent);
+            swordObject.transform.localPosition = Vector3.zero;
+            swordObject.transform.localRotation = Quaternion.identity;
+        }
     }
 
     // ─── Helper: Animation Waiting Coroutines ─────────────────────────────────
