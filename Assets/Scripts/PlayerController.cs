@@ -57,13 +57,25 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private int maxHealth = 100;
 
     [Header("Weapon Systems")]
-    public bool hasSword = false;                           // Tracks if player picked up the sword
-    [SerializeField] private GameObject swordObject;        // The actual sword mesh/gameobject
-    [SerializeField] private GameObject gunObject;          // Gun  mesh in hand
-    [SerializeField] private Transform swordHandTransform;  // Empty GameObject in the player's Hand
-    [SerializeField] private Transform swordBackTransform;  // Empty GameObject on the player's Back (pith)
-    [SerializeField] private float equipGrabDelay = 0.4f;   // Time until hand reaches back to grab sword
-    [SerializeField] private float unequipPutDelay = 0.4f;  // Time until hand puts sword back
+    [SerializeField] private GameObject swordObject;        // Sirf 1 actual sword mesh yahan daal do
+    
+    [Header("Sword Offsets (Agar hath/pith par ajeeb lage to yahan se theek karo)")]
+    [SerializeField] private Vector3 swordHandScale = Vector3.one; 
+    [SerializeField] private Vector3 swordHandOffsetPos = Vector3.zero; 
+    [SerializeField] private Vector3 swordHandOffsetRot = Vector3.zero; 
+    
+    [SerializeField] private Vector3 swordBackScale = Vector3.one; 
+    [SerializeField] private Vector3 swordBackOffsetPos = Vector3.zero; 
+    [SerializeField] private Vector3 swordBackOffsetRot = Vector3.zero; 
+
+    // Ye dono script apne aap player ki haddiyon (bones) me dhundh legi, tumhe banane ki zarurat nahi!
+    private Transform swordHandTransform;  
+    private Transform swordBackTransform;  
+    
+    [Header("Weapon Timings")]
+    [SerializeField] private GameObject gunObject;          // Gun mesh
+    [SerializeField] private float equipGrabDelay = 0.4f;   // Jab hath pith tak pahuche (Time in seconds)
+    [SerializeField] private float unequipPutDelay = 0.4f;  // Jab hath wapas pith par sword rakhe
 
     // ─── Private State ─────────────────────────────────────────────────────────
 
@@ -109,9 +121,39 @@ public class PlayerController : MonoBehaviour
         _cc     = GetComponent<CharacterController>();
         _health = maxHealth;
 
-        // Start with no weapon and sword hidden until picked up
-        hasSword = false;
-        if (swordObject) swordObject.SetActive(false);
+        // NAYA JADOO: Tumhe empty object banane ki zarurat nahi! 
+        // Unity automatically player ka sidha hath (Right Hand) aur Pith (Spine) dhundh lega.
+        if (_anim.isHuman)
+        {
+            swordHandTransform = _anim.GetBoneTransform(HumanBodyBones.RightHand);
+            swordBackTransform = _anim.GetBoneTransform(HumanBodyBones.Spine);
+            
+            // Agar Spine nahi milti to Chest ya Hips use karenge
+            if (swordBackTransform == null) swordBackTransform = _anim.GetBoneTransform(HumanBodyBones.Chest);
+        }
+
+        // Sword hijacking logic removed to allow SwordEquipSystem to handle it
+        /*
+        // NAYA JADOO: Agar tumne Inspector me Sword Object nahi dala, to script khud player ke andar se dhoondh legi!
+        if (swordObject == null)
+        {
+            foreach (Transform t in GetComponentsInChildren<Transform>(true))
+            {
+                // Agar kisi object ke naam me "sword" likha hai, to wo player ki sword hai
+                if (t.name.ToLower().Contains("sword"))
+                {
+                    swordObject = t.gameObject;
+                    break;
+                }
+            }
+        }
+
+        if (swordObject)
+        {
+            swordObject.SetActive(true);
+            MoveSwordTo(swordBackTransform, swordBackScale, swordBackOffsetPos, swordBackOffsetRot);
+        }
+        */
         if (gunObject) gunObject.SetActive(false);
         _anim.SetInteger(HashWeaponState, (int)WeaponState.Unarmed);
     }
@@ -206,26 +248,31 @@ public class PlayerController : MonoBehaviour
         // Actual character movement
         if (inputMag > 0.1f)
         {
-            float   moveSpeed = running ? runSpeed : walkSpeed;
-            Vector3 dir       = GetMoveDirection(h, v);
+            float moveSpeed = running ? runSpeed : walkSpeed;
+            Vector3 dir = GetMoveDirection(h, v);
             
-            // Assign horizontal velocity instead of calling _cc.Move() here
+            // Assign horizontal velocity
             _velocity.x = dir.x * moveSpeed;
             _velocity.z = dir.z * moveSpeed;
-
-            // Rotate player to face move direction
-            if (dir != Vector3.zero)
-                transform.rotation = Quaternion.Slerp(
-                    transform.rotation,
-                    Quaternion.LookRotation(dir),
-                    10f * Time.deltaTime
-                );
         }
         else 
         {
             // Reset horizontal velocity when no input
             _velocity.x = 0f;
             _velocity.z = 0f;
+        }
+
+        // ─── NAYA: Player ko hamesha Camera ki taraf ghumana ───
+        if (cameraTransform != null)
+        {
+            Vector3 camForward = cameraTransform.forward;
+            camForward.y = 0f; // Ghumte waqt player upar-neeche na jhuke
+            
+            if (camForward.sqrMagnitude > 0.01f)
+            {
+                Quaternion targetRot = Quaternion.LookRotation(camForward);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 15f * Time.deltaTime);
+            }
         }
     }
 
@@ -280,13 +327,9 @@ public class PlayerController : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Alpha1))
             StartCoroutine(SwitchWeapon(WeaponState.Unarmed));
 
-        else if (Input.GetKeyDown(KeyCode.Alpha2))
-        {
-            if (hasSword)
-                StartCoroutine(SwitchWeapon(WeaponState.Sword));
-            else
-                Debug.Log("Abhi tumhare paas sword nahi hai!");
-        }
+        // Old alpha2 logic disabled to prevent conflict with SwordEquipSystem
+        // else if (Input.GetKeyDown(KeyCode.Alpha2))
+        //     StartCoroutine(SwitchWeapon(WeaponState.Sword));
 
         else if (Input.GetKeyDown(KeyCode.Alpha3))
             StartCoroutine(SwitchWeapon(WeaponState.Gun));
@@ -310,10 +353,10 @@ public class PlayerController : MonoBehaviour
             _anim.SetTrigger(HashUnequip);
             yield return WaitForAnimationState("Unequip");  // Wait until Unequip state starts
             
-            // Animation ke beech me (jaise 0.4 seconds baad) sword ko wapas pith par rakh do
+            // Jaise hi Hath (Hand) Pith (Back) tak pahuchega (jaise 0.4s baad), hum sword ko Hath me daal denge!
             yield return new WaitForSeconds(_currentWeapon == WeaponState.Sword ? unequipPutDelay : 0.2f);
             
-            if (_currentWeapon == WeaponState.Sword) MoveSwordTo(swordBackTransform);
+            if (_currentWeapon == WeaponState.Sword) MoveSwordTo(swordBackTransform, swordBackScale, swordBackOffsetPos, swordBackOffsetRot);
             if (_currentWeapon == WeaponState.Gun && gunObject) gunObject.SetActive(false);
 
             yield return WaitForAnimationEnd("Unequip");    // Wait until it finishes
@@ -329,10 +372,11 @@ public class PlayerController : MonoBehaviour
             _anim.SetTrigger(HashEquip);
             yield return WaitForAnimationState("Equip");    // Wait until Equip state starts
             
-            // Animation ke beech me (jaise hi hath pith tak pahuche), sword ko hath me le lo
+            // Jaise hi Hath (Hand) Pith (Back) tak pahuchega, hum sword ko turant Hath me Move kar denge!
+            // Isse sword sach me hath me pakdi hui lagegi aur aage aayegi.
             yield return new WaitForSeconds(_currentWeapon == WeaponState.Sword ? equipGrabDelay : 0.2f);
 
-            if (_currentWeapon == WeaponState.Sword) MoveSwordTo(swordHandTransform);
+            if (_currentWeapon == WeaponState.Sword) MoveSwordTo(swordHandTransform, swordHandScale, swordHandOffsetPos, swordHandOffsetRot);
             if (_currentWeapon == WeaponState.Gun && gunObject) gunObject.SetActive(true);
 
             yield return WaitForAnimationEnd("Equip");      // Wait until it finishes
@@ -395,26 +439,17 @@ public class PlayerController : MonoBehaviour
         _cc.enabled = false;
     }
 
-    // ─── Pickup System ────────────────────────────────────────────────────────
 
-    public void PickupSword()
-    {
-        hasSword = true;
-        if (swordObject) 
-        {
-            swordObject.SetActive(true);
-            // Starting me sword ko pith (back) par rakh do
-            MoveSwordTo(swordBackTransform);
-        }
-    }
-
-    private void MoveSwordTo(Transform targetParent)
+    private void MoveSwordTo(Transform targetParent, Vector3 targetScale, Vector3 targetPos, Vector3 targetRot)
     {
         if (swordObject != null && targetParent != null)
         {
+            // Sword ko physically naye parent (Hath ya Pith) ke andar daal do
             swordObject.transform.SetParent(targetParent);
-            swordObject.transform.localPosition = Vector3.zero;
-            swordObject.transform.localRotation = Quaternion.identity;
+            // Aur uski position/rotation/scale Inspector ki custom values par set kar do
+            swordObject.transform.localPosition = targetPos;
+            swordObject.transform.localRotation = Quaternion.Euler(targetRot);
+            swordObject.transform.localScale = targetScale;
         }
     }
 

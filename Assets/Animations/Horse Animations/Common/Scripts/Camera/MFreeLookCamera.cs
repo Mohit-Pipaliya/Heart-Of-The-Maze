@@ -1,4 +1,4 @@
-﻿using MalbersAnimations.Scriptables;
+using MalbersAnimations.Scriptables;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.Events;
@@ -20,7 +20,7 @@ namespace MalbersAnimations
         [Space]
 
         public TransformReference m_Target;                                  // The target object to follow
-        public UpdateType updateType = UpdateType.FixedUpdate;      // stores the selected update type
+        public UpdateType updateType = UpdateType.LateUpdate;      // stores the selected update type
         /// <summary>Stores the Update type when the game starts </summary>
         internal UpdateType defaultUpdate;
 
