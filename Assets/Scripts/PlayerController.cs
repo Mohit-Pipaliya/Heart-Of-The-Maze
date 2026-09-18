@@ -262,15 +262,26 @@ public class PlayerController : MonoBehaviour
             _velocity.z = 0f;
         }
 
-        // ─── NAYA: Player ko hamesha Camera ki taraf ghumana ───
-        if (cameraTransform != null)
+        // ─── FIX: Player ko hamesha Camera ki taraf force karne se camera hilta tha (Jitter) ───
+        // Ab player wahan ghumega jahan wo chal raha hai (Movement Direction).
+        // Sirf Gun hath me hone par wo Camera ke sath lock hoga.
+        if (_currentWeapon == WeaponState.Gun && cameraTransform != null)
         {
             Vector3 camForward = cameraTransform.forward;
-            camForward.y = 0f; // Ghumte waqt player upar-neeche na jhuke
+            camForward.y = 0f; 
             
             if (camForward.sqrMagnitude > 0.01f)
             {
                 Quaternion targetRot = Quaternion.LookRotation(camForward);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 15f * Time.deltaTime);
+            }
+        }
+        else if (inputMag > 0.1f)
+        {
+            Vector3 dir = GetMoveDirection(h, v);
+            if (dir.sqrMagnitude > 0.01f)
+            {
+                Quaternion targetRot = Quaternion.LookRotation(dir);
                 transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 15f * Time.deltaTime);
             }
         }
@@ -324,15 +335,22 @@ public class PlayerController : MonoBehaviour
     {
         if (_isEquipping) return;   // Wait for current equip/unequip to finish
 
+        // ─── FIX: Weapon Switching is now fully handled by SwordEquipSystem and GunEquipSystem. ───
+        // PlayerController ab khud se Alpha1 ya Alpha3 press hone par interfere nahi karega.
+        /*
         if (Input.GetKeyDown(KeyCode.Alpha1))
-            StartCoroutine(SwitchWeapon(WeaponState.Unarmed));
-
-        // Old alpha2 logic disabled to prevent conflict with SwordEquipSystem
-        // else if (Input.GetKeyDown(KeyCode.Alpha2))
-        //     StartCoroutine(SwitchWeapon(WeaponState.Sword));
+        {
+            if (_currentWeapon != WeaponState.Sword)
+            {
+                StartCoroutine(SwitchWeapon(WeaponState.Unarmed));
+            }
+        }
 
         else if (Input.GetKeyDown(KeyCode.Alpha3))
+        {
             StartCoroutine(SwitchWeapon(WeaponState.Gun));
+        }
+        */
     }
 
     /// <summary>
@@ -480,6 +498,14 @@ public class PlayerController : MonoBehaviour
         while (_anim.GetCurrentAnimatorStateInfo(0).IsName(stateName) &&
                _anim.GetCurrentAnimatorStateInfo(0).normalizedTime < 0.95f)
             yield return null;
+    }
+
+    // ─── External Sync for SwordEquipSystem ───────────────────────────────────
+    
+    public void SyncWeaponStateFromExternal(int weaponIndex, bool isEquippingStatus)
+    {
+        _currentWeapon = (WeaponState)weaponIndex;
+        _isEquipping = isEquippingStatus;
     }
 
     // ─── Public Accessors ─────────────────────────────────────────────────────

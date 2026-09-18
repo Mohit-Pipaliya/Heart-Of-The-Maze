@@ -48,9 +48,17 @@ public class SwordEquipSystem : MonoBehaviour
     public string unequipTrigger = "Unequip";
 
     private SwordState currentState = SwordState.Ground;
+    private PlayerController playerController;
     
     public SwordState CurrentState => currentState;
     public bool IsSwordEquipped => currentState == SwordState.Equipped;
+
+    private void Awake()
+    {
+        playerController = GetComponent<PlayerController>();
+        if (playerController == null)
+            playerController = GetComponentInParent<PlayerController>();
+    }
 
     private void Update()
     {
@@ -59,7 +67,8 @@ public class SwordEquipSystem : MonoBehaviour
         // Press 2 to Equip the sword
         if (Keyboard.current.digit2Key.wasPressedThisFrame)
         {
-            if (currentState == SwordState.OnBack)
+            // Sirf tabhi equip hoga agar Sword Pith par hai aur Hath khali hain (WeaponIndex == 0)
+            if (currentState == SwordState.OnBack && playerController != null && playerController.WeaponIndex == 0)
             {
                 StartEquip();
             }
@@ -108,6 +117,9 @@ public class SwordEquipSystem : MonoBehaviour
         Debug.Log("[Sword] Equip Started");
         currentState = SwordState.Equipping;
         
+        // Sync with PlayerController so Attack logic works
+        if (playerController != null) playerController.SyncWeaponStateFromExternal(1, true);
+
         // Use existing triggers and parameters from your PlayerController
         playerAnimator.SetInteger("WeaponState", 1); // 1 = Sword
         playerAnimator.SetTrigger(equipTrigger);
@@ -123,6 +135,8 @@ public class SwordEquipSystem : MonoBehaviour
         Debug.Log("[Sword] Unequip Started");
         currentState = SwordState.Unequipping;
         
+        if (playerController != null) playerController.SyncWeaponStateFromExternal(1, true);
+
         playerAnimator.SetTrigger(unequipTrigger);
         
         if (!useAnimationEvents)
@@ -197,6 +211,7 @@ public class SwordEquipSystem : MonoBehaviour
         
         Debug.Log("[Sword] Equip Finished");
         currentState = SwordState.Equipped;
+        if (playerController != null) playerController.SyncWeaponStateFromExternal(1, false);
     }
 
     /// <summary>
@@ -212,6 +227,7 @@ public class SwordEquipSystem : MonoBehaviour
             playerAnimator.SetInteger("WeaponState", 0); // Reset to unarmed if using events
         }
         currentState = SwordState.OnBack;
+        if (playerController != null) playerController.SyncWeaponStateFromExternal(0, false);
     }
 
     private void AttachToSocket(Transform socket, Vector3 localPos, Vector3 localRot)
