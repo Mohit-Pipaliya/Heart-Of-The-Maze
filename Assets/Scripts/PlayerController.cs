@@ -96,6 +96,8 @@ public class PlayerController : MonoBehaviour
     [Header("Animation State Names")]
     [SerializeField] private string unequipStateName = "Unequip";
     [SerializeField] private string equipStateName   = "Equip";
+    [Tooltip("Animator mein Gun Fire state ka exact naam. (Example: 'Firing Rifle' ya 'Gun Shoot')")]
+    [SerializeField] private string gunFireStateName = "Firing Rifle";
 
     // ─── Private State ─────────────────────────────────────────────────────────
 
@@ -477,7 +479,7 @@ public class PlayerController : MonoBehaviour
 
     private void HandleAttack()
     {
-        if (_isEquipping)                    return;
+        if (_isEquipping || _isSequenceRunning) return;
         if (_currentWeapon == WeaponState.Unarmed) return;
 
         if (_currentWeapon == WeaponState.Sword)
@@ -486,16 +488,18 @@ public class PlayerController : MonoBehaviour
             {
                 // Randomly pick one of the 2 sword attack animations
                 _anim.SetInteger(HashAttackIndex, Random.Range(0, 2));
+                _anim.ResetTrigger(HashAttack);
                 _anim.SetTrigger(HashAttack);
             }
         }
         else if (_currentWeapon == WeaponState.Gun)
         {
-            // Jab left button daba kar rakhein
+            // Jab left button daba kar rakhein (Rapid fire)
             if (Input.GetMouseButton(0) && Time.time >= _nextFireTime)
             {
                 _nextFireTime = Time.time + gunFireRate;
-                _anim.SetTrigger(HashAttack);
+                // Seedha animation play karo (Animator transitions bypass ho jayengi)
+                _anim.CrossFadeInFixedTime(gunFireStateName, 0.05f);
             }
         }
     }
