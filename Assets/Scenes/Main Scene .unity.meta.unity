@@ -1749,6 +1749,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
   walkSpeed: 10
   runSpeed: 15
+  gunWalkSpeed: 10
+  gunRunSpeed: 2
   jumpForce: 5
   gravity: -9.81
   speedDampTime: 0.1
@@ -1769,6 +1771,7 @@ MonoBehaviour:
   gunObject: {fileID: 0}
   equipGrabDelay: 0.4
   unequipPutDelay: 0.4
+  gunFireRate: 0.2
 --- !u!143 &1943372668
 CharacterController:
   m_ObjectHideFlags: 0

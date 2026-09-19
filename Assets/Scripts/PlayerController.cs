@@ -41,6 +41,15 @@ public class PlayerController : MonoBehaviour
     [Header("Movement")]
     [SerializeField] private float walkSpeed      = 2f;
     [SerializeField] private float runSpeed       = 5f;
+    [SerializeField] private float rotationSpeed  = 150f; // Keyboard turning speed
+    [SerializeField] private float mouseSensitivity = 2.0f; // Mouse turning speed
+
+
+    
+    [Header("Gun Movement")]
+    [SerializeField] private float gunWalkSpeed   = 2.5f;
+    [SerializeField] private float gunRunSpeed    = 6.5f;
+    
     [SerializeField] private float jumpForce      = 5f;
     [SerializeField] private float gravity        = -9.81f;
     [SerializeField] private float speedDampTime  = 0.1f;   // Blend-tree smoothing
@@ -50,9 +59,7 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float groundCheckRadius = 0.25f; // Radius of the ground check sphere
     [SerializeField] private float groundCheckOffset = 0.1f;  // Offset from the bottom of the CharacterController
 
-    [Header("Camera")]
-    [SerializeField] private Transform cameraTransform;     // Main Camera transform
-
+    // Camera system ab alag hai (CameraController.cs), isliye yahan camera ka reference zaroori nahi.
     [Header("Health")]
     [SerializeField] private int maxHealth = 100;
 
@@ -74,14 +81,29 @@ public class PlayerController : MonoBehaviour
     
     [Header("Weapon Timings")]
     [SerializeField] private GameObject gunObject;          // Gun mesh
-    [SerializeField] private float equipGrabDelay = 0.4f;   // Jab hath pith tak pahuche (Time in seconds)
-    [SerializeField] private float unequipPutDelay = 0.4f;  // Jab hath wapas pith par sword rakhe
+    [SerializeField] private float equipGrabDelay = 0.4f;
+    [SerializeField] private float unequipPutDelay = 0.4f;
+    [SerializeField] private float gunFireRate = 0.2f;
+    [SerializeField] private float unequipAnimDuration = 1.2f;
+    [SerializeField] private float equipAnimDuration   = 1.2f;
+
+    [Header("Terrain Sinking Fix")]
+    [Tooltip("Unequip animation ke dauran character ko upar uthana (metres). " +
+             "Agar animation terrain mein jaati hai to yahan value badhao (e.g. 0.3).")]
+    [SerializeField] private float unequipGroundLift    = 0.3f; // Sword unequip lift
+    [SerializeField] private float gunUnequipGroundLift = 0.6f; // Gun unequip lift (gun stance is lower, needs more)
+
+    [Header("Animation State Names")]
+    [SerializeField] private string unequipStateName = "Unequip";
+    [SerializeField] private string equipStateName   = "Equip";
 
     // ─── Private State ─────────────────────────────────────────────────────────
 
     // Animator
     private Animator          _anim;
     private CharacterController _cc;
+    private SwordEquipSystem _swordSystem;
+    private GunEquipSystem _gunSystem;
 
     // Animator parameter hashes (faster than string lookups every frame)
     private static readonly int HashSpeed       = Animator.StringToHash("Speed");
@@ -101,7 +123,10 @@ public class PlayerController : MonoBehaviour
     // Flags
     private bool _isDead          = false;
     private bool _isEquipping     = false;   // Busy playing equip/unequip animation
+    private bool _isSequenceRunning = false; // Busy running a full unequip->equip sequence
     private int  _health;
+
+    private float _nextFireTime = 0f;
 
     // Physics
     private Vector3 _velocity;
@@ -120,6 +145,8 @@ public class PlayerController : MonoBehaviour
         _anim   = GetComponent<Animator>();
         _cc     = GetComponent<CharacterController>();
         _health = maxHealth;
+        _swordSystem = GetComponentInChildren<SwordEquipSystem>();
+        _gunSystem = GetComponentInChildren<GunEquipSystem>();
 
         // NAYA JADOO: Tumhe empty object banane ki zarurat nahi! 
         // Unity automatically player ka sidha hath (Right Hand) aur Pith (Spine) dhundh lega.
@@ -229,76 +256,57 @@ public class PlayerController : MonoBehaviour
     private void CalculateHorizontalMovement()
     {
         // Raw input
-        float h = Input.GetAxisRaw("Horizontal");
-        float v = Input.GetAxisRaw("Vertical");
+        float h = Input.GetAxis("Horizontal");
+        float v = Input.GetAxis("Vertical");
+        float mouseX = Input.GetAxis("Mouse X");
 
-        bool  running   = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-        float inputMag  = new Vector2(h, v).magnitude;
+        // 1. Player Rotation (A/D and Mouse X physically rotate the character)
+        float rotationInput = (h * rotationSpeed * Time.deltaTime) + (mouseX * mouseSensitivity);
+        if (Mathf.Abs(rotationInput) > 0.001f)
+        {
+            transform.Rotate(Vector3.up, rotationInput);
+        }
 
+        bool running = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+        
         // Target blend-tree speed value
         float targetSpeed = 0f;
+        float inputMag = Mathf.Clamp01(new Vector2(h, v).magnitude);
+        
         if (inputMag > 0.1f)
             targetSpeed = running ? 1f : 0.5f;
 
-        // Smooth transition
+        // Smooth transition for Animator
         float currentSpeed = _anim.GetFloat(HashSpeed);
         float smoothSpeed  = Mathf.MoveTowards(currentSpeed, targetSpeed, Time.deltaTime / speedDampTime);
         _anim.SetFloat(HashSpeed, smoothSpeed);
 
-        // Actual character movement
-        if (inputMag > 0.1f)
+        // 2. Character-Relative Forward/Backward Movement
+        float forwardInput = v;
+        if (Mathf.Abs(h) > 0.01f && Mathf.Abs(v) < 0.01f)
         {
-            float moveSpeed = running ? runSpeed : walkSpeed;
-            Vector3 dir = GetMoveDirection(h, v);
+            // Give a slight forward movement when only turning
+            forwardInput = Mathf.Abs(h) * 0.2f; 
+        }
+
+        if (Mathf.Abs(forwardInput) > 0.01f)
+        {
+            float currentWalkSpeed = (_currentWeapon == WeaponState.Gun) ? gunWalkSpeed : walkSpeed;
+            float currentRunSpeed = (_currentWeapon == WeaponState.Gun) ? gunRunSpeed : runSpeed;
+            float moveSpeed = running ? currentRunSpeed : currentWalkSpeed;
             
-            // Assign horizontal velocity
+            // Move along the player's own forward vector
+            Vector3 dir = transform.forward * forwardInput;
+            
             _velocity.x = dir.x * moveSpeed;
             _velocity.z = dir.z * moveSpeed;
         }
         else 
         {
-            // Reset horizontal velocity when no input
+            // Reset horizontal velocity when no movement input
             _velocity.x = 0f;
             _velocity.z = 0f;
         }
-
-        // ─── FIX: Player ko hamesha Camera ki taraf force karne se camera hilta tha (Jitter) ───
-        // Ab player wahan ghumega jahan wo chal raha hai (Movement Direction).
-        // Sirf Gun hath me hone par wo Camera ke sath lock hoga.
-        if (_currentWeapon == WeaponState.Gun && cameraTransform != null)
-        {
-            Vector3 camForward = cameraTransform.forward;
-            camForward.y = 0f; 
-            
-            if (camForward.sqrMagnitude > 0.01f)
-            {
-                Quaternion targetRot = Quaternion.LookRotation(camForward);
-                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 15f * Time.deltaTime);
-            }
-        }
-        else if (inputMag > 0.1f)
-        {
-            Vector3 dir = GetMoveDirection(h, v);
-            if (dir.sqrMagnitude > 0.01f)
-            {
-                Quaternion targetRot = Quaternion.LookRotation(dir);
-                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 15f * Time.deltaTime);
-            }
-        }
-    }
-
-    /// <summary>Returns movement direction relative to the camera.</summary>
-    private Vector3 GetMoveDirection(float h, float v)
-    {
-        Vector3 forward = cameraTransform != null
-            ? Vector3.ProjectOnPlane(cameraTransform.forward, Vector3.up).normalized
-            : transform.forward;
-
-        Vector3 right = cameraTransform != null
-            ? Vector3.ProjectOnPlane(cameraTransform.right, Vector3.up).normalized
-            : transform.right;
-
-        return (forward * v + right * h).normalized;
     }
 
     // ─── Jump ─────────────────────────────────────────────────────────────────
@@ -333,75 +341,137 @@ public class PlayerController : MonoBehaviour
 
     private void HandleWeaponSwitch()
     {
-        if (_isEquipping) return;   // Wait for current equip/unequip to finish
+        if (_isEquipping || _isSequenceRunning) return;
 
-        // ─── FIX: Weapon Switching is now fully handled by SwordEquipSystem and GunEquipSystem. ───
-        // PlayerController ab khud se Alpha1 ya Alpha3 press hone par interfere nahi karega.
-        /*
+        // Press 1: Jo bhi weapon hath mein hai, uska unequip animation chalao → Unarmed
         if (Input.GetKeyDown(KeyCode.Alpha1))
         {
-            if (_currentWeapon != WeaponState.Sword)
-            {
-                StartCoroutine(SwitchWeapon(WeaponState.Unarmed));
-            }
+            if (_currentWeapon != WeaponState.Unarmed)
+                StartCoroutine(DoUnequip());
         }
 
+        // Press 2: Sword equip karo
+        // - Agar hath khali (Unarmed): Seedha Sword equip animation
+        // - Agar Gun hath mein hai: Pehle Gun unequip → phir Sword equip
+        else if (Input.GetKeyDown(KeyCode.Alpha2))
+        {
+            if (_currentWeapon == WeaponState.Sword) return; // Pehle se sword hai
+            bool swordAvailable = _swordSystem != null &&
+                                  (_swordSystem.CurrentState == SwordEquipSystem.SwordState.OnBack ||
+                                   _swordSystem.CurrentState == SwordEquipSystem.SwordState.Equipped);
+            if (!swordAvailable) return;
+            StartCoroutine(DoSwitchToSword());
+        }
+
+        // Press 3: Gun equip karo
+        // - Agar hath khali (Unarmed): Seedha Gun equip animation
+        // - Agar Sword hath mein hai: Pehle Sword unequip → phir Gun equip
         else if (Input.GetKeyDown(KeyCode.Alpha3))
         {
-            StartCoroutine(SwitchWeapon(WeaponState.Gun));
+            if (_currentWeapon == WeaponState.Gun) return; // Pehle se gun hai
+            bool gunAvailable = _gunSystem != null &&
+                                (_gunSystem.CurrentState == GunEquipSystem.GunState.Holstered ||
+                                 _gunSystem.CurrentState == GunEquipSystem.GunState.Equipped);
+            if (!gunAvailable) return;
+            StartCoroutine(DoSwitchToGun());
         }
-        */
     }
 
-    /// <summary>
-    /// Handles the full equip/unequip sequence:
-    ///   1. If already holding a weapon → play Unequip, wait for it to finish.
-    ///   2. Update WeaponState parameter.
-    ///   3. If new weapon is not Unarmed → play Equip, wait for it to finish.
-    /// </summary>
-    private IEnumerator SwitchWeapon(WeaponState target)
+    // ─────────────────────────────────────────────────────────────────────────
+    // Press 1: Jo bhi weapon hath mein hai → Unequip → Unarmed
+    // ─────────────────────────────────────────────────────────────────────────
+    private IEnumerator DoUnequip()
     {
-        if (target == _currentWeapon) yield break;
+        _isSequenceRunning = true;
 
-        _isEquipping = true;
-
-        // Step 1 – Unequip current weapon (if any)
-        if (_currentWeapon != WeaponState.Unarmed)
+        if (_currentWeapon == WeaponState.Sword && _swordSystem != null)
         {
-            _anim.SetTrigger(HashUnequip);
-            yield return WaitForAnimationState("Unequip");  // Wait until Unequip state starts
-            
-            // Jaise hi Hath (Hand) Pith (Back) tak pahuchega (jaise 0.4s baad), hum sword ko Hath me daal denge!
-            yield return new WaitForSeconds(_currentWeapon == WeaponState.Sword ? unequipPutDelay : 0.2f);
-            
-            if (_currentWeapon == WeaponState.Sword) MoveSwordTo(swordBackTransform, swordBackScale, swordBackOffsetPos, swordBackOffsetRot);
-            if (_currentWeapon == WeaponState.Gun && gunObject) gunObject.SetActive(false);
-
-            yield return WaitForAnimationEnd("Unequip");    // Wait until it finishes
+            yield return RunUnequipAnimation();
+            _swordSystem.StartUnequip();
+            yield return new WaitForSeconds(unequipAnimDuration);
+            while (_swordSystem.CurrentState != SwordEquipSystem.SwordState.OnBack) yield return null;
+        }
+        else if (_currentWeapon == WeaponState.Gun && _gunSystem != null)
+        {
+            yield return RunGunUnequipAnimation(); // Gun ke liye special fix
+            _gunSystem.StartUnequip();
+            yield return new WaitForSeconds(unequipAnimDuration);
+            while (_gunSystem.CurrentState != GunEquipSystem.GunState.Holstered) yield return null;
         }
 
-        // Step 2 – Change weapon state parameter so blend tree switches layers
-        _currentWeapon = target;
-        _anim.SetInteger(HashWeaponState, (int)_currentWeapon);
-
-        // Step 3 – Equip new weapon (if not going to Unarmed)
-        if (_currentWeapon != WeaponState.Unarmed)
-        {
-            _anim.SetTrigger(HashEquip);
-            yield return WaitForAnimationState("Equip");    // Wait until Equip state starts
-            
-            // Jaise hi Hath (Hand) Pith (Back) tak pahuchega, hum sword ko turant Hath me Move kar denge!
-            // Isse sword sach me hath me pakdi hui lagegi aur aage aayegi.
-            yield return new WaitForSeconds(_currentWeapon == WeaponState.Sword ? equipGrabDelay : 0.2f);
-
-            if (_currentWeapon == WeaponState.Sword) MoveSwordTo(swordHandTransform, swordHandScale, swordHandOffsetPos, swordHandOffsetRot);
-            if (_currentWeapon == WeaponState.Gun && gunObject) gunObject.SetActive(true);
-
-            yield return WaitForAnimationEnd("Equip");      // Wait until it finishes
-        }
-
-        _isEquipping = false;
+        _currentWeapon = WeaponState.Unarmed;
+        _anim.SetInteger(HashWeaponState, 0);
+        _anim.applyRootMotion = false; // Restore
+        _isSequenceRunning = false;
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Press 2: Unarmed→Sword  OR  Gun→(Unequip Gun)→(Equip Sword)
+    // ─────────────────────────────────────────────────────────────────────────
+    private IEnumerator DoSwitchToSword()
+    {
+        _isSequenceRunning = true;
+
+        // Step 1: Gun unequip (agar gun hath mein hai, WeaponState still=2)
+        if (_currentWeapon == WeaponState.Gun && _gunSystem != null)
+        {
+            yield return RunGunUnequipAnimation(); // Gun ke liye special fix
+            _gunSystem.StartUnequip();
+            yield return new WaitForSeconds(unequipAnimDuration);
+            while (_gunSystem.CurrentState != GunEquipSystem.GunState.Holstered) yield return null;
+        }
+
+        // Step 2: Sword Equip (directly 2→1)
+        if (_swordSystem != null && _swordSystem.CurrentState == SwordEquipSystem.SwordState.OnBack)
+        {
+            _currentWeapon = WeaponState.Sword;
+            _anim.SetInteger(HashWeaponState, 1);
+            _anim.applyRootMotion = false; // Restore before equip
+            yield return new WaitForFixedUpdate();
+            yield return new WaitForFixedUpdate();
+            yield return FireTriggerInstant(HashEquip);
+            _swordSystem.StartEquip();
+            yield return new WaitForSeconds(equipAnimDuration);
+            while (_swordSystem.CurrentState != SwordEquipSystem.SwordState.Equipped) yield return null;
+        }
+
+        _isSequenceRunning = false;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Press 3: Unarmed→Gun  OR  Sword→(Unequip Sword)→(Equip Gun)
+    // ─────────────────────────────────────────────────────────────────────────
+    private IEnumerator DoSwitchToGun()
+    {
+        _isSequenceRunning = true;
+
+        // Step 1: Sword unequip (agar sword hath mein hai, WeaponState still=1)
+        if (_currentWeapon == WeaponState.Sword && _swordSystem != null)
+        {
+            yield return RunUnequipAnimation();
+            _swordSystem.StartUnequip();
+            yield return new WaitForSeconds(unequipAnimDuration);
+            while (_swordSystem.CurrentState != SwordEquipSystem.SwordState.OnBack) yield return null;
+        }
+
+        // Step 2: Gun Equip (directly 1→2)
+        if (_gunSystem != null && _gunSystem.CurrentState == GunEquipSystem.GunState.Holstered)
+        {
+            _currentWeapon = WeaponState.Gun;
+            _anim.SetInteger(HashWeaponState, 2);
+            _anim.applyRootMotion = false; // Restore before equip
+            yield return new WaitForFixedUpdate();
+            yield return new WaitForFixedUpdate();
+            yield return FireTriggerInstant(HashEquip);
+            _gunSystem.StartEquip();
+            yield return new WaitForSeconds(equipAnimDuration);
+            while (_gunSystem.CurrentState != GunEquipSystem.GunState.Equipped) yield return null;
+        }
+
+        _isSequenceRunning = false;
+    }
+
+
 
     // ─── Attack ───────────────────────────────────────────────────────────────
 
@@ -410,15 +480,23 @@ public class PlayerController : MonoBehaviour
         if (_isEquipping)                    return;
         if (_currentWeapon == WeaponState.Unarmed) return;
 
-        if (Input.GetMouseButtonDown(0))
+        if (_currentWeapon == WeaponState.Sword)
         {
-            if (_currentWeapon == WeaponState.Sword)
+            if (Input.GetMouseButtonDown(0))
             {
                 // Randomly pick one of the 2 sword attack animations
                 _anim.SetInteger(HashAttackIndex, Random.Range(0, 2));
+                _anim.SetTrigger(HashAttack);
             }
-            // For Gun, AttackIndex is irrelevant (only one fire animation)
-            _anim.SetTrigger(HashAttack);
+        }
+        else if (_currentWeapon == WeaponState.Gun)
+        {
+            // Jab left button daba kar rakhein
+            if (Input.GetMouseButton(0) && Time.time >= _nextFireTime)
+            {
+                _nextFireTime = Time.time + gunFireRate;
+                _anim.SetTrigger(HashAttack);
+            }
         }
     }
 
@@ -471,33 +549,91 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    // ─── Helper: Animation Waiting Coroutines ─────────────────────────────────
+    // ─── Helper: Unequip Animation Runner ─────────────────────────────────────
 
     /// <summary>
-    /// Waits one frame then waits until the Animator enters a state whose name
-    /// contains <paramref name="stateName"/> on layer 0.
+    /// Unequip animation safely chalata hai:
+    /// 1. Root Motion disable karta hai (animation ka downward root motion terrain sinking ka karan)
+    /// 2. Character ko unequipGroundLift units upar uthata hai (bone-level clipping fix)
+    /// 3. FireTriggerInstant se instant start (exit time bypass)
     /// </summary>
-    private IEnumerator WaitForAnimationState(string stateName)
+    private IEnumerator RunUnequipAnimation()
     {
-        yield return null;  // Let the trigger propagate
-        while (!_anim.GetCurrentAnimatorStateInfo(0).IsName(stateName))
-            yield return null;
+        _anim.applyRootMotion = false;
+        if (unequipGroundLift > 0f)
+            _cc.Move(Vector3.up * unequipGroundLift);
+        yield return FireTriggerInstant(HashUnequip);
     }
 
     /// <summary>
-    /// Waits until the current state on layer 0 whose name contains
-    /// <paramref name="stateName"/> has played past 95% of its duration.
+    /// Gun ke liye special unequip:
+    /// Gun stance (WeaponState=2) mein character zyada jhuka hota hai.
+    /// Step 1: WeaponState=0 set karke Animator ko Unarmed stance mein lao (character seedha khada hoga)
+    /// Step 2: Extra lift apply karo (gun stance ke liye zyada zaroori)
+    /// Step 3: Trigger fire karo
+    /// Agar Animator mein Gun aur Sword ka alag Unequip hai, tab bhi apna kaam karega
+    /// kyunki hum pehle neutral (Unarmed) state mein jaate hain.
     /// </summary>
-    private IEnumerator WaitForAnimationEnd(string stateName)
+    private IEnumerator RunGunUnequipAnimation()
     {
-        // Wait until we are IN the target state
-        while (!_anim.GetCurrentAnimatorStateInfo(0).IsName(stateName))
-            yield return null;
+        _anim.applyRootMotion = false;
 
-        // Wait until it is almost finished (normalizedTime >= 0.95)
-        while (_anim.GetCurrentAnimatorStateInfo(0).IsName(stateName) &&
-               _anim.GetCurrentAnimatorStateInfo(0).normalizedTime < 0.95f)
-            yield return null;
+        // Gun stance se seedha Unarmed mein jao — character normal height pe aayega
+        _anim.SetInteger(HashWeaponState, 0);
+        yield return new WaitForFixedUpdate();
+        yield return new WaitForFixedUpdate();
+        yield return new WaitForFixedUpdate(); // 3 physics frames: Animator settle ho
+
+        // Extra lift for gun (gun pose me character sword se zyada neeche hota hai)
+        if (gunUnequipGroundLift > 0f)
+            _cc.Move(Vector3.up * gunUnequipGroundLift);
+
+        yield return FireTriggerInstant(HashUnequip);
+    }
+
+
+    private IEnumerator WaitForAnimationToFinish(float duration)
+    {
+        yield return new WaitForSeconds(duration);
+    }
+
+    /// <summary>
+    /// PERMANENT FIX for terrain sinking and "1 second delay before animation":
+    ///
+    /// Root cause: Animator transitions have "Has Exit Time" = true.
+    /// This makes Unity WAIT for the current animation to reach ~80-100%
+    /// before starting the Unequip transition. During this wait (up to 1 sec),
+    /// the character stays in Gun/Sword pose — causing terrain clipping.
+    ///
+    /// Fix: Force current state to normalizedTime=0.99 instantly.
+    /// This satisfies ANY "Has Exit Time" condition in 1 frame.
+    /// Then fire the trigger → transition starts immediately → no wait, no sinking.
+    /// </summary>
+    private IEnumerator FireTriggerInstant(int triggerHash)
+    {
+        // ALL layers mein current state ko 99% pe force karo (exit time bypass)
+        for (int layer = 0; layer < _anim.layerCount; layer++)
+        {
+            var st = _anim.GetCurrentAnimatorStateInfo(layer);
+            if (st.shortNameHash != 0)
+                _anim.Play(st.shortNameHash, layer, 0.99f);
+        }
+
+        _anim.ResetTrigger(triggerHash);
+        _anim.SetTrigger(triggerHash);
+
+        yield return null; // 1 frame: transition register hone do
+
+        // ALL layers mein transition blend skip karo
+        for (int layer = 0; layer < _anim.layerCount; layer++)
+        {
+            if (_anim.IsInTransition(layer))
+            {
+                int destHash = _anim.GetNextAnimatorStateInfo(layer).shortNameHash;
+                if (destHash != 0)
+                    _anim.Play(destHash, layer, 0f);
+            }
+        }
     }
 
     // ─── External Sync for SwordEquipSystem ───────────────────────────────────

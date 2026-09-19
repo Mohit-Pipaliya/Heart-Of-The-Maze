@@ -38,8 +38,9 @@ public class SwordEquipSystem : MonoBehaviour
     [Tooltip("If true, relies on Animation Events. If false, uses a time delay (easier!).")]
     public bool useAnimationEvents = false;
     
-    [Tooltip("Time delay before the sword jumps to hand/back (if not using events)")]
-    public float grabDelay = 0.4f;
+    [Tooltip("Time delay before the sword jumps to hand/back (if not using events). " +
+             "Match this with the frame in your Equip animation when hand reaches the back socket.")]
+    public float grabDelay = 0.7f;
 
     [Tooltip("Animator Trigger name for Equipping")]
     public string equipTrigger = "Equip";
@@ -60,29 +61,7 @@ public class SwordEquipSystem : MonoBehaviour
             playerController = GetComponentInParent<PlayerController>();
     }
 
-    private void Update()
-    {
-        if (Keyboard.current == null) return;
-
-        // Press 2 to Equip the sword
-        if (Keyboard.current.digit2Key.wasPressedThisFrame)
-        {
-            // Sirf tabhi equip hoga agar Sword Pith par hai aur Hath khali hain (WeaponIndex == 0)
-            if (currentState == SwordState.OnBack && playerController != null && playerController.WeaponIndex == 0)
-            {
-                StartEquip();
-            }
-        }
-
-        // Press 1 to Unequip the weapon (Go unarmed)
-        if (Keyboard.current.digit1Key.wasPressedThisFrame)
-        {
-            if (currentState == SwordState.Equipped)
-            {
-                StartUnequip();
-            }
-        }
-    }
+    // Update method hata diya gaya hai taaki PlayerController input handle kare
 
     /// <summary>
     /// Called by the SwordPickup script when the player picks up the sword from the ground.
@@ -112,7 +91,7 @@ public class SwordEquipSystem : MonoBehaviour
     }
 
 
-    private void StartEquip()
+    public void StartEquip()
     {
         Debug.Log("[Sword] Equip Started");
         currentState = SwordState.Equipping;
@@ -120,9 +99,9 @@ public class SwordEquipSystem : MonoBehaviour
         // Sync with PlayerController so Attack logic works
         if (playerController != null) playerController.SyncWeaponStateFromExternal(1, true);
 
-        // Use existing triggers and parameters from your PlayerController
-        playerAnimator.SetInteger("WeaponState", 1); // 1 = Sword
-        playerAnimator.SetTrigger(equipTrigger);
+        // Animations ab PlayerController handle karega
+        // playerAnimator.SetInteger("WeaponState", 1); 
+        // playerAnimator.SetTrigger(equipTrigger);
         
         if (!useAnimationEvents)
         {
@@ -130,14 +109,15 @@ public class SwordEquipSystem : MonoBehaviour
         }
     }
 
-    private void StartUnequip()
+    public void StartUnequip()
     {
         Debug.Log("[Sword] Unequip Started");
         currentState = SwordState.Unequipping;
         
         if (playerController != null) playerController.SyncWeaponStateFromExternal(1, true);
 
-        playerAnimator.SetTrigger(unequipTrigger);
+        // Animations ab PlayerController handle karega
+        // playerAnimator.SetTrigger(unequipTrigger);
         
         if (!useAnimationEvents)
         {
@@ -159,7 +139,8 @@ public class SwordEquipSystem : MonoBehaviour
         SwitchSwordToBack();
         yield return new WaitForSeconds(grabDelay);
         
-        playerAnimator.SetInteger("WeaponState", 0); // 0 = Unarmed
+        // WeaponState reset ab PlayerController handle karega
+        // playerAnimator.SetInteger("WeaponState", 0);
         OnUnequipAnimationFinished();
     }
 
@@ -224,7 +205,7 @@ public class SwordEquipSystem : MonoBehaviour
         Debug.Log("[Sword] Unequip Finished");
         if (useAnimationEvents)
         {
-            playerAnimator.SetInteger("WeaponState", 0); // Reset to unarmed if using events
+            // playerAnimator.SetInteger("WeaponState", 0); // Reset to unarmed if using events
         }
         currentState = SwordState.OnBack;
         if (playerController != null) playerController.SyncWeaponStateFromExternal(0, false);

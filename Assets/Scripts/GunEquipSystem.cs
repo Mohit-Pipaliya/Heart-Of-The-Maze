@@ -60,29 +60,7 @@ public class GunEquipSystem : MonoBehaviour
             playerController = GetComponentInParent<PlayerController>();
     }
 
-    private void Update()
-    {
-        if (Keyboard.current == null) return;
-
-        // Press 3 to Equip the gun
-        if (Keyboard.current.digit3Key.wasPressedThisFrame)
-        {
-            // Sirf tabhi equip hoga agar Gun Holster me hai aur Hath khali hain (WeaponIndex == 0)
-            if (currentState == GunState.Holstered && playerController != null && playerController.WeaponIndex == 0)
-            {
-                StartEquip();
-            }
-        }
-
-        // Press 1 to Unequip the weapon (Go unarmed)
-        if (Keyboard.current.digit1Key.wasPressedThisFrame)
-        {
-            if (currentState == GunState.Equipped)
-            {
-                StartUnequip();
-            }
-        }
-    }
+    // Update method hata diya gaya hai taaki PlayerController input handle kare
 
     public void PickupGunFromGround()
     {
@@ -107,15 +85,16 @@ public class GunEquipSystem : MonoBehaviour
         AttachToSocket(gunHolsterSocket, holsterLocalPosition, holsterLocalRotation);
     }
 
-    private void StartEquip()
+    public void StartEquip()
     {
         Debug.Log("[Gun] Equip Started");
         currentState = GunState.Equipping;
         
         if (playerController != null) playerController.SyncWeaponStateFromExternal(2, true); // 2 = Gun
 
-        playerAnimator.SetInteger("WeaponState", 2); 
-        playerAnimator.SetTrigger(equipTrigger);
+        // Animations ab PlayerController handle karega
+        // playerAnimator.SetInteger("WeaponState", 2); 
+        // playerAnimator.SetTrigger(equipTrigger);
         
         if (!useAnimationEvents)
         {
@@ -123,14 +102,15 @@ public class GunEquipSystem : MonoBehaviour
         }
     }
 
-    private void StartUnequip()
+    public void StartUnequip()
     {
         Debug.Log("[Gun] Unequip Started");
         currentState = GunState.Unequipping;
         
         if (playerController != null) playerController.SyncWeaponStateFromExternal(2, true);
 
-        playerAnimator.SetTrigger(unequipTrigger);
+        // Animations ab PlayerController handle karega
+        // playerAnimator.SetTrigger(unequipTrigger);
         
         if (!useAnimationEvents)
         {
@@ -152,7 +132,8 @@ public class GunEquipSystem : MonoBehaviour
         SwitchGunToHolster();
         yield return new WaitForSeconds(grabDelay);
         
-        playerAnimator.SetInteger("WeaponState", 0); // 0 = Unarmed
+        // WeaponState reset ab PlayerController handle karega
+        // playerAnimator.SetInteger("WeaponState", 0);
         OnUnequipAnimationFinished();
     }
 
@@ -198,7 +179,7 @@ public class GunEquipSystem : MonoBehaviour
         Debug.Log("[Gun] Unequip Finished");
         if (useAnimationEvents)
         {
-            playerAnimator.SetInteger("WeaponState", 0);
+            // playerAnimator.SetInteger("WeaponState", 0);
         }
         currentState = GunState.Holstered;
         if (playerController != null) playerController.SyncWeaponStateFromExternal(0, false);
