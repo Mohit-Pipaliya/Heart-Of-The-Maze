@@ -8,6 +8,11 @@ public class CameraController : MonoBehaviour
     public float distance = 4.0f;
     public Vector3 targetOffset = new Vector3(0f, 1.5f, 0f); 
 
+    [Header("AAA Aim Settings (Over Shoulder)")]
+    public float aimDistance = 1.5f;
+    public Vector3 aimOffset = new Vector3(0.7f, 1.5f, 0f); // Thoda right side me
+    public float zoomSpeed = 10f;
+
     [Header("Camera Settings")]
     public float positionSmoothTime = 0.05f; 
     public float mouseSensitivity = 2.0f;
@@ -26,11 +31,21 @@ public class CameraController : MonoBehaviour
 
     private float mouseY = 0.0f;
     private Vector3 currentPosVelocity;
+    
+    // Zoom ke liye variables
+    private float _currentDistance;
+    private Vector3 _currentOffset;
+    private GunEquipSystem _gunSystem;
 
     private void Start()
     {
+        _currentDistance = distance;
+        _currentOffset = targetOffset;
+
         if (Application.isPlaying && target != null)
         {
+            _gunSystem = target.GetComponent<GunEquipSystem>();
+
             float startPitch = transform.eulerAngles.x;
             if (startPitch > 180f) startPitch -= 360f;
             mouseY = startPitch;
@@ -44,39 +59,67 @@ public class CameraController : MonoBehaviour
     {
         if (target == null) return;
 
+        bool isAiming = false;
+
         if (Application.isPlaying)
         {
             // Mouse Y (Pitch up/down)
             float mouseYInput = Input.GetAxis("Mouse Y") * mouseSensitivity;
             mouseY -= mouseYInput;
             mouseY = Mathf.Clamp(mouseY, yMinLimit, yMaxLimit);
+
+            // Check if player is aiming with gun
+            if (_gunSystem != null && _gunSystem.IsGunEquipped && Input.GetMouseButton(1))
+            {
+                isAiming = true;
+            }
         }
         else
         {
             mouseY = Mathf.Clamp(editorPreviewPitch, yMinLimit, yMaxLimit);
         }
 
-        // Camera ka Y (Left/Right) rotation hamesha Target (Player) ke Y rotation ke barabar rahega!
-        // Isse camera hamesha player ke pichhe 100% locked rahega.
+        // Smoothly transition between normal and aim states
+        float targetDist = isAiming ? aimDistance : distance;
+        Vector3 targetOff = isAiming ? aimOffset : targetOffset;
+
+        if (Application.isPlaying)
+        {
+            _currentDistance = Mathf.Lerp(_currentDistance, targetDist, Time.deltaTime * zoomSpeed);
+            _currentOffset = Vector3.Lerp(_currentOffset, targetOff, Time.deltaTime * zoomSpeed);
+        }
+        else
+        {
+            _currentDistance = targetDist;
+            _currentOffset = targetOff;
+        }
+
+        // Camera ka Y rotation Player ke Y rotation ke barabar
         Quaternion rotation = Quaternion.Euler(mouseY, target.eulerAngles.y, 0);
         
         float scale = target.lossyScale.y;
 
-        Vector3 actualTargetOffset = target.position + (Vector3.up * targetOffset.y * scale) + (rotation * new Vector3(targetOffset.x * scale, 0, targetOffset.z * scale));
-        float scaledDistance = distance * scale;
+        // Apply offset (right/up/forward relative to player rotation)
+        Vector3 actualTargetOffset = target.position 
+                                     + (Vector3.up * _currentOffset.y * scale) 
+                                     + (rotation * new Vector3(_currentOffset.x * scale, 0, _currentOffset.z * scale));
+        
+        float scaledDistance = _currentDistance * scale;
         Vector3 desiredPosition = actualTargetOffset - (rotation * Vector3.forward * scaledDistance);
 
         if (Application.isPlaying)
         {
-            float currentDistance = scaledDistance;
+            float finalDistance = scaledDistance;
             Vector3 directionToCamera = (desiredPosition - actualTargetOffset).normalized;
             
+            // Wall Collision Check
             if (Physics.SphereCast(actualTargetOffset, 0.2f, directionToCamera, out RaycastHit hit, scaledDistance, collisionMask))
             {
-                currentDistance = Mathf.Clamp(hit.distance, minDistance, scaledDistance);
-                desiredPosition = actualTargetOffset - (rotation * Vector3.forward * currentDistance);
+                finalDistance = Mathf.Clamp(hit.distance, minDistance, scaledDistance);
+                desiredPosition = actualTargetOffset - (rotation * Vector3.forward * finalDistance);
             }
 
+            // Smooth movement
             transform.position = Vector3.SmoothDamp(transform.position, desiredPosition, ref currentPosVelocity, positionSmoothTime);
         }
         else

@@ -477,6 +477,8 @@ public class PlayerController : MonoBehaviour
 
     // ─── Attack ───────────────────────────────────────────────────────────────
 
+    private static readonly int HashIsAiming = Animator.StringToHash("IsAiming");
+    
     private void HandleAttack()
     {
         if (_isEquipping || _isSequenceRunning) return;
@@ -494,11 +496,16 @@ public class PlayerController : MonoBehaviour
         }
         else if (_currentWeapon == WeaponState.Gun)
         {
-            // Jab left button daba kar rakhein (Rapid fire)
+            // Aim Logic: Right Click (Mouse 1) daba kar rakhne par Aim hoga
+            bool isAiming = Input.GetMouseButton(1);
+            _anim.SetBool(HashIsAiming, isAiming);
+
+            // Firing Logic: Left Click (Mouse 0)
             if (Input.GetMouseButton(0) && Time.time >= _nextFireTime)
             {
                 _nextFireTime = Time.time + gunFireRate;
-                // Seedha animation play karo (Animator transitions bypass ho jayengi)
+                
+                // Fire ka animation chalao
                 _anim.CrossFadeInFixedTime(gunFireStateName, 0.05f);
             }
         }
