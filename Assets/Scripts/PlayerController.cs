@@ -116,6 +116,7 @@ public class PlayerController : MonoBehaviour
     private static readonly int HashAttack      = Animator.StringToHash("Attack");
     private static readonly int HashEquip       = Animator.StringToHash("Equip");
     private static readonly int HashUnequip     = Animator.StringToHash("Unequip");
+    private static readonly int HashUnequipTorch = Animator.StringToHash("UnequipTorch");
     private static readonly int HashHit         = Animator.StringToHash("Hit");
     private static readonly int HashDie         = Animator.StringToHash("Die");
 
@@ -410,7 +411,7 @@ public class PlayerController : MonoBehaviour
         }
         else if (_currentWeapon == WeaponState.Torch && _torchSystem != null)
         {
-            yield return RunUnequipAnimation();
+            yield return RunTorchUnequipAnimation();
             _torchSystem.StartUnequip();
             yield return new WaitForSeconds(unequipAnimDuration);
             while (_torchSystem.currentState != TorchInteractionSystem.TorchState.Placed) yield return null;
@@ -439,7 +440,7 @@ public class PlayerController : MonoBehaviour
         }
         else if (_currentWeapon == WeaponState.Torch && _torchSystem != null)
         {
-            yield return RunUnequipAnimation();
+            yield return RunTorchUnequipAnimation();
             _torchSystem.StartUnequip();
             yield return new WaitForSeconds(unequipAnimDuration);
             while (_torchSystem.currentState != TorchInteractionSystem.TorchState.Placed) yield return null;
@@ -479,7 +480,7 @@ public class PlayerController : MonoBehaviour
         }
         else if (_currentWeapon == WeaponState.Torch && _torchSystem != null)
         {
-            yield return RunUnequipAnimation();
+            yield return RunTorchUnequipAnimation();
             _torchSystem.StartUnequip();
             yield return new WaitForSeconds(unequipAnimDuration);
             while (_torchSystem.currentState != TorchInteractionSystem.TorchState.Placed) yield return null;
@@ -632,6 +633,14 @@ public class PlayerController : MonoBehaviour
         if (unequipGroundLift > 0f)
             _cc.Move(Vector3.up * unequipGroundLift);
         yield return FireTriggerInstant(HashUnequip);
+    }
+
+    private IEnumerator RunTorchUnequipAnimation()
+    {
+        _anim.applyRootMotion = false;
+        if (unequipGroundLift > 0f)
+            _cc.Move(Vector3.up * unequipGroundLift);
+        yield return FireTriggerInstant(HashUnequipTorch);
     }
 
     /// <summary>

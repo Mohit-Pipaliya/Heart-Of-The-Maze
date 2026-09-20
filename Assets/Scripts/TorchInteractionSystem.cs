@@ -57,17 +57,21 @@ public class TorchInteractionSystem : MonoBehaviour
     public float lightTorchDelay = 1.2f;
     [Tooltip("Total duration of equip anim before returning to idle")]
     public float totalEquipDuration = 2.0f;
+    
+    [Space(5)]
+    [Tooltip("Time delay before torch is put on the belt during Unequip (Adjust this to match when the hand reaches back)")]
+    public float unequipHolsterDelay = 0.5f;
 
     [Header("Cinematic Camera")]
     public bool useCinematicCamera = true;
     [Tooltip("Distance from player (lower = closer)")]
-    public float cinematicDistance = 2.5f;
+    public float cinematicDistance = 1.2f;
     [Tooltip("Offset of the camera relative to player")]
-    public Vector3 cinematicOffset = new Vector3(0.5f, 1.2f, 0f);
+    public Vector3 cinematicOffset = new Vector3(0f, 1.1f, 0f);
     [Tooltip("Angle relative to player (180 = full front)")]
-    public float cinematicYaw = 160f; 
+    public float cinematicYaw = 180f; 
     [Tooltip("Vertical angle of the camera")]
-    public float cinematicPitch = 15f;
+    public float cinematicPitch = 5f;
 
     [Header("Player References")]
     public Animator playerAnimator;
@@ -141,7 +145,7 @@ public class TorchInteractionSystem : MonoBehaviour
 
     public void StartUnequip()
     {
-        if (currentState == TorchState.Equipped)
+        if (currentState != TorchState.Placed && currentState != TorchState.Unequipping)
             StartCoroutine(UnequipRoutine());
     }
 
@@ -153,6 +157,7 @@ public class TorchInteractionSystem : MonoBehaviour
         if (playerAnimator != null) 
         {
             playerAnimator.SetInteger("WeaponState", 3);
+            playerAnimator.ResetTrigger("EquipTorch"); // Prevent trigger getting stuck
             playerAnimator.SetTrigger("EquipTorch");
         }
         
@@ -218,6 +223,13 @@ public class TorchInteractionSystem : MonoBehaviour
             cam.StopCinematic();
         }
 
+        // 7. FORCE ANIMATOR TO LOCOMOTION (Bulletproof fix for freezing/stuck animation)
+        if (playerAnimator != null)
+        {
+            playerAnimator.SetInteger("WeaponState", 3);
+            playerAnimator.CrossFade("TorchLocomotion", 0.2f);
+        }
+
         currentState = TorchState.Equipped;
         if (playerController != null)
         {
@@ -233,16 +245,21 @@ public class TorchInteractionSystem : MonoBehaviour
 
         // Turn off fire immediately
         if (torchFireVFX != null) torchFireVFX.SetActive(false);
+        if (lighterFireVFX != null) lighterFireVFX.SetActive(false); // Make sure lighter is off too
         
-        // Wait for hand to reach back (same timing as grab)
-        yield return new WaitForSeconds(grabToHandDelay);
+        // Wait for hand to go down to idle position (controlled via Inspector)
+        yield return new WaitForSeconds(unequipHolsterDelay);
         
-        // Move torch to holster
+        // FORCE ANIMATOR BACK TO UNARMED
+        if (playerAnimator != null)
+        {
+            playerAnimator.SetInteger("WeaponState", 0);
+            playerAnimator.CrossFade("UnarmedLocomotion", 0.2f);
+        }
+
+        // Uske baad mashal uski jagah pe (holster) jayegi
         MoveObjectTo(torchObject, playerBodyTorchHolster, torchGrabPoint);
 
-        // Wait for unequip animation to finish completely
-        yield return new WaitForSeconds(totalEquipDuration - grabToHandDelay);
-        
         currentState = TorchState.Placed;
         if (playerController != null) playerController.SyncWeaponStateFromExternal(0, false);
     }
@@ -251,6 +268,20 @@ public class TorchInteractionSystem : MonoBehaviour
     {
         if (obj == null || target == null) return;
         
+        // PREVENT PHYSICS JITTER (Hath hilna / shaking fix):
+        // Disable Rigidbodies and Colliders when attaching to the player
+        Rigidbody[] rbs = obj.GetComponentsInChildren<Rigidbody>();
+        foreach(var rb in rbs)
+        {
+            rb.isKinematic = true;
+            rb.useGravity = false;
+        }
+        Collider[] cols = obj.GetComponentsInChildren<Collider>();
+        foreach(var col in cols)
+        {
+            if (!col.isTrigger) col.enabled = false;
+        }
+
         obj.transform.SetParent(target);
         
         if (grabPoint != null)
