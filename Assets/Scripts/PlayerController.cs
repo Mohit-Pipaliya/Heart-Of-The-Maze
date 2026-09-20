@@ -106,6 +106,7 @@ public class PlayerController : MonoBehaviour
     private CharacterController _cc;
     private SwordEquipSystem _swordSystem;
     private GunEquipSystem _gunSystem;
+    private TorchInteractionSystem _torchSystem;
 
     // Animator parameter hashes (faster than string lookups every frame)
     private static readonly int HashSpeed       = Animator.StringToHash("Speed");
@@ -119,7 +120,7 @@ public class PlayerController : MonoBehaviour
     private static readonly int HashDie         = Animator.StringToHash("Die");
 
     // Weapon states
-    private enum WeaponState { Unarmed = 0, Sword = 1, Gun = 2 }
+    private enum WeaponState { Unarmed = 0, Sword = 1, Gun = 2, Torch = 3 }
     private WeaponState _currentWeapon = WeaponState.Unarmed;
 
     // Flags
@@ -366,8 +367,6 @@ public class PlayerController : MonoBehaviour
         }
 
         // Press 3: Gun equip karo
-        // - Agar hath khali (Unarmed): Seedha Gun equip animation
-        // - Agar Sword hath mein hai: Pehle Sword unequip → phir Gun equip
         else if (Input.GetKeyDown(KeyCode.Alpha3))
         {
             if (_currentWeapon == WeaponState.Gun) return; // Pehle se gun hai
@@ -376,6 +375,15 @@ public class PlayerController : MonoBehaviour
                                  _gunSystem.CurrentState == GunEquipSystem.GunState.Equipped);
             if (!gunAvailable) return;
             StartCoroutine(DoSwitchToGun());
+        }
+
+        // Press 4: Torch equip karo
+        else if (Input.GetKeyDown(KeyCode.Alpha4))
+        {
+            if (_currentWeapon == WeaponState.Torch) return; // Pehle se torch hai
+            bool torchAvailable = _torchSystem != null && _torchSystem.currentState == TorchInteractionSystem.TorchState.Placed;
+            if (!torchAvailable) return;
+            StartCoroutine(DoSwitchToTorch());
         }
     }
 
@@ -400,6 +408,13 @@ public class PlayerController : MonoBehaviour
             yield return new WaitForSeconds(unequipAnimDuration);
             while (_gunSystem.CurrentState != GunEquipSystem.GunState.Holstered) yield return null;
         }
+        else if (_currentWeapon == WeaponState.Torch && _torchSystem != null)
+        {
+            yield return RunUnequipAnimation();
+            _torchSystem.StartUnequip();
+            yield return new WaitForSeconds(unequipAnimDuration);
+            while (_torchSystem.currentState != TorchInteractionSystem.TorchState.Placed) yield return null;
+        }
 
         _currentWeapon = WeaponState.Unarmed;
         _anim.SetInteger(HashWeaponState, 0);
@@ -414,13 +429,20 @@ public class PlayerController : MonoBehaviour
     {
         _isSequenceRunning = true;
 
-        // Step 1: Gun unequip (agar gun hath mein hai, WeaponState still=2)
+        // Step 1: Gun unequip (agar gun hath mein hai)
         if (_currentWeapon == WeaponState.Gun && _gunSystem != null)
         {
             yield return RunGunUnequipAnimation(); // Gun ke liye special fix
             _gunSystem.StartUnequip();
             yield return new WaitForSeconds(unequipAnimDuration);
             while (_gunSystem.CurrentState != GunEquipSystem.GunState.Holstered) yield return null;
+        }
+        else if (_currentWeapon == WeaponState.Torch && _torchSystem != null)
+        {
+            yield return RunUnequipAnimation();
+            _torchSystem.StartUnequip();
+            yield return new WaitForSeconds(unequipAnimDuration);
+            while (_torchSystem.currentState != TorchInteractionSystem.TorchState.Placed) yield return null;
         }
 
         // Step 2: Sword Equip (directly 2→1)
@@ -447,13 +469,20 @@ public class PlayerController : MonoBehaviour
     {
         _isSequenceRunning = true;
 
-        // Step 1: Sword unequip (agar sword hath mein hai, WeaponState still=1)
+        // Step 1: Sword unequip (agar sword hath mein hai)
         if (_currentWeapon == WeaponState.Sword && _swordSystem != null)
         {
             yield return RunUnequipAnimation();
             _swordSystem.StartUnequip();
             yield return new WaitForSeconds(unequipAnimDuration);
             while (_swordSystem.CurrentState != SwordEquipSystem.SwordState.OnBack) yield return null;
+        }
+        else if (_currentWeapon == WeaponState.Torch && _torchSystem != null)
+        {
+            yield return RunUnequipAnimation();
+            _torchSystem.StartUnequip();
+            yield return new WaitForSeconds(unequipAnimDuration);
+            while (_torchSystem.currentState != TorchInteractionSystem.TorchState.Placed) yield return null;
         }
 
         // Step 2: Gun Equip (directly 1→2)
@@ -473,8 +502,37 @@ public class PlayerController : MonoBehaviour
         _isSequenceRunning = false;
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Press 4: Unarmed→Torch  OR  Sword/Gun→(Unequip)→(Equip Torch)
+    // ─────────────────────────────────────────────────────────────────────────
+    private IEnumerator DoSwitchToTorch()
+    {
+        _isSequenceRunning = true;
 
+        if (_currentWeapon == WeaponState.Sword && _swordSystem != null)
+        {
+            yield return RunUnequipAnimation();
+            _swordSystem.StartUnequip();
+            yield return new WaitForSeconds(unequipAnimDuration);
+            while (_swordSystem.CurrentState != SwordEquipSystem.SwordState.OnBack) yield return null;
+        }
+        else if (_currentWeapon == WeaponState.Gun && _gunSystem != null)
+        {
+            yield return RunGunUnequipAnimation();
+            _gunSystem.StartUnequip();
+            yield return new WaitForSeconds(unequipAnimDuration);
+            while (_gunSystem.CurrentState != GunEquipSystem.GunState.Holstered) yield return null;
+        }
 
+        if (_torchSystem != null && _torchSystem.currentState == TorchInteractionSystem.TorchState.Placed)
+        {
+            _anim.applyRootMotion = false;
+            _torchSystem.StartEquip();
+            while (_torchSystem.currentState != TorchInteractionSystem.TorchState.Equipped) yield return null;
+        }
+
+        _isSequenceRunning = false;
+    }
     // ─── Attack ───────────────────────────────────────────────────────────────
 
     private static readonly int HashIsAiming = Animator.StringToHash("IsAiming");
@@ -653,6 +711,11 @@ public class PlayerController : MonoBehaviour
     {
         _currentWeapon = (WeaponState)weaponIndex;
         _isEquipping = isEquippingStatus;
+    }
+
+    public void RegisterTorch(TorchInteractionSystem torch)
+    {
+        _torchSystem = torch;
     }
 
     // ─── Public Accessors ─────────────────────────────────────────────────────

@@ -37,6 +37,28 @@ public class CameraController : MonoBehaviour
     private Vector3 _currentOffset;
     private GunEquipSystem _gunSystem;
 
+    // Cinematic variables
+    private bool _isCinematic = false;
+    private float _cinematicDistance;
+    private Vector3 _cinematicOffset;
+    private float _cinematicYaw;
+    private float _cinematicPitch;
+    private float _cinematicBlend = 0f;
+
+    public void StartCinematic(float dist, Vector3 offset, float yaw, float pitch)
+    {
+        _isCinematic = true;
+        _cinematicDistance = dist;
+        _cinematicOffset = offset;
+        _cinematicYaw = yaw;
+        _cinematicPitch = pitch;
+    }
+
+    public void StopCinematic()
+    {
+        _isCinematic = false;
+    }
+
     private void Start()
     {
         _currentDistance = distance;
@@ -87,15 +109,28 @@ public class CameraController : MonoBehaviour
         {
             _currentDistance = Mathf.Lerp(_currentDistance, targetDist, Time.deltaTime * zoomSpeed);
             _currentOffset = Vector3.Lerp(_currentOffset, targetOff, Time.deltaTime * zoomSpeed);
+            _cinematicBlend = Mathf.Lerp(_cinematicBlend, _isCinematic ? 1f : 0f, Time.deltaTime * zoomSpeed);
         }
         else
         {
             _currentDistance = targetDist;
             _currentOffset = targetOff;
+            _cinematicBlend = 0f;
         }
 
-        // Camera ka Y rotation Player ke Y rotation ke barabar
-        Quaternion rotation = Quaternion.Euler(mouseY, target.eulerAngles.y, 0);
+        // Blend yaw and pitch for cinematic mode
+        float finalYaw = target.eulerAngles.y + Mathf.Lerp(0f, _cinematicYaw, _cinematicBlend);
+        float finalPitch = Mathf.Lerp(mouseY, _cinematicPitch, _cinematicBlend);
+
+        if (_isCinematic)
+        {
+            // Override distance and offset with cinematic blend
+            _currentDistance = Mathf.Lerp(_currentDistance, _cinematicDistance, _cinematicBlend);
+            _currentOffset = Vector3.Lerp(_currentOffset, _cinematicOffset, _cinematicBlend);
+        }
+
+        // Camera ka rotation
+        Quaternion rotation = Quaternion.Euler(finalPitch, finalYaw, 0);
         
         float scale = target.lossyScale.y;
 
