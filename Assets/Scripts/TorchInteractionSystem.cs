@@ -65,13 +65,13 @@ public class TorchInteractionSystem : MonoBehaviour
     [Header("Cinematic Camera")]
     public bool useCinematicCamera = true;
     [Tooltip("Distance from player (lower = closer)")]
-    public float cinematicDistance = 1.2f;
+    public float cinematicDistance = 0.6f; // Reduced for close-up
     [Tooltip("Offset of the camera relative to player")]
-    public Vector3 cinematicOffset = new Vector3(0f, 1.1f, 0f);
+    public Vector3 cinematicOffset = new Vector3(0f, 1.55f, 0f); // Higher up to face/chest
     [Tooltip("Angle relative to player (180 = full front)")]
     public float cinematicYaw = 180f; 
     [Tooltip("Vertical angle of the camera")]
-    public float cinematicPitch = 5f;
+    public float cinematicPitch = -2f; // Slight adjustment to look straight at the face
 
     [Header("Player References")]
     public Animator playerAnimator;
@@ -89,8 +89,8 @@ public class TorchInteractionSystem : MonoBehaviour
         }
         if (lighterLidObject != null) 
         {
-            // Lid closed initially (Z = 180)
-            lighterLidObject.transform.localEulerAngles = new Vector3(lighterLidObject.transform.localEulerAngles.x, lighterLidObject.transform.localEulerAngles.y, 180f); 
+            // Lid closed initially (Z = 0)
+            lighterLidObject.transform.localEulerAngles = new Vector3(lighterLidObject.transform.localEulerAngles.x, lighterLidObject.transform.localEulerAngles.y, 0f); 
         }
         
         // Turn off torch fire initially since it's unlit
@@ -180,10 +180,10 @@ public class TorchInteractionSystem : MonoBehaviour
             lighterObject.SetActive(true);
             MoveObjectTo(lighterObject, playerHandLighterPoint);
         }
-        // Lid opens instantly when it comes to hand (Z = 0)
+        // Lid opens instantly when it comes to hand (Z = 180)
         if (lighterLidObject != null) 
         {
-            lighterLidObject.transform.localEulerAngles = new Vector3(lighterLidObject.transform.localEulerAngles.x, lighterLidObject.transform.localEulerAngles.y, 0f);
+            lighterLidObject.transform.localEulerAngles = new Vector3(lighterLidObject.transform.localEulerAngles.x, lighterLidObject.transform.localEulerAngles.y, 180f);
         }
         // Lighter flame turns on instantly
         if (lighterFireVFX != null) lighterFireVFX.SetActive(true);
@@ -202,10 +202,10 @@ public class TorchInteractionSystem : MonoBehaviour
         // 5. Transfer Fire: Turn on Torch Fire, Turn off Lighter Fire
         if (torchFireVFX != null) torchFireVFX.SetActive(true);
         if (lighterFireVFX != null) lighterFireVFX.SetActive(false);
-        // Close the lid (Z = 180) instantly after lighting the torch
+        // Close the lid (Z = 0) instantly after lighting the torch
         if (lighterLidObject != null) 
         {
-            lighterLidObject.transform.localEulerAngles = new Vector3(lighterLidObject.transform.localEulerAngles.x, lighterLidObject.transform.localEulerAngles.y, 180f); 
+            lighterLidObject.transform.localEulerAngles = new Vector3(lighterLidObject.transform.localEulerAngles.x, lighterLidObject.transform.localEulerAngles.y, 0f); 
         }
 
         // 6. Wait for equip animation to fully end
