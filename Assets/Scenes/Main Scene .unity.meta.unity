@@ -1707,9 +1707,11 @@ MonoBehaviour:
   equipAnimDuration: 1.2
   unequipGroundLift: 0.3
   gunUnequipGroundLift: 0.6
+  animationGroundClearance: 0.1
   unequipStateName: Unequip
   equipStateName: Equip
   gunFireStateName: GunFire
+  isFrozen: 0
 --- !u!143 &1943372668
 CharacterController:
   m_ObjectHideFlags: 0
@@ -1758,8 +1760,10 @@ MonoBehaviour:
   handLocalRotation: {x: 0, y: 0, z: 0}
   useAnimationEvents: 0
   grabDelay: 0.4
-  equipTrigger: EquipSword
-  unequipTrigger: UnequipSword
+  grabNormalizedTime: 0.5
+  pickupDelay: 1.5
+  pickupGroundLift: 0.3
+  pickupTrigger: PickupSword
 --- !u!95 &1943372671 stripped
 Animator:
   m_CorrespondingSourceObject: {fileID: 5866666021909216657, guid: 7e3cbb6379658413a984ee6af33668f1, type: 3}
@@ -1793,8 +1797,12 @@ MonoBehaviour:
   handLocalRotation: {x: 0, y: 0, z: 0}
   useAnimationEvents: 0
   grabDelay: 0.4
-  equipTrigger: EquipGun
-  unequipTrigger: UnequipGun
+  grabNormalizedTime: 0.5
+  pickupDelay: 1.2
+  pickupGroundLift: 0.6
+  unequipGroundLiftOverride: 0
+  pickupCompleteNormalizedTime: 0.95
+  pickupTrigger: PickupGun
 --- !u!114 &1943372674
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2147,7 +2155,7 @@ PrefabInstance:
       objectReference: {fileID: 87129228}
     - target: {fileID: 2788341828144493855, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 128.33
+      value: 145
       objectReference: {fileID: 0}
     - target: {fileID: 2788341828144493855, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
       propertyPath: m_LocalPosition.y

@@ -255,6 +255,7 @@ public class GunEquipSystem : MonoBehaviour
         const float unequipCompleteTime = 0.95f;
         const float animWaitTimeout = 20f;
         const float unequipStartTimeout = 1.5f;
+        float originalY = transform.position.y; // Ground Y yaad rakho
 
         int pickupHash = Animator.StringToHash("PickupGun");
         int unequipGunHash = Animator.StringToHash("UnequipGun");
@@ -285,17 +286,20 @@ public class GunEquipSystem : MonoBehaviour
 
         SwitchGunToHand();
 
-        if (playerController != null && pickupGroundLift > 0f)
-            playerController.ApplyGroundLift(pickupGroundLift * 0.35f);
+        // Note: Yahan extra lift nahi — pickup lift already lag chuki hai.
+        // Double lift player ko hawa mein bhej deta tha.
 
         isPickingUpSequence = false;
 
         if (playerAnimator != null)
         {
+            // PickupGun animation ke khatam hone ka wait karo
             yield return WaitUntilStateNormalizedTime(
                 playerAnimator, pickupHash, pickupCompleteNormalizedTime, animWaitTimeout);
 
+            // Animator ko PickupGun state se bahar snap karo
             SnapAnimatorStateToEnd(playerAnimator, pickupHash, 0.99f);
+            yield return null;
             yield return null;
             yield return null;
 
@@ -303,36 +307,54 @@ public class GunEquipSystem : MonoBehaviour
             if (playerController != null)
                 playerController.SyncWeaponStateFromExternal(2, true);
 
-            float unequipLift = unequipGroundLiftOverride > 0f
-                ? unequipGroundLiftOverride
-                : (playerController != null ? playerController.GunUnequipGroundLift : 0.6f);
-            if (playerController != null && unequipLift > 0f)
-                playerController.ApplyGroundLift(unequipLift);
+            // ── Ground Snap ─────────────────────────────────────────────────────
+            // Pickup animation ke liye player ko upar uthaya tha — ab unequip
+            // animation shuru hone se pehle original ground Y pe wapas laao.
+            // Negative ApplyGroundLift = neeche move (gravity ki tarah).
+            float liftedY   = transform.position.y;
+            float snapDelta = originalY - liftedY;   // negative value = neeche
+            Debug.Log($"[Gun] Ground snap: liftedY={liftedY:F3}  originalY={originalY:F3}  delta={snapDelta:F3}");
+            if (playerController != null && Mathf.Abs(snapDelta) > 0.01f)
+                playerController.ApplyGroundLift(snapDelta); // negative = neeche move
 
+
+            // WeaponState=2 set karo aur direct CrossFade se UnequipGun force karo.
+            // Trigger approach unreliable hai jab PickupGun → UnequipGun transition
+            // Animator Controller mein sahi conditions nahi hoti — CrossFade guaranteed hai.
             SetWeaponStateForUnequip(2);
+            yield return null;
+
             playerAnimator.ResetTrigger(HashUnequip);
-            playerAnimator.SetTrigger(HashUnequip);
+            Debug.Log("[Gun] Forcing UnequipGun via CrossFade...");
+            playerAnimator.CrossFadeInFixedTime(unequipGunHash, 0.15f, 0, 0f);
 
-            yield return WaitUntilStateActive(playerAnimator, unequipGunHash, unequipStartTimeout);
+            // State active hone ka wait karo (5 sec timeout)
+            const float unequipWaitTimeout = 5f;
+            yield return WaitUntilStateActive(playerAnimator, unequipGunHash, unequipWaitTimeout);
 
-            if (!IsInOrTransitioningToState(playerAnimator, unequipGunHash))
+            bool unequipStarted = IsInOrTransitioningToState(playerAnimator, unequipGunHash);
+            Debug.Log($"[Gun] UnequipGun state active: {unequipStarted}");
+
+            if (!unequipStarted)
             {
-                Debug.LogWarning("[Gun] Unequip trigger missed — starting UnequipGun via CrossFade.");
-                SetWeaponStateForUnequip(2);
-                playerAnimator.CrossFadeInFixedTime(unequipGunHash, 0.15f, 0, 0f);
-                yield return null;
-                yield return WaitUntilStateActive(playerAnimator, unequipGunHash, unequipStartTimeout);
+                Debug.LogWarning("[Gun] UnequipGun state nahi mila! Animator mein 'UnequipGun' state ka naam check karo.");
             }
-
-            yield return WaitUntilCurrentStateIs(playerAnimator, unequipGunHash, unequipStartTimeout);
-
-            float unequipTimer = 0f;
-            while (unequipTimer < animWaitTimeout)
+            else
             {
-                unequipTimer += Time.deltaTime;
-                if (GetStateNormalizedTime(playerAnimator, unequipGunHash) >= unequipCompleteTime)
-                    break;
-                yield return null;
+                // Current state banne ka wait (transition complete)
+                yield return WaitUntilCurrentStateIs(playerAnimator, unequipGunHash, unequipWaitTimeout);
+
+                // Animation 95% complete hone tak wait karo
+                float unequipTimer = 0f;
+                while (unequipTimer < animWaitTimeout)
+                {
+                    unequipTimer += Time.deltaTime;
+                    float nt = GetStateNormalizedTime(playerAnimator, unequipGunHash);
+                    if (nt >= unequipCompleteTime)
+                        break;
+                    yield return null;
+                }
+                Debug.Log("[Gun] UnequipGun animation complete.");
             }
         }
         else

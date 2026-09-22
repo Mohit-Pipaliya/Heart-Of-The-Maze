@@ -379,7 +379,7 @@ AnimatorState:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: PickupGun
-  m_Speed: 0.5
+  m_Speed: 1
   m_CycleOffset: 0
   m_Transitions:
   - {fileID: 3246544612219762687}
@@ -1973,7 +1973,7 @@ AnimatorState:
   m_MirrorParameterActive: 0
   m_CycleOffsetParameterActive: 0
   m_TimeParameterActive: 0
-  m_Motion: {fileID: -203655887218126122, guid: b2c7493a86a764254ab0728dd624a9c8, type: 3}
+  m_Motion: {fileID: -203655887218126122, guid: d207fcb6f2ca243bb850cc88582b1edd, type: 3}
   m_Tag: 
   m_SpeedParameter: 
   m_MirrorParameter: 
@@ -2052,7 +2052,7 @@ AnimatorState:
   m_MirrorParameterActive: 0
   m_CycleOffsetParameterActive: 0
   m_TimeParameterActive: 0
-  m_Motion: {fileID: -203655887218126122, guid: 9367f5677e79b4ca1a96a372b4ae9962, type: 3}
+  m_Motion: {fileID: -203655887218126122, guid: 09c8bab407a404afb8668300d4b73ec6, type: 3}
   m_Tag: 
   m_SpeedParameter: 
   m_MirrorParameter: 

@@ -519,10 +519,14 @@ public class PlayerController : MonoBehaviour
         }
         else if (_currentWeapon == WeaponState.Torch && _torchSystem != null)
         {
-            yield return RunTorchUnequipAnimation();
-            _torchSystem.StartUnequip();
-            yield return new WaitForSeconds(unequipAnimDuration);
+            yield return RunTorchUnequipAnimation();    // UnequipTorch trigger fire karo
+            _torchSystem.StartUnequip();                // VFX off + torch holster
+            // Torch unequip animation khatam hone ka wait karo
             while (_torchSystem.currentState != TorchInteractionSystem.TorchState.Placed) yield return null;
+            // Animation done — WeaponState=0 reset karo
+            _anim.SetInteger(HashWeaponState, 0);
+            _anim.applyRootMotion = false;
+            yield return null;
         }
 
         _currentWeapon = WeaponState.Unarmed;
@@ -548,10 +552,14 @@ public class PlayerController : MonoBehaviour
         }
         else if (_currentWeapon == WeaponState.Torch && _torchSystem != null)
         {
-            yield return RunTorchUnequipAnimation();
-            _torchSystem.StartUnequip();
-            yield return new WaitForSeconds(unequipAnimDuration);
+            yield return RunTorchUnequipAnimation();    // UnequipTorch trigger fire karo
+            _torchSystem.StartUnequip();                // VFX off + torch holster
+            // Torch unequip animation khatam hone ka wait karo
             while (_torchSystem.currentState != TorchInteractionSystem.TorchState.Placed) yield return null;
+            // Unarmed state mein wapas aao before sword equip
+            _anim.SetInteger(HashWeaponState, 0);
+            _anim.applyRootMotion = false;
+            yield return null;
         }
 
         // Step 2: Sword Equip (directly 2→1)
@@ -588,10 +596,14 @@ public class PlayerController : MonoBehaviour
         }
         else if (_currentWeapon == WeaponState.Torch && _torchSystem != null)
         {
-            yield return RunTorchUnequipAnimation();
-            _torchSystem.StartUnequip();
-            yield return new WaitForSeconds(unequipAnimDuration);
+            yield return RunTorchUnequipAnimation();    // UnequipTorch trigger fire karo
+            _torchSystem.StartUnequip();                // VFX off + torch holster
+            // Torch unequip animation khatam hone ka wait karo
             while (_torchSystem.currentState != TorchInteractionSystem.TorchState.Placed) yield return null;
+            // Unarmed state mein wapas aao before gun equip
+            _anim.SetInteger(HashWeaponState, 0);
+            _anim.applyRootMotion = false;
+            yield return null;
         }
 
         // Step 2: Gun Equip (directly 1→2)

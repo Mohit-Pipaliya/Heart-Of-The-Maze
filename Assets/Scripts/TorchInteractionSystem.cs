@@ -61,6 +61,9 @@ public class TorchInteractionSystem : MonoBehaviour
     [Space(5)]
     [Tooltip("Time delay before torch is put on the belt during Unequip (Adjust this to match when the hand reaches back)")]
     public float unequipHolsterDelay = 0.5f;
+    
+    [Tooltip("Total duration of unequip animation. PlayerController waits this long before starting next weapon equip.")]
+    public float totalUnequipDuration = 1.5f;
 
     [Header("Cinematic Camera")]
     public bool useCinematicCamera = true;
@@ -243,23 +246,20 @@ public class TorchInteractionSystem : MonoBehaviour
         currentState = TorchState.Unequipping;
         if (playerController != null) playerController.SyncWeaponStateFromExternal(3, true);
 
-        // Turn off fire immediately
+        // VFX band karo
         if (torchFireVFX != null) torchFireVFX.SetActive(false);
-        if (lighterFireVFX != null) lighterFireVFX.SetActive(false); // Make sure lighter is off too
+        if (lighterFireVFX != null) lighterFireVFX.SetActive(false);
         
-        // Wait for hand to go down to idle position (controlled via Inspector)
+        // Haath ke belt tak pahunchne ka wait karo, tab torch holster pe jaayegi
         yield return new WaitForSeconds(unequipHolsterDelay);
-        
-        // FORCE ANIMATOR BACK TO UNARMED
-        if (playerAnimator != null)
-        {
-            playerAnimator.SetInteger("WeaponState", 0);
-            playerAnimator.CrossFade("UnarmedLocomotion", 0.2f);
-        }
-
-        // Uske baad mashal uski jagah pe (holster) jayegi
         MoveObjectTo(torchObject, playerBodyTorchHolster, torchGrabPoint);
 
+        // Baki animation duration wait karo
+        float remaining = totalUnequipDuration - unequipHolsterDelay;
+        if (remaining > 0f) yield return new WaitForSeconds(remaining);
+
+        // NOTE: Animation (WeaponState reset, CrossFade) PlayerController handle karta hai.
+        // Yahan animation commands NAHI honi chahiye — woh UnequipTorch animation ko khatam kar dete the.
         currentState = TorchState.Placed;
         if (playerController != null) playerController.SyncWeaponStateFromExternal(0, false);
     }
