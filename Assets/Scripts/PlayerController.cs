@@ -92,6 +92,8 @@ public class PlayerController : MonoBehaviour
              "Agar animation terrain mein jaati hai to yahan value badhao (e.g. 0.3).")]
     [SerializeField] private float unequipGroundLift    = 0.3f; // Sword unequip lift
     [SerializeField] private float gunUnequipGroundLift = 0.6f; // Gun unequip lift (gun stance is lower, needs more)
+    [Tooltip("Pickup/unequip lock: minimum gap between feet/hips and ground (metres).")]
+    [SerializeField] private float animationGroundClearance = 0.1f;
 
     [Header("Animation State Names")]
     [SerializeField] private string unequipStateName = "Unequip";
@@ -134,7 +136,12 @@ public class PlayerController : MonoBehaviour
 
     // Physics
     private Vector3 _velocity;
-    private bool    _isGrounded;
+    private bool _isGrounded;
+    public bool isFrozen = false;
+
+    /// <summary>While true, player root Y is pinned after Animator runs (stops pickup clips pulling body into terrain).</summary>
+    private bool _lockWorldPosition;
+    private Vector3 _lockedWorldPosition;
     
     // Jump Buffer & Cooldown
     private float _jumpBufferCounter;
@@ -193,6 +200,12 @@ public class PlayerController : MonoBehaviour
     {
         if (_isDead) return;
 
+        if (isFrozen)
+        {
+            _anim.SetBool("IsGrounded", _isGrounded);
+            return;
+        }
+
         // Step 1: Check if player is grounded using improved logic
         CalculateGroundCheck();
 
@@ -213,6 +226,101 @@ public class PlayerController : MonoBehaviour
 
         HandleWeaponSwitch();
         HandleAttack();
+    }
+
+    private void OnAnimatorMove()
+    {
+        if (_lockWorldPosition)
+            return;
+    }
+
+    private void LateUpdate()
+    {
+        if (_isDead || !_lockWorldPosition) return;
+
+        _anim.applyRootMotion = false;
+        CompensateAnimatedBodyBelowGround();
+        ClampLockedPositionAboveGround();
+
+        Vector3 correction = _lockedWorldPosition - transform.position;
+        if (correction.sqrMagnitude > 0.000001f)
+            _cc.Move(correction);
+
+        _velocity = Vector3.zero;
+    }
+
+    private bool TrySampleGroundY(Vector3 referencePosition, out float groundY)
+    {
+        Vector3 origin = referencePosition + Vector3.up * 4f;
+        const float maxDistance = 15f;
+
+        if (groundMask.value != 0 &&
+            Physics.Raycast(origin, Vector3.down, out RaycastHit maskedHit, maxDistance, groundMask,
+                QueryTriggerInteraction.Ignore))
+        {
+            groundY = maskedHit.point.y;
+            return true;
+        }
+
+        RaycastHit[] hits = Physics.RaycastAll(origin, Vector3.down, maxDistance, ~0,
+            QueryTriggerInteraction.Ignore);
+
+        float bestY = float.NegativeInfinity;
+        bool found = false;
+        for (int i = 0; i < hits.Length; i++)
+        {
+            Collider col = hits[i].collider;
+            if (col == null) continue;
+            if (col.transform == transform || col.transform.IsChildOf(transform)) continue;
+
+            if (hits[i].point.y > bestY)
+            {
+                bestY = hits[i].point.y;
+                found = true;
+            }
+        }
+
+        groundY = bestY;
+        return found;
+    }
+
+    /// <summary>
+    /// Pickup clips move bones down while the capsule stays — lift the whole player when feet/hips dip below ground.
+    /// </summary>
+    private void CompensateAnimatedBodyBelowGround()
+    {
+        if (!TrySampleGroundY(transform.position, out float groundY)) return;
+
+        float lowestWorldY = transform.position.y;
+
+        if (_anim.isHuman)
+        {
+            Transform leftFoot = _anim.GetBoneTransform(HumanBodyBones.LeftFoot);
+            Transform rightFoot = _anim.GetBoneTransform(HumanBodyBones.RightFoot);
+            Transform hips = _anim.GetBoneTransform(HumanBodyBones.Hips);
+
+            if (leftFoot != null) lowestWorldY = Mathf.Min(lowestWorldY, leftFoot.position.y);
+            if (rightFoot != null) lowestWorldY = Mathf.Min(lowestWorldY, rightFoot.position.y);
+            if (hips != null) lowestWorldY = Mathf.Min(lowestWorldY, hips.position.y);
+        }
+        else
+        {
+            lowestWorldY = _cc.bounds.min.y;
+        }
+
+        float minAllowedY = groundY + animationGroundClearance;
+        if (lowestWorldY < minAllowedY)
+            _lockedWorldPosition.y += minAllowedY - lowestWorldY;
+    }
+
+    private void ClampLockedPositionAboveGround()
+    {
+        if (!TrySampleGroundY(transform.position, out float groundY)) return;
+
+        float capsuleBottomOffset = _cc.center.y - _cc.height * 0.5f;
+        float minRootY = groundY - capsuleBottomOffset + animationGroundClearance;
+        if (_lockedWorldPosition.y < minRootY)
+            _lockedWorldPosition.y = minRootY;
     }
 
     // ─── Movement ─────────────────────────────────────────────────────────────
@@ -652,7 +760,7 @@ public class PlayerController : MonoBehaviour
     /// Agar Animator mein Gun aur Sword ka alag Unequip hai, tab bhi apna kaam karega
     /// kyunki hum pehle neutral (Unarmed) state mein jaate hain.
     /// </summary>
-    private IEnumerator RunGunUnequipAnimation()
+    public IEnumerator RunGunUnequipAnimation()
     {
         _anim.applyRootMotion = false;
 
@@ -687,7 +795,7 @@ public class PlayerController : MonoBehaviour
     /// This satisfies ANY "Has Exit Time" condition in 1 frame.
     /// Then fire the trigger → transition starts immediately → no wait, no sinking.
     /// </summary>
-    private IEnumerator FireTriggerInstant(int triggerHash)
+    public IEnumerator FireTriggerInstant(int triggerHash)
     {
         // ALL layers mein current state ko 99% pe force karo (exit time bypass)
         for (int layer = 0; layer < _anim.layerCount; layer++)
@@ -722,10 +830,54 @@ public class PlayerController : MonoBehaviour
         _isEquipping = isEquippingStatus;
     }
 
+    public void SetAnimatorWeaponState(int weaponIndex)
+    {
+        _anim.SetInteger(HashWeaponState, weaponIndex);
+    }
+
     public void RegisterTorch(TorchInteractionSystem torch)
     {
         _torchSystem = torch;
     }
+
+    public void SetFrozen(bool frozen, bool lockWorldPosition = false)
+    {
+        isFrozen = frozen;
+        if (frozen)
+        {
+            _velocity = Vector3.zero;
+            _anim.SetFloat(HashSpeed, 0f);
+            _anim.applyRootMotion = false;
+
+            if (lockWorldPosition)
+            {
+                _lockWorldPosition = true;
+                _lockedWorldPosition = transform.position;
+            }
+        }
+        else
+        {
+            _lockWorldPosition = false;
+        }
+    }
+
+    /// <summary>Moves the CharacterController up (e.g. during pickup/unequip animations while frozen).</summary>
+    public void ApplyGroundLift(float metres)
+    {
+        if (metres <= 0f || _cc == null) return;
+
+        if (_lockWorldPosition)
+        {
+            _lockedWorldPosition.y += metres;
+            _cc.Move(Vector3.up * metres);
+        }
+        else
+        {
+            _cc.Move(Vector3.up * metres);
+        }
+    }
+
+    public float GunUnequipGroundLift => gunUnequipGroundLift;
 
     // ─── Public Accessors ─────────────────────────────────────────────────────
 

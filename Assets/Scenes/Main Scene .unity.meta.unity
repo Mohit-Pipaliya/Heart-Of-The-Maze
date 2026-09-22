@@ -174,13 +174,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 87129227}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.7546008, y: -0.64074564, z: -0.07254401, w: 0.12149077}
-  m_LocalPosition: {x: -0.0011, y: 0.0603, z: 0.0208}
-  m_LocalScale: {x: 1.2, y: 1.2, z: 1.2}
+  m_LocalRotation: {x: -0.24599056, y: 0.6720893, z: 0.69021624, w: 0.10670607}
+  m_LocalPosition: {x: -0.0024, y: 0.0759, z: 0.0247}
+  m_LocalScale: {x: 2, y: 2, z: 2}
   m_ConstrainProportionsScale: 1
   m_Children: []
   m_Father: {fileID: 1849181551}
-  m_LocalEulerAnglesHint: {x: 174.814, y: 15.442, z: 81.374}
+  m_LocalEulerAnglesHint: {x: -101.4, y: 82.9, z: 68.07}
 --- !u!1 &204206686
 GameObject:
   m_ObjectHideFlags: 0
@@ -799,7 +799,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &729537176
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -950,32 +950,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 268660818}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &817541655 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 7605097251360398158, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
-  m_PrefabInstance: {fileID: 2792182151941126993}
-  m_PrefabAsset: {fileID: 0}
---- !u!65 &817541659
-BoxCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 817541655}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 3
-  m_Size: {x: 0.19219032, y: 0.65455806, z: 0.17597848}
-  m_Center: {x: 0, y: 0.08044052, z: 0.0000009536743}
 --- !u!1 &818516919
 GameObject:
   m_ObjectHideFlags: 0
@@ -1007,75 +981,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 208086515}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &946850356 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 3312959041505472421, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
-  m_PrefabInstance: {fileID: 2792182151941126993}
-  m_PrefabAsset: {fileID: 0}
---- !u!4 &946850357 stripped
-Transform:
-  m_CorrespondingSourceObject: {fileID: 2788341828144493855, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
-  m_PrefabInstance: {fileID: 2792182151941126993}
-  m_PrefabAsset: {fileID: 0}
---- !u!114 &946850358
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 946850356}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 01662de5407b443e6b55e39b6de7b76c, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::TorchInteractionSystem
-  currentState: 0
-  torchObject: {fileID: 946850356}
-  torchGrabPoint: {fileID: 1515061702}
-  lighterObject: {fileID: 738488972}
-  lighterLidObject: {fileID: 1628066285}
-  lighterHolsterPoint: {fileID: 340567078}
-  playerHandTorchPoint: {fileID: 1237162988}
-  playerHandLighterPoint: {fileID: 87129228}
-  playerBodyTorchHolster: {fileID: 52639169}
-  torchFireVFX: {fileID: 1958608283}
-  lighterFireVFX: {fileID: 1592899196}
-  pickupPromptUI: {fileID: 2024688007}
-  grabToHandDelay: 2
-  totalGrabDuration: 4.5
-  lighterAppearDelay: 0.1
-  equipTorchToHandDelay: 0.5
-  lightTorchDelay: 1.2
-  totalEquipDuration: 4
-  unequipHolsterDelay: 1
-  useCinematicCamera: 1
-  cinematicDistance: 2.5
-  cinematicOffset: {x: 0, y: 1, z: 1}
-  cinematicYaw: 160
-  cinematicPitch: 15
-  playerAnimator: {fileID: 1943372671}
-  playerController: {fileID: 1943372667}
---- !u!65 &946850359
-BoxCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 946850356}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 1
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 3
-  m_Size: {x: 183.71054, y: 86.549126, z: 184.07426}
-  m_Center: {x: -1.1014462, y: 21.427402, z: 2.5032997}
 --- !u!1 &1005400309
 GameObject:
   m_ObjectHideFlags: 0
@@ -1405,37 +1310,6 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 502750697185976053, guid: d1dd4797d65b14446b1ec1870972183c, type: 3}
   m_PrefabInstance: {fileID: 553331655}
   m_PrefabAsset: {fileID: 0}
---- !u!1 &1515061701
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1515061702}
-  m_Layer: 0
-  m_Name: Handle Torch
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &1515061702
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1515061701}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 3.1, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 946850357}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1580935709
 GameObject:
   m_ObjectHideFlags: 0
@@ -1949,11 +1823,6 @@ MonoBehaviour:
   centerOnScreen: 1
   crosshairDistance: 20
   isAiming: 0
---- !u!1 &1958608283 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 5946528526828564676, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
-  m_PrefabInstance: {fileID: 2792182151941126993}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1983299949
 GameObject:
   m_ObjectHideFlags: 0
@@ -2220,6 +2089,62 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 2218582027413836053, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
+      propertyPath: lighterObject
+      value: 
+      objectReference: {fileID: 738488972}
+    - target: {fileID: 2218582027413836053, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
+      propertyPath: cinematicPitch
+      value: -2
+      objectReference: {fileID: 0}
+    - target: {fileID: 2218582027413836053, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
+      propertyPath: lighterFireVFX
+      value: 
+      objectReference: {fileID: 1592899196}
+    - target: {fileID: 2218582027413836053, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
+      propertyPath: pickupPromptUI
+      value: 
+      objectReference: {fileID: 2024688007}
+    - target: {fileID: 2218582027413836053, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
+      propertyPath: playerAnimator
+      value: 
+      objectReference: {fileID: 1943372671}
+    - target: {fileID: 2218582027413836053, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
+      propertyPath: lighterLidObject
+      value: 
+      objectReference: {fileID: 1628066285}
+    - target: {fileID: 2218582027413836053, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
+      propertyPath: playerController
+      value: 
+      objectReference: {fileID: 1943372667}
+    - target: {fileID: 2218582027413836053, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
+      propertyPath: cinematicDistance
+      value: 0.6
+      objectReference: {fileID: 0}
+    - target: {fileID: 2218582027413836053, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
+      propertyPath: cinematicOffset.y
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 2218582027413836053, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
+      propertyPath: cinematicOffset.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2218582027413836053, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
+      propertyPath: lighterHolsterPoint
+      value: 
+      objectReference: {fileID: 340567078}
+    - target: {fileID: 2218582027413836053, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
+      propertyPath: playerHandTorchPoint
+      value: 
+      objectReference: {fileID: 1237162988}
+    - target: {fileID: 2218582027413836053, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
+      propertyPath: playerBodyTorchHolster
+      value: 
+      objectReference: {fileID: 52639169}
+    - target: {fileID: 2218582027413836053, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
+      propertyPath: playerHandLighterPoint
+      value: 
+      objectReference: {fileID: 87129228}
     - target: {fileID: 2788341828144493855, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
       propertyPath: m_LocalPosition.x
       value: 128.33
@@ -2266,20 +2191,8 @@ PrefabInstance:
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
-    m_AddedGameObjects:
-    - targetCorrespondingSourceObject: {fileID: 2788341828144493855, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 1515061702}
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 3312959041505472421, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 946850359}
-    - targetCorrespondingSourceObject: {fileID: 3312959041505472421, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 946850358}
-    - targetCorrespondingSourceObject: {fileID: 7605097251360398158, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 817541659}
+    m_AddedGameObjects: []
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 52c800d69bc98472aa84c5398c94fd49, type: 3}
 --- !u!1001 &7575505295789530549
 PrefabInstance:
