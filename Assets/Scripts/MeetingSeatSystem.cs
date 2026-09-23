@@ -1,0 +1,243 @@
+using System.Collections;
+using UnityEngine;
+using UnityEngine.AI;
+
+/// <summary>
+/// Meeting Seat System
+/// ─────────────────────────────────────────────────────────────────────────────
+/// SCENE SETUP:
+///   1. Ek Empty GameObject banao (e.g. "MeetingTrigger") — jahan player trigger zone mein aaye.
+///      Us par Box Collider lagao, "Is Trigger" ON karo.
+///      Is GameObject par yeh script lagao.
+///
+///   2. "SeatArrivalPoint" — Seat ke saamne ek Empty GameObject jahan player khada hoga.
+///
+///   3. "SeatFaceTarget" — Jis direction mein player ka munh hoga jab baithega (e.g. table).
+///
+///   4. Player par "Player" Tag lagao.
+///
+///   5. Player par NavMeshAgent component lagao (Inspector mein):
+///      Speed = 2 | Angular Speed = 180 | Stopping Distance = 0.2 | Auto Braking ON
+///
+/// ANIMATOR SETUP:
+///   Parameters banao:
+///     "SitDown"  → Trigger
+///     "SeatIdle" → Bool
+///     "StandUp"  → Trigger
+///
+///   Transitions:
+///     Any State → SitDown State:  Condition = SitDown trigger. Has Exit Time OFF.
+///     SitDown   → SeatIdle State: Has Exit Time ON. Exit Time ~0.9.
+///     SeatIdle  (Loop Time ON on the clip)
+///     SeatIdle  → StandUp State:  Condition = StandUp trigger. Has Exit Time OFF.
+///     StandUp   → Idle/Locomotion: Has Exit Time ON. Exit Time ~0.9.
+/// </summary>
+[RequireComponent(typeof(Collider))]
+public class MeetingSeatSystem : MonoBehaviour
+{
+    // ── References ───────────────────────────────────────────────────────────
+    [Header("── References ──────────────────────────────────────────────")]
+    [Tooltip("Jahan player ko walk karke khada hona hai (seat ke bilkul saamne Empty GameObject)")]
+    public Transform seatArrivalPoint;
+
+    [Tooltip("Is Transform ki position ki taraf player ka munh hoga (e.g. table ka center)")]
+    public Transform seatFaceTarget;
+
+    [Tooltip("'Press C to Join Meeting' wala UI Panel (Canvas ke andar hona chahiye)")]
+    public GameObject joinPromptUI;
+
+    // ── Timing ───────────────────────────────────────────────────────────────
+    [Header("── Timing ───────────────────────────────────────────────────")]
+    [Tooltip("Sit Down animation kitne seconds ka hai — apne animation clip ki length daalo")]
+    [Min(0.1f)]
+    public float sitDownDuration = 2.0f;
+
+    [Tooltip("Kitne seconds tak player seat par baithega (Seat Idle duration)")]
+    [Min(1f)]
+    public float seatIdleDuration = 10f;
+
+    [Tooltip("Stand Up animation kitne seconds ka hai — apne animation clip ki length daalo")]
+    [Min(0.1f)]
+    public float standUpDuration = 2.0f;
+
+    // ── Walk Settings ────────────────────────────────────────────────────────
+    [Header("── Walk To Seat Settings ───────────────────────────────────")]
+    [Tooltip("Player ki speed jab seat tak chal raha ho")]
+    public float walkToSeatSpeed = 2.0f;
+
+    [Tooltip("Kitna paas aane par ruk jaaye")]
+    public float stoppingDistance = 0.3f;
+
+    [Tooltip("Seat par pahunchne ke baad face rotate karne ka time")]
+    public float faceRotateDuration = 0.35f;
+
+    // ── Animator Parameters ──────────────────────────────────────────────────
+    [Header("── Animator Parameter Names (Exactly Match karo) ───────────")]
+    [Tooltip("Sit Down ka Animator TRIGGER naam")]
+    public string sitDownParam = "SitDown";
+
+    [Tooltip("Seat Idle ka Animator BOOL naam")]
+    public string seatIdleParam = "SeatIdle";
+
+    [Tooltip("Stand Up ka Animator TRIGGER naam")]
+    public string standUpParam = "StandUp";
+
+    // ── Private Fields ───────────────────────────────────────────────────────
+    private PlayerController    _pc;
+    private Animator            _anim;
+    private NavMeshAgent        _agent;
+    private CharacterController _cc;
+    private bool _playerInRange = false;
+    private bool _busy          = false;
+
+    private static readonly int HashSpeed       = Animator.StringToHash("Speed");
+    private static readonly int HashWeaponState = Animator.StringToHash("WeaponState");
+
+    // ── Unity Callbacks ──────────────────────────────────────────────────────
+    private void Start()
+    {
+        GetComponent<Collider>().isTrigger = true;
+        if (joinPromptUI != null) joinPromptUI.SetActive(false);
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (_busy || !other.CompareTag("Player")) return;
+
+        GameObject go = other.gameObject;
+        _pc    = go.GetComponentInParent<PlayerController>()   ?? go.GetComponent<PlayerController>();
+        _anim  = go.GetComponentInParent<Animator>()           ?? go.GetComponent<Animator>();
+        _agent = go.GetComponentInParent<NavMeshAgent>()        ?? go.GetComponent<NavMeshAgent>();
+        _cc    = go.GetComponentInParent<CharacterController>() ?? go.GetComponent<CharacterController>();
+
+        _playerInRange = true;
+        if (joinPromptUI != null) joinPromptUI.SetActive(true);
+    }
+
+    private void OnTriggerExit(Collider other)
+    {
+        if (!other.CompareTag("Player")) return;
+        _playerInRange = false;
+        if (!_busy && joinPromptUI != null) joinPromptUI.SetActive(false);
+    }
+
+    private void Update()
+    {
+        if (_playerInRange && !_busy && Input.GetKeyDown(KeyCode.C))
+            StartCoroutine(MeetingSequence());
+    }
+
+    // ── Main Sequence ────────────────────────────────────────────────────────
+    private IEnumerator MeetingSequence()
+    {
+        _busy = true;
+        if (joinPromptUI != null) joinPromptUI.SetActive(false);
+
+        // 1. Weapon unequip karo (agar equipped hai)
+        if (_pc != null)
+            yield return StartCoroutine(_pc.UnequipCurrentWeaponForPickup());
+
+        // 2. Player controls freeze karo
+        if (_pc != null) _pc.isFrozen = true;
+
+        // 3. NavMeshAgent ON karo, CharacterController se conflict avoid karne ke liye
+        if (_agent != null)
+        {
+            _agent.enabled = true;
+            _agent.speed = walkToSeatSpeed;
+            _agent.stoppingDistance = stoppingDistance;
+        }
+
+        // 4. Seat tak walk karo (NavMesh)
+        if (seatArrivalPoint != null && _agent != null)
+            yield return StartCoroutine(WalkToSeat());
+
+        // 5. NavMeshAgent band karo
+        if (_agent != null) { _agent.ResetPath(); _agent.enabled = false; }
+
+        // 6. Seat ki taraf munh karo
+        if (seatFaceTarget != null && _pc != null)
+        {
+            Vector3 dir = seatFaceTarget.position - _pc.transform.position;
+            dir.y = 0f;
+            if (dir.sqrMagnitude > 0.001f)
+                yield return StartCoroutine(SmoothRotate(dir.normalized, faceRotateDuration));
+        }
+
+        // Speed 0 — walk animation band
+        if (_anim != null) _anim.SetFloat(HashSpeed, 0f);
+        yield return null;
+
+        // 7. SIT DOWN animation
+        if (_anim != null)
+        {
+            _anim.SetInteger(HashWeaponState, 0);
+            _anim.ResetTrigger(sitDownParam);
+            _anim.SetTrigger(sitDownParam);
+        }
+        yield return new WaitForSeconds(sitDownDuration);
+
+        // 8. SEAT IDLE animation (inspector se duration)
+        if (_anim != null) _anim.SetBool(seatIdleParam, true);
+        yield return new WaitForSeconds(seatIdleDuration);
+
+        // 9. STAND UP animation
+        if (_anim != null)
+        {
+            _anim.SetBool(seatIdleParam, false);
+            _anim.ResetTrigger(standUpParam);
+            _anim.SetTrigger(standUpParam);
+        }
+        yield return new WaitForSeconds(standUpDuration);
+
+        // 10. Normal idle pe wapas aao + controls restore
+        if (_anim != null) _anim.SetFloat(HashSpeed, 0f);
+        if (_pc != null) _pc.isFrozen = false;
+
+        _busy = false;
+    }
+
+    // ── Walk To Seat via NavMesh ─────────────────────────────────────────────
+    private IEnumerator WalkToSeat()
+    {
+        _agent.SetDestination(seatArrivalPoint.position);
+        if (_anim != null) _anim.SetFloat(HashSpeed, 0.5f);
+
+        float timeout = 15f, elapsed = 0f;
+
+        while (elapsed < timeout)
+        {
+            elapsed += Time.deltaTime;
+            if (_agent.pathPending) { yield return null; continue; }
+            if (!_agent.pathPending && _agent.remainingDistance <= stoppingDistance) break;
+
+            // Walk blend tree update
+            if (_anim != null)
+            {
+                float spd = Mathf.Clamp01(_agent.velocity.magnitude / walkToSeatSpeed) * 0.5f;
+                _anim.SetFloat(HashSpeed, Mathf.Lerp(_anim.GetFloat(HashSpeed), spd, Time.deltaTime * 8f));
+            }
+            yield return null;
+        }
+
+        if (_anim != null) _anim.SetFloat(HashSpeed, 0f);
+    }
+
+    // ── Smooth Face Rotation ─────────────────────────────────────────────────
+    private IEnumerator SmoothRotate(Vector3 targetForward, float duration)
+    {
+        if (_pc == null) yield break;
+        Quaternion from = _pc.transform.rotation;
+        Quaternion to   = Quaternion.LookRotation(targetForward, Vector3.up);
+        float elapsed   = 0f;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / duration));
+            _pc.transform.rotation = Quaternion.Slerp(from, to, t);
+            yield return null;
+        }
+        _pc.transform.rotation = to;
+    }
+}
