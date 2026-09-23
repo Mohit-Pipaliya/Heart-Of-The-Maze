@@ -137,6 +137,14 @@ public class MeetingSeatSystem : MonoBehaviour
         if (_pc != null)
             yield return StartCoroutine(_pc.UnequipCurrentWeaponForPickup());
 
+        // Root motion ko poori tarah band karo taaki animation player ko aage na khinche
+        bool originalRootMotion = false;
+        if (_anim != null) 
+        {
+            originalRootMotion = _anim.applyRootMotion;
+            _anim.applyRootMotion = false;
+        }
+
         // 2. Player controls freeze karo
         if (_pc != null) _pc.isFrozen = true;
 
@@ -180,12 +188,23 @@ public class MeetingSeatSystem : MonoBehaviour
             _anim.SetTrigger(sitDownParam);
         }
         
-        // Hamesha SeatArrivalPoint par hi force karke rakho (sliding rokne ke liye)
+        // Hamesha SeatArrivalPoint aur FaceTarget par force karke rakho
         float timer = 0f;
+        Quaternion faceRot = Quaternion.identity;
+        if (seatArrivalPoint != null && seatFaceTarget != null)
+        {
+            Vector3 dir = seatFaceTarget.position - seatArrivalPoint.position;
+            dir.y = 0f;
+            if (dir.sqrMagnitude > 0.001f) faceRot = Quaternion.LookRotation(dir.normalized, Vector3.up);
+        }
+
         while (timer < sitDownDuration)
         {
             if (_pc != null && seatArrivalPoint != null)
+            {
                 _pc.transform.position = seatArrivalPoint.position;
+                if (seatFaceTarget != null) _pc.transform.rotation = faceRot;
+            }
             timer += Time.deltaTime;
             yield return null;
         }
@@ -197,7 +216,10 @@ public class MeetingSeatSystem : MonoBehaviour
         while (timer < seatIdleDuration)
         {
             if (_pc != null && seatArrivalPoint != null)
+            {
                 _pc.transform.position = seatArrivalPoint.position;
+                if (seatFaceTarget != null) _pc.transform.rotation = faceRot;
+            }
             timer += Time.deltaTime;
             yield return null;
         }
@@ -209,10 +231,25 @@ public class MeetingSeatSystem : MonoBehaviour
             _anim.ResetTrigger(standUpParam);
             _anim.SetTrigger(standUpParam);
         }
-        yield return new WaitForSeconds(standUpDuration);
+        
+        timer = 0f;
+        while (timer < standUpDuration)
+        {
+            if (_pc != null && seatArrivalPoint != null)
+            {
+                _pc.transform.position = seatArrivalPoint.position;
+                if (seatFaceTarget != null) _pc.transform.rotation = faceRot;
+            }
+            timer += Time.deltaTime;
+            yield return null;
+        }
 
         // 10. Normal idle pe wapas aao + controls restore
-        if (_anim != null) _anim.SetFloat(HashSpeed, 0f);
+        if (_anim != null) 
+        {
+            _anim.SetFloat(HashSpeed, 0f);
+            _anim.applyRootMotion = originalRootMotion;
+        }
         if (_pc != null) _pc.isFrozen = false;
         
         // Sab kuch hone ke baad CharacterController wapas ON karo
