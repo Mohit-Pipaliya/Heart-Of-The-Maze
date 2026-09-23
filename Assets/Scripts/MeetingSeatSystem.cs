@@ -172,18 +172,35 @@ public class MeetingSeatSystem : MonoBehaviour
         if (_anim != null) _anim.SetFloat(HashSpeed, 0f);
         yield return null;
 
-        // 7. SIT DOWN animation
+        // 7. SIT DOWN animation + Lock Position
         if (_anim != null)
         {
             _anim.SetInteger(HashWeaponState, 0);
             _anim.ResetTrigger(sitDownParam);
             _anim.SetTrigger(sitDownParam);
         }
-        yield return new WaitForSeconds(sitDownDuration);
+        
+        // Hamesha SeatArrivalPoint par hi force karke rakho (sliding rokne ke liye)
+        float timer = 0f;
+        while (timer < sitDownDuration)
+        {
+            if (_pc != null && seatArrivalPoint != null)
+                _pc.transform.position = seatArrivalPoint.position;
+            timer += Time.deltaTime;
+            yield return null;
+        }
 
         // 8. SEAT IDLE animation (inspector se duration)
         if (_anim != null) _anim.SetBool(seatIdleParam, true);
-        yield return new WaitForSeconds(seatIdleDuration);
+        
+        timer = 0f;
+        while (timer < seatIdleDuration)
+        {
+            if (_pc != null && seatArrivalPoint != null)
+                _pc.transform.position = seatArrivalPoint.position;
+            timer += Time.deltaTime;
+            yield return null;
+        }
 
         // 9. STAND UP animation
         if (_anim != null)
