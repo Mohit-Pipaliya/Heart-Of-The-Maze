@@ -261,20 +261,26 @@ public class TorchInteractionSystem : MonoBehaviour
         currentState = TorchState.Unequipping;
         if (playerController != null) playerController.SyncWeaponStateFromExternal(3, true);
 
-        // VFX band karo
+        // Realistic unequip: Aag ko turant band mat karo. 
+        // Pehle haath ko belt/back tak pahunchne do.
+        yield return new WaitForSeconds(unequipHolsterDelay);
+        
+        // Jab haath belt ke paas pahunche, tab flame extinguish karo (realistic feel)
         if (torchFireVFX != null) torchFireVFX.SetActive(false);
         if (lighterFireVFX != null) lighterFireVFX.SetActive(false);
-        
-        // Haath ke belt tak pahunchne ka wait karo, tab torch holster pe jaayegi
-        yield return new WaitForSeconds(unequipHolsterDelay);
-        MoveObjectTo(torchObject, playerBodyTorchHolster, torchGrabPoint);
 
-        // Baki animation duration wait karo
-        float remaining = totalUnequipDuration - unequipHolsterDelay;
+        // Instant teleport ki jagah, haath se belt tak smoothly glide karo
+        float smoothSnapTime = (smoothPickupDuration > 0f) ? 0.2f : 0f;
+        if (smoothSnapTime > 0f)
+            yield return StartCoroutine(SmoothMoveObjectTo(torchObject, playerBodyTorchHolster, torchGrabPoint, smoothSnapTime));
+        else
+            MoveObjectTo(torchObject, playerBodyTorchHolster, torchGrabPoint);
+
+        // Baki animation duration wait karo (smooth snap ka time minus karke)
+        float remaining = totalUnequipDuration - unequipHolsterDelay - smoothSnapTime;
         if (remaining > 0f) yield return new WaitForSeconds(remaining);
 
         // NOTE: Animation (WeaponState reset, CrossFade) PlayerController handle karta hai.
-        // Yahan animation commands NAHI honi chahiye — woh UnequipTorch animation ko khatam kar dete the.
         currentState = TorchState.Placed;
         if (playerController != null) playerController.SyncWeaponStateFromExternal(0, false);
     }
