@@ -146,6 +146,7 @@ public class PlayerController : MonoBehaviour
     private int  _health;
 
     private float _nextFireTime = 0f;
+    private float _lastFireTime = -10f; // Track when the last shot was fired
 
     // Physics
     private Vector3 _velocity;
@@ -763,18 +764,24 @@ public class PlayerController : MonoBehaviour
         }
         else if (_currentWeapon == WeaponState.Gun)
         {
-            // Aim Logic: Right Click (Mouse 1) daba kar rakhne par Aim hoga
-            bool isAiming = Input.GetMouseButton(1);
-            _anim.SetBool(HashIsAiming, isAiming);
-
             // Firing Logic: Left Click (Mouse 0)
             if (Input.GetMouseButton(0) && Time.time >= _nextFireTime)
             {
                 _nextFireTime = Time.time + gunFireRate;
+                _lastFireTime = Time.time;
                 
                 // Fire ka animation chalao (Layer 1 yaani Shooting Layer par)
                 _anim.CrossFadeInFixedTime(gunFireStateName, 0.05f, 1);
             }
+
+            // Aim Logic: 
+            // 1. Right Click (Mouse 1) daba kar rakhne par Aim hoga.
+            // 2. YA FIR agar haal hi mein Left Click (shoot) kiya hai tab bhi aim animation chalna chahiye.
+            bool isRightClickAiming = Input.GetMouseButton(1);
+            bool isFiringAiming = (Time.time - _lastFireTime) < 0.5f; // Shoot karne ke 0.5 sec baad tak aim pose rahega
+
+            bool isAiming = isRightClickAiming || isFiringAiming;
+            _anim.SetBool(HashIsAiming, isAiming);
         }
     }
 
