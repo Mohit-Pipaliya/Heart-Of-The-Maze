@@ -140,7 +140,8 @@ public class MeetingSeatSystem : MonoBehaviour
         // 2. Player controls freeze karo
         if (_pc != null) _pc.isFrozen = true;
 
-        // 3. NavMeshAgent ON karo, CharacterController se conflict avoid karne ke liye
+        // 3. NavMeshAgent ON karo, CharacterController ko OFF karo (dono ek saath ladenge)
+        if (_cc != null) _cc.enabled = false;
         if (_agent != null)
         {
             _agent.enabled = true;
@@ -152,8 +153,9 @@ public class MeetingSeatSystem : MonoBehaviour
         if (seatArrivalPoint != null && _agent != null)
             yield return StartCoroutine(WalkToSeat());
 
-        // 5. NavMeshAgent band karo
+        // 5. NavMeshAgent band karo, CharacterController wapas ON karo
         if (_agent != null) { _agent.ResetPath(); _agent.enabled = false; }
+        if (_cc != null) _cc.enabled = true;
 
         // 6. Seat ki taraf munh karo
         if (seatFaceTarget != null && _pc != null)
@@ -211,11 +213,13 @@ public class MeetingSeatSystem : MonoBehaviour
             if (_agent.pathPending) { yield return null; continue; }
             if (!_agent.pathPending && _agent.remainingDistance <= stoppingDistance) break;
 
-            // Walk blend tree update
+            // Walk blend tree update (0.5 = normal WASD walk speed)
             if (_anim != null)
             {
-                float spd = Mathf.Clamp01(_agent.velocity.magnitude / walkToSeatSpeed) * 0.5f;
-                _anim.SetFloat(HashSpeed, Mathf.Lerp(_anim.GetFloat(HashSpeed), spd, Time.deltaTime * 8f));
+                // Jaise PlayerController mein smooth hota hai, waisa hi same feel
+                float currentSpeed = _anim.GetFloat(HashSpeed);
+                float smoothSpeed = Mathf.MoveTowards(currentSpeed, 0.5f, Time.deltaTime / 0.1f);
+                _anim.SetFloat(HashSpeed, smoothSpeed);
             }
             yield return null;
         }
