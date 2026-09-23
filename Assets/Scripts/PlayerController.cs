@@ -47,8 +47,8 @@ public class PlayerController : MonoBehaviour
 
     
     [Header("Gun Movement")]
-    [SerializeField] private float gunWalkSpeed   = 2.5f;
-    [SerializeField] private float gunRunSpeed    = 6.5f;
+    [SerializeField] private float gunWalkSpeed   = 2f;
+    [SerializeField] private float gunRunSpeed    = 5f;
     
     [SerializeField] private float jumpForce      = 5f;
     [SerializeField] private float gravity        = -9.81f;
@@ -630,25 +630,39 @@ public class PlayerController : MonoBehaviour
     {
         _isSequenceRunning = true;
 
+        // Step 1: Pehle current weapon unequip karo (agar koi equipped hai)
         if (_currentWeapon == WeaponState.Sword && _swordSystem != null)
         {
-            yield return RunUnequipAnimation();
-            _swordSystem.StartUnequip();
+            yield return RunUnequipAnimation();          // Sword unequip animation
+            _swordSystem.StartUnequip();                 // Sword back pe bhejo
             yield return new WaitForSeconds(unequipAnimDuration);
             while (_swordSystem.CurrentState != SwordEquipSystem.SwordState.OnBack) yield return null;
+
+            // Unequip khatam — Animator ko Unarmed pe reset karo
+            _currentWeapon = WeaponState.Unarmed;
+            _anim.SetInteger(HashWeaponState, 0);
+            _anim.applyRootMotion = false;
+            yield return null; // 1 frame: Animator settle ho
         }
         else if (_currentWeapon == WeaponState.Gun && _gunSystem != null)
         {
-            yield return RunGunUnequipAnimation();
-            _gunSystem.StartUnequip();
+            yield return RunGunUnequipAnimation();       // Gun unequip animation
+            _gunSystem.StartUnequip();                   // Gun holster pe bhejo
             yield return new WaitForSeconds(unequipAnimDuration);
             while (_gunSystem.CurrentState != GunEquipSystem.GunState.Holstered) yield return null;
+
+            // Unequip khatam — Animator ko Unarmed pe reset karo
+            _currentWeapon = WeaponState.Unarmed;
+            _anim.SetInteger(HashWeaponState, 0);
+            _anim.applyRootMotion = false;
+            yield return null; // 1 frame: Animator settle ho
         }
 
+        // Step 2: Ab mashal equip karo (unequip ke baad ya directly unarmed se)
         if (_torchSystem != null && _torchSystem.currentState == TorchInteractionSystem.TorchState.Placed)
         {
             _anim.applyRootMotion = false;
-            _torchSystem.StartEquip();
+            _torchSystem.StartEquip();   // EquipTorch trigger + lighter + fire VFX
             while (_torchSystem.currentState != TorchInteractionSystem.TorchState.Equipped) yield return null;
         }
 
@@ -850,6 +864,48 @@ public class PlayerController : MonoBehaviour
     public void RegisterTorch(TorchInteractionSystem torch)
     {
         _torchSystem = torch;
+    }
+
+    /// <summary>
+    /// Mashal pickup ke liye: currently equipped weapon ko unequip karta hai
+    /// aur tab tak wait karta hai jab tak weapon holster/back pe nahi chala jaata.
+    /// TorchInteractionSystem ke GrabRoutine mein 'yield return' ke saath use karo.
+    /// </summary>
+    public IEnumerator UnequipCurrentWeaponForPickup()
+    {
+        // Agar kuch bhi equipped nahi hai ya already busy hai toh seedha return karo
+        if (_currentWeapon == WeaponState.Unarmed || _isSequenceRunning) yield break;
+
+        _isSequenceRunning = true;
+
+        if (_currentWeapon == WeaponState.Sword && _swordSystem != null)
+        {
+            yield return RunUnequipAnimation();
+            _swordSystem.StartUnequip();
+            yield return new WaitForSeconds(unequipAnimDuration);
+            while (_swordSystem.CurrentState != SwordEquipSystem.SwordState.OnBack) yield return null;
+        }
+        else if (_currentWeapon == WeaponState.Gun && _gunSystem != null)
+        {
+            yield return RunGunUnequipAnimation();
+            _gunSystem.StartUnequip();
+            yield return new WaitForSeconds(unequipAnimDuration);
+            while (_gunSystem.CurrentState != GunEquipSystem.GunState.Holstered) yield return null;
+        }
+        else if (_currentWeapon == WeaponState.Torch && _torchSystem != null)
+        {
+            yield return RunTorchUnequipAnimation();
+            _torchSystem.StartUnequip();
+            while (_torchSystem.currentState != TorchInteractionSystem.TorchState.Placed) yield return null;
+            _anim.SetInteger(HashWeaponState, 0);
+            _anim.applyRootMotion = false;
+            yield return null;
+        }
+
+        _currentWeapon = WeaponState.Unarmed;
+        _anim.SetInteger(HashWeaponState, 0);
+        _anim.applyRootMotion = false;
+        _isSequenceRunning = false;
     }
 
     public void SetFrozen(bool frozen, bool lockWorldPosition = false)

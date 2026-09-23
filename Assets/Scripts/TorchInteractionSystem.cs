@@ -120,6 +120,14 @@ public class TorchInteractionSystem : MonoBehaviour
         currentState = TorchState.Grabbing;
         if (pickupPromptUI != null) pickupPromptUI.SetActive(false);
 
+        // ── Step 0: Agar player ke haath mein koi weapon hai, pehle unequip karo ──
+        if (playerController != null && playerController.WeaponIndex != 0)
+        {
+            // PlayerController se unequip coroutine chalao aur khatam hone ka wait karo
+            yield return playerController.UnequipCurrentWeaponForPickup();
+        }
+
+        // ── Step 1: Mashal ka Grab animation chalao ──
         // Tell Animator to play the Grab animation
         if (playerAnimator != null) playerAnimator.SetTrigger("GrabTorch");
 
