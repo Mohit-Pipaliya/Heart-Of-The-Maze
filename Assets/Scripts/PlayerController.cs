@@ -51,13 +51,26 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float gunRunSpeed    = 5f;
     
     [SerializeField] private float jumpForce      = 5f;
-    [SerializeField] private float gravity        = -9.81f;
+    [SerializeField] private float gravity        = -20f;   // -20 = grounded feel, -9.81 = real world
     [SerializeField] private float speedDampTime  = 0.1f;   // Blend-tree smoothing
 
     [Header("Ground Check")]
     [SerializeField] private LayerMask groundMask;          // LayerMask to define what is "Ground"
     [SerializeField] private float groundCheckRadius = 0.25f; // Radius of the ground check sphere
     [SerializeField] private float groundCheckOffset = 0.1f;  // Offset from the bottom of the CharacterController
+
+    [Header("Foot IK (Pair zameen pe lagana)")]
+    [Tooltip("Foot IK enable karo — pair zameen ki surface pe plant hote hain (IMPORTANT: Animator ke har layer pe 'IK Pass' checkbox ON karna padega)")]
+    [SerializeField] private bool useFootIK = true;
+    [Tooltip("Pair ka IK kitna strong ho (0 = off, 1 = full). Agar pair slide lage to thoda kam karo.")]
+    [Range(0f, 1f)]
+    [SerializeField] private float footIKWeight = 1.0f;
+    [Tooltip("Pair ke upar se neeche raycast ki maximum distance")]
+    [SerializeField] private float footRaycastDist = 1.2f;
+    [Tooltip("Pair zameen se kitna upar rahe (micro lift to prevent clipping)")]
+    [SerializeField] private float footGroundOffset = 0.08f;
+    [Tooltip("IK ka weight kitni smoothly blend ho (0 = instant, 1 = slow)")]
+    [SerializeField] private float footIKBlendSpeed = 10f;
 
     // Camera system ab alag hai (CameraController.cs), isliye yahan camera ka reference zaroori nahi.
     [Header("Health")]
@@ -232,6 +245,67 @@ public class PlayerController : MonoBehaviour
     {
         if (_lockWorldPosition)
             return;
+    }
+
+    // ─── Foot IK ──────────────────────────────────────────────────────────────
+    // Pair zameen pe plant karta hai — hawa mein tairna band karta hai.
+    // ZARURI: Animator window mein har layer ka 'IK Pass' checkbox ON karo!
+
+    private float _leftFootIKWeight  = 0f;
+    private float _rightFootIKWeight = 0f;
+
+    private void OnAnimatorIK(int layerIndex)
+    {
+        if (!useFootIK || _anim == null || !_anim.isHuman) return;
+        if (_isDead || isFrozen) return;
+        // Jump ke dauraan IK off
+        if (!_isGrounded) 
+        {
+            _leftFootIKWeight  = Mathf.MoveTowards(_leftFootIKWeight,  0f, Time.deltaTime * footIKBlendSpeed);
+            _rightFootIKWeight = Mathf.MoveTowards(_rightFootIKWeight, 0f, Time.deltaTime * footIKBlendSpeed);
+            ApplyFootIKWeights();
+            return;
+        }
+
+        _leftFootIKWeight  = Mathf.MoveTowards(_leftFootIKWeight,  footIKWeight, Time.deltaTime * footIKBlendSpeed);
+        _rightFootIKWeight = Mathf.MoveTowards(_rightFootIKWeight, footIKWeight, Time.deltaTime * footIKBlendSpeed);
+
+        SetFootIK(AvatarIKGoal.LeftFoot,  _leftFootIKWeight);
+        SetFootIK(AvatarIKGoal.RightFoot, _rightFootIKWeight);
+    }
+
+    private void ApplyFootIKWeights()
+    {
+        _anim.SetIKPositionWeight(AvatarIKGoal.LeftFoot,  _leftFootIKWeight);
+        _anim.SetIKRotationWeight(AvatarIKGoal.LeftFoot,  _leftFootIKWeight);
+        _anim.SetIKPositionWeight(AvatarIKGoal.RightFoot, _rightFootIKWeight);
+        _anim.SetIKRotationWeight(AvatarIKGoal.RightFoot, _rightFootIKWeight);
+    }
+
+    private void SetFootIK(AvatarIKGoal foot, float weight)
+    {
+        // Animator se current animated foot position lo
+        Vector3 animFootPos = _anim.GetIKPosition(foot);
+
+        // Pair ke upar se neeche raycast maro
+        Vector3 rayOrigin = animFootPos + Vector3.up * 0.5f;
+        LayerMask mask = groundMask.value != 0 ? groundMask : Physics.DefaultRaycastLayers;
+
+        _anim.SetIKPositionWeight(foot, weight);
+        _anim.SetIKRotationWeight(foot, weight);
+
+        if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, footRaycastDist, mask, QueryTriggerInteraction.Ignore))
+        {
+            // Pair ko zameen ki surface pe plant karo
+            _anim.SetIKPosition(foot, hit.point + Vector3.up * footGroundOffset);
+
+            // Pair ko zameen ki slope ke saath align karo
+            Quaternion footRot = Quaternion.LookRotation(
+                Vector3.ProjectOnPlane(transform.forward, hit.normal),
+                hit.normal);
+            _anim.SetIKRotation(foot, footRot);
+        }
+        // Raycast miss hua to animated position hi use hogi (weight already set hai)
     }
 
     private void LateUpdate()
