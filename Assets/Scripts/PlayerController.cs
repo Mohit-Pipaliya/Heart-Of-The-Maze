@@ -134,6 +134,7 @@ public class PlayerController : MonoBehaviour
     private static readonly int HashUnequipTorch = Animator.StringToHash("UnequipTorch");
     private static readonly int HashHit         = Animator.StringToHash("Hit");
     private static readonly int HashDie         = Animator.StringToHash("Die");
+    private static readonly int HashFire        = Animator.StringToHash("Fire");
 
     // Weapon states
     private enum WeaponState { Unarmed = 0, Sword = 1, Gun = 2, Torch = 3 }
@@ -770,17 +771,20 @@ public class PlayerController : MonoBehaviour
                 _nextFireTime = Time.time + gunFireRate;
                 _lastFireTime = Time.time;
                 
-                // Fire ka animation chalao (Layer 1 yaani Shooting Layer par)
-                _anim.CrossFadeInFixedTime(gunFireStateName, 0.05f, 1);
+                // Fire ka animation chalao (Trigger se, ye zyada reliable hai)
+                _anim.ResetTrigger(HashFire);
+                _anim.SetTrigger(HashFire);
             }
 
             // Aim Logic: 
             // 1. Right Click (Mouse 1) daba kar rakhne par Aim hoga.
-            // 2. YA FIR agar haal hi mein Left Click (shoot) kiya hai tab bhi aim animation chalna chahiye.
+            // 2. Left Click (Mouse 0) daba kar rakhne par bhi Aim hoga.
+            // 3. Firing chhodne ke baad 0.5 sec tak aim barkarar rahega (smoothness ke liye)
             bool isRightClickAiming = Input.GetMouseButton(1);
-            bool isFiringAiming = (Time.time - _lastFireTime) < 0.5f; // Shoot karne ke 0.5 sec baad tak aim pose rahega
+            bool isLeftClickHeld = Input.GetMouseButton(0);
+            bool isFiringCooldown = (Time.time - _lastFireTime) < 0.5f;
 
-            bool isAiming = isRightClickAiming || isFiringAiming;
+            bool isAiming = isRightClickAiming || isLeftClickHeld || isFiringCooldown;
             _anim.SetBool(HashIsAiming, isAiming);
         }
     }
