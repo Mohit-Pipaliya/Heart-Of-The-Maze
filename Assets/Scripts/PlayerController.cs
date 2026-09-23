@@ -772,8 +772,8 @@ public class PlayerController : MonoBehaviour
             {
                 _nextFireTime = Time.time + gunFireRate;
                 
-                // Fire ka animation chalao
-                _anim.CrossFadeInFixedTime(gunFireStateName, 0.05f);
+                // Fire ka animation chalao (Layer 1 yaani Shooting Layer par)
+                _anim.CrossFadeInFixedTime(gunFireStateName, 0.05f, 1);
             }
         }
     }
