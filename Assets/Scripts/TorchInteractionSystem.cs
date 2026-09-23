@@ -47,6 +47,10 @@ public class TorchInteractionSystem : MonoBehaviour
     public float grabToHandDelay = 0.8f;
     [Tooltip("Total duration of grab anim before it is placed on the wall")]
     public float totalGrabDuration = 2.0f;
+
+    [Header("Smooth Pickup")]
+    [Tooltip("Kitne seconds mein mashal smoothly haath tak aaye (0 = instant snap)")]
+    public float smoothPickupDuration = 0.3f;
     
     [Space(10)]
     [Tooltip("Delay before lighter appears in right hand")]
@@ -134,8 +138,11 @@ public class TorchInteractionSystem : MonoBehaviour
         // Wait until player's hand reaches the torch in the animation
         yield return new WaitForSeconds(grabToHandDelay);
         
-        // Snap torch to player's hand empty object, using the grab point offset
-        MoveObjectTo(torchObject, playerHandTorchPoint, torchGrabPoint);
+        // Snap torch to player's hand — smooth lerp for realistic feel
+        if (smoothPickupDuration > 0f)
+            yield return StartCoroutine(SmoothMoveObjectTo(torchObject, playerHandTorchPoint, torchGrabPoint, smoothPickupDuration));
+        else
+            MoveObjectTo(torchObject, playerHandTorchPoint, torchGrabPoint);
 
         // Wait for the rest of the grab animation to finish
         yield return new WaitForSeconds(totalGrabDuration - grabToHandDelay);
@@ -270,6 +277,56 @@ public class TorchInteractionSystem : MonoBehaviour
         // Yahan animation commands NAHI honi chahiye — woh UnequipTorch animation ko khatam kar dete the.
         currentState = TorchState.Placed;
         if (playerController != null) playerController.SyncWeaponStateFromExternal(0, false);
+    }
+
+    /// <summary>
+    /// Torch ko smoothly target tak lerp karta hai — instant snap ki jagah natural glide.
+    /// SmoothStep curve use karta hai taaki motion cinematic lage.
+    /// </summary>
+    private IEnumerator SmoothMoveObjectTo(GameObject obj, Transform target, Transform grabPoint, float duration)
+    {
+        if (obj == null || target == null) { MoveObjectTo(obj, target, grabPoint); yield break; }
+
+        // Physics disable karo (MoveObjectTo ki tarah)
+        Rigidbody[] rbs = obj.GetComponentsInChildren<Rigidbody>();
+        foreach (var rb in rbs) { rb.isKinematic = true; rb.useGravity = false; }
+        Collider[] cols = obj.GetComponentsInChildren<Collider>();
+        foreach (var col in cols) { if (!col.isTrigger) col.enabled = false; }
+
+        // ── Target rotation compute karo (ek baar, constant hai) ──
+        Quaternion rotOffset = grabPoint != null
+            ? Quaternion.Inverse(obj.transform.rotation) * grabPoint.rotation
+            : Quaternion.identity;
+        Quaternion targetRot = grabPoint != null
+            ? target.rotation * Quaternion.Inverse(rotOffset)
+            : target.rotation;
+
+        // GrabPoint position torch ke local space mein (constant)
+        Vector3 localGrab = grabPoint != null
+            ? obj.transform.InverseTransformPoint(grabPoint.position)
+            : Vector3.zero;
+
+        Vector3 startPos = obj.transform.position;
+        Quaternion startRot = obj.transform.rotation;
+        float elapsed = 0f;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / duration));
+
+            // Target position har frame update karo (hand socket animation ke saath hilta hai)
+            Vector3 targetPos = grabPoint != null
+                ? target.position - (targetRot * localGrab)
+                : target.position;
+
+            obj.transform.position = Vector3.Lerp(startPos, targetPos, t);
+            obj.transform.rotation = Quaternion.Slerp(startRot, targetRot, t);
+            yield return null;
+        }
+
+        // Final: precise snap + parent (existing MoveObjectTo se)
+        MoveObjectTo(obj, target, grabPoint);
     }
 
     private void MoveObjectTo(GameObject obj, Transform target, Transform grabPoint = null)

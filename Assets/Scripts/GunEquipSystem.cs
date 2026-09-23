@@ -196,6 +196,10 @@ public class GunEquipSystem : MonoBehaviour
     [Tooltip("Animator trigger parameter for picking up from ground")]
     public string pickupTrigger = "PickupGun";
 
+    [Header("Smooth Pickup")]
+    [Tooltip("Kitne seconds mein gun smoothly haath tak aaye (0 = instant snap)")]
+    public float smoothPickupDuration = 0.25f;
+
     private static readonly int HashWeaponState = Animator.StringToHash("WeaponState");
     private static readonly int HashUnequip = Animator.StringToHash("Unequip");
 
@@ -284,7 +288,11 @@ public class GunEquipSystem : MonoBehaviour
         else
             yield return new WaitForSeconds(pickupDelay);
 
-        SwitchGunToHand();
+        // Smooth lerp gun to hand (realistic pickup feel)
+        if (smoothPickupDuration > 0f)
+            yield return StartCoroutine(SmoothSnapGunToHand(smoothPickupDuration));
+        else
+            SwitchGunToHand();
 
         // Note: Yahan extra lift nahi — pickup lift already lag chuki hai.
         // Double lift player ko hawa mein bhej deta tha.
@@ -441,6 +449,51 @@ public class GunEquipSystem : MonoBehaviour
         {
             AttachToSocket(gunHandSocket, handLocalPosition, handLocalRotation);
         }
+    }
+
+    /// <summary>
+    /// Gun ko smoothly haath tak lerp karta hai (realistic pickup feel).
+    /// SmoothStep curve use karta hai taaki motion natural lage.
+    /// </summary>
+    private System.Collections.IEnumerator SmoothSnapGunToHand(float duration)
+    {
+        if (currentState != GunState.Equipping) yield break;
+        if (gun == null || gunHandSocket == null) { SwitchGunToHand(); yield break; }
+
+        // ── Target world rotation compute karo (ek baar, constant hai) ──
+        Quaternion rotOffset = gunHandlePoint != null
+            ? Quaternion.Inverse(gun.transform.rotation) * gunHandlePoint.rotation
+            : Quaternion.identity;
+        Quaternion targetRot = gunHandlePoint != null
+            ? gunHandSocket.rotation * Quaternion.Inverse(rotOffset)
+            : gunHandSocket.rotation * Quaternion.Euler(handLocalRotation);
+
+        // Handle position gun ke local space mein (constant)
+        Vector3 localHandle = gunHandlePoint != null
+            ? gun.transform.InverseTransformPoint(gunHandlePoint.position)
+            : Vector3.zero;
+
+        Vector3 startPos = gun.transform.position;
+        Quaternion startRot = gun.transform.rotation;
+        float elapsed = 0f;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / duration));
+
+            // Target position har frame update karo (socket hand ke saath move karta hai)
+            Vector3 targetPos = gunHandlePoint != null
+                ? gunHandSocket.position - (targetRot * localHandle)
+                : gunHandSocket.TransformPoint(handLocalPosition);
+
+            gun.transform.position = Vector3.Lerp(startPos, targetPos, t);
+            gun.transform.rotation = Quaternion.Slerp(startRot, targetRot, t);
+            yield return null;
+        }
+
+        // Final precise snap + parent
+        SwitchGunToHand();
     }
 
     public void SwitchGunToHolster()

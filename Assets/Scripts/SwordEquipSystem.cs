@@ -107,6 +107,10 @@ public class SwordEquipSystem : MonoBehaviour
     [Tooltip("Animator trigger parameter for picking up from ground")]
     public string pickupTrigger = "PickupSword";
 
+    [Header("Smooth Pickup")]
+    [Tooltip("Kitne seconds mein sword smoothly haath tak aaye (0 = instant snap)")]
+    public float smoothPickupDuration = 0.25f;
+
     private SwordState currentState = SwordState.Ground;
     private PlayerController playerController;
     
@@ -196,7 +200,11 @@ public class SwordEquipSystem : MonoBehaviour
             yield return new WaitForSeconds(pickupDelay);
         }
 
-        SwitchSwordToHand();
+        // Smooth lerp sword to hand (realistic pickup feel)
+        if (smoothPickupDuration > 0f)
+            yield return StartCoroutine(SmoothSnapSwordToHand(smoothPickupDuration));
+        else
+            SwitchSwordToHand();
         
         // Wait dynamically for the character to finish the Pickup animation (stand back up)
         if (playerAnimator != null)
@@ -280,6 +288,51 @@ public class SwordEquipSystem : MonoBehaviour
         // WeaponState reset ab PlayerController handle karega
         // playerAnimator.SetInteger("WeaponState", 0);
         OnUnequipAnimationFinished();
+    }
+
+    /// <summary>
+    /// Sword ko smoothly haath tak lerp karta hai (realistic pickup feel).
+    /// SmoothStep curve use karta hai taaki motion natural lage.
+    /// </summary>
+    private System.Collections.IEnumerator SmoothSnapSwordToHand(float duration)
+    {
+        if (currentState != SwordState.Equipping) yield break;
+        if (sword == null || swordHandSocket == null) { SwitchSwordToHand(); yield break; }
+
+        // ── Target world rotation compute karo (ek baar, constant hai) ──
+        Quaternion rotOffset = swordHandlePoint != null
+            ? Quaternion.Inverse(sword.transform.rotation) * swordHandlePoint.rotation
+            : Quaternion.identity;
+        Quaternion targetRot = swordHandlePoint != null
+            ? swordHandSocket.rotation * Quaternion.Inverse(rotOffset)
+            : swordHandSocket.rotation * Quaternion.Euler(handLocalRotation);
+
+        // Handle position sword ke local space mein (constant)
+        Vector3 localHandle = swordHandlePoint != null
+            ? sword.transform.InverseTransformPoint(swordHandlePoint.position)
+            : Vector3.zero;
+
+        Vector3 startPos = sword.transform.position;
+        Quaternion startRot = sword.transform.rotation;
+        float elapsed = 0f;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / duration));
+
+            // Target position har frame update karo (socket hand ke saath move karta hai)
+            Vector3 targetPos = swordHandlePoint != null
+                ? swordHandSocket.position - (targetRot * localHandle)
+                : swordHandSocket.TransformPoint(handLocalPosition);
+
+            sword.transform.position = Vector3.Lerp(startPos, targetPos, t);
+            sword.transform.rotation = Quaternion.Slerp(startRot, targetRot, t);
+            yield return null;
+        }
+
+        // Final precise snap + parent
+        SwitchSwordToHand();
     }
 
     /// <summary>
