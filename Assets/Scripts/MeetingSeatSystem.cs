@@ -153,9 +153,9 @@ public class MeetingSeatSystem : MonoBehaviour
         if (seatArrivalPoint != null && _agent != null)
             yield return StartCoroutine(WalkToSeat());
 
-        // 5. NavMeshAgent band karo, CharacterController wapas ON karo
+        // 5. NavMeshAgent band karo
         if (_agent != null) { _agent.ResetPath(); _agent.enabled = false; }
-        if (_cc != null) _cc.enabled = true;
+        // Note: CharacterController abhi bhi band hai taaki smooth move perfectly kaam kare
 
         // 6. Seat ki taraf munh karo aur EXACT position par aao
         if (seatArrivalPoint != null && seatFaceTarget != null && _pc != null)
@@ -197,6 +197,9 @@ public class MeetingSeatSystem : MonoBehaviour
         // 10. Normal idle pe wapas aao + controls restore
         if (_anim != null) _anim.SetFloat(HashSpeed, 0f);
         if (_pc != null) _pc.isFrozen = false;
+        
+        // Sab kuch hone ke baad CharacterController wapas ON karo
+        if (_cc != null) _cc.enabled = true;
 
         _busy = false;
     }
