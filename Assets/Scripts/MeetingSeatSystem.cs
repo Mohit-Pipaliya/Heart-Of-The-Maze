@@ -233,11 +233,29 @@ public class MeetingSeatSystem : MonoBehaviour
         }
         
         timer = 0f;
+        Vector3 standUpStartPos = seatArrivalPoint != null ? seatArrivalPoint.position : _pc.transform.position;
+        Vector3 standUpEndPos = standUpStartPos;
+        
+        if (seatArrivalPoint != null && seatFaceTarget != null)
+        {
+            Vector3 dir = seatFaceTarget.position - seatArrivalPoint.position;
+            dir.y = 0f;
+            if (dir.sqrMagnitude > 0.001f)
+            {
+                // Khade hote waqt player ko 0.8 meter aage nikal lo taaki bench ke collider se takraye na
+                standUpEndPos = standUpStartPos + (dir.normalized * 0.8f);
+            }
+        }
+
         while (timer < standUpDuration)
         {
             if (_pc != null && seatArrivalPoint != null)
             {
-                _pc.transform.position = seatArrivalPoint.position;
+                float t = timer / standUpDuration;
+                // Smooth step for natural look
+                float smoothT = Mathf.SmoothStep(0f, 1f, t);
+                
+                _pc.transform.position = Vector3.Lerp(standUpStartPos, standUpEndPos, smoothT);
                 if (seatFaceTarget != null) _pc.transform.rotation = faceRot;
             }
             timer += Time.deltaTime;
