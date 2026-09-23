@@ -157,13 +157,15 @@ public class MeetingSeatSystem : MonoBehaviour
         if (_agent != null) { _agent.ResetPath(); _agent.enabled = false; }
         if (_cc != null) _cc.enabled = true;
 
-        // 6. Seat ki taraf munh karo
-        if (seatFaceTarget != null && _pc != null)
+        // 6. Seat ki taraf munh karo aur EXACT position par aao
+        if (seatArrivalPoint != null && seatFaceTarget != null && _pc != null)
         {
-            Vector3 dir = seatFaceTarget.position - _pc.transform.position;
+            Vector3 dir = seatFaceTarget.position - seatArrivalPoint.position;
             dir.y = 0f;
             if (dir.sqrMagnitude > 0.001f)
-                yield return StartCoroutine(SmoothRotate(dir.normalized, faceRotateDuration));
+            {
+                yield return StartCoroutine(SmoothMoveAndRotate(seatArrivalPoint.position, dir.normalized, faceRotateDuration));
+            }
         }
 
         // Speed 0 — walk animation band
@@ -227,21 +229,27 @@ public class MeetingSeatSystem : MonoBehaviour
         if (_anim != null) _anim.SetFloat(HashSpeed, 0f);
     }
 
-    // ── Smooth Face Rotation ─────────────────────────────────────────────────
-    private IEnumerator SmoothRotate(Vector3 targetForward, float duration)
+    // ── Smooth Move & Face Rotation (Exact Snapping) ─────────────────────────
+    private IEnumerator SmoothMoveAndRotate(Vector3 targetPos, Vector3 targetForward, float duration)
     {
         if (_pc == null) yield break;
-        Quaternion from = _pc.transform.rotation;
-        Quaternion to   = Quaternion.LookRotation(targetForward, Vector3.up);
-        float elapsed   = 0f;
-
+        
+        Vector3 startPos = _pc.transform.position;
+        Quaternion startRot = _pc.transform.rotation;
+        Quaternion targetRot = Quaternion.LookRotation(targetForward, Vector3.up);
+        
+        float elapsed = 0f;
         while (elapsed < duration)
         {
             elapsed += Time.deltaTime;
             float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / duration));
-            _pc.transform.rotation = Quaternion.Slerp(from, to, t);
+            
+            _pc.transform.position = Vector3.Lerp(startPos, targetPos, t);
+            _pc.transform.rotation = Quaternion.Slerp(startRot, targetRot, t);
             yield return null;
         }
-        _pc.transform.rotation = to;
+        
+        _pc.transform.position = targetPos;
+        _pc.transform.rotation = targetRot;
     }
 }
