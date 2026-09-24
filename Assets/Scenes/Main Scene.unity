@@ -1914,6 +1914,63 @@ Transform:
   m_CorrespondingSourceObject: {fileID: -3480699329000672020, guid: 7e3cbb6379658413a984ee6af33668f1, type: 3}
   m_PrefabInstance: {fileID: 1943372665}
   m_PrefabAsset: {fileID: 0}
+--- !u!1001 &1403095589
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 1061697444373054873, guid: 1c7b72cab93810942baa9d780067397c, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 70.76537
+      objectReference: {fileID: 0}
+    - target: {fileID: 1061697444373054873, guid: 1c7b72cab93810942baa9d780067397c, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.00001
+      objectReference: {fileID: 0}
+    - target: {fileID: 1061697444373054873, guid: 1c7b72cab93810942baa9d780067397c, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 204.16693
+      objectReference: {fileID: 0}
+    - target: {fileID: 1061697444373054873, guid: 1c7b72cab93810942baa9d780067397c, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1061697444373054873, guid: 1c7b72cab93810942baa9d780067397c, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1061697444373054873, guid: 1c7b72cab93810942baa9d780067397c, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1061697444373054873, guid: 1c7b72cab93810942baa9d780067397c, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1061697444373054873, guid: 1c7b72cab93810942baa9d780067397c, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1061697444373054873, guid: 1c7b72cab93810942baa9d780067397c, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1061697444373054873, guid: 1c7b72cab93810942baa9d780067397c, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4098471286892476298, guid: 1c7b72cab93810942baa9d780067397c, type: 3}
+      propertyPath: m_Name
+      value: SpiderSkin1_1
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 1c7b72cab93810942baa9d780067397c, type: 3}
 --- !u!4 &1464922306 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 502750697185976053, guid: d1dd4797d65b14446b1ec1870972183c, type: 3}
@@ -2381,14 +2438,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 60be44d48c58d4d19a6ce3370d13b3db, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
-  walkSpeed: 15
-  runSpeed: 20
+  walkSpeed: 30
+  runSpeed: 40
   rotationSpeed: 120
   mouseSensitivity: 2
   gunWalkSpeed: 20
   gunRunSpeed: 30
-  jumpForce: 5
+  jumpForce: 0
   gravity: -9.81
+  fallMultiplier: 2.5
   speedDampTime: 0.1
   groundMask:
     serializedVersion: 2
@@ -3470,3 +3528,4 @@ SceneRoots:
   - {fileID: 1344751365}
   - {fileID: 758697286}
   - {fileID: 1856042202965276701}
+  - {fileID: 1403095589}
