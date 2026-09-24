@@ -39,7 +39,7 @@ public class BoatTrigger : MonoBehaviour
     // ── Private State ──────────────────────────────────────────────────────────
     private bool _playerInside = false;
     private PlayerController _playerController;
-    private float _exitCooldown = 0f;
+    private bool _waitingForReentry = false;
 
     // ── Public: kya player is waqt trigger ke andar hai ──────────────────────
     public bool IsPlayerInside => _playerInside;
@@ -54,22 +54,10 @@ public class BoatTrigger : MonoBehaviour
 
     private void Update()
     {
-        if (_exitCooldown > 0f)
-        {
-            _exitCooldown -= Time.deltaTime;
-            return;
-        }
+        if (_waitingForReentry) return;
 
         if (!_playerInside) return;
         if (boatSystem != null && boatSystem.IsOccupied) return;
-
-        // Failsafe: Agar player trigger area se dur chala gaya aur OnTriggerExit fail ho gaya
-        if (_playerController != null && Vector3.Distance(transform.position, _playerController.transform.position) > 10f)
-        {
-            _playerInside = false;
-            HideAllUI();
-            return;
-        }
 
         // Har frame UI refresh karo (oar status change ho sakti hai)
         RefreshUI();
@@ -98,6 +86,7 @@ public class BoatTrigger : MonoBehaviour
 
         _playerController = other.GetComponent<PlayerController>();
         _playerInside = true;
+        _waitingForReentry = false; // Naye entry pe allow karo
         RefreshUI();
     }
 
@@ -105,6 +94,7 @@ public class BoatTrigger : MonoBehaviour
     {
         if (!other.CompareTag("Player")) return;
         _playerInside = false;
+        _waitingForReentry = false; // Bahar jane pe reset karo
         HideAllUI();
     }
 
@@ -126,7 +116,7 @@ public class BoatTrigger : MonoBehaviour
     public void OnPlayerExitedBoat()
     {
         HideAllUI();
-        _exitCooldown = 2.5f; // Utarne ke 2.5 second tak koi popup UI nahi aayega
+        _waitingForReentry = true; // Ek baar nikal gaya toh wapas trigger leave karke aane tak UI hide!
         
         // Target point pe aane ke baad hi oar drop hogi
         if (oarPickup != null && oarPickup.IsPickedUp && _playerController != null)

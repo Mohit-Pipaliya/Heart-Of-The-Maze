@@ -63,6 +63,16 @@ public class BoatSystem : MonoBehaviour
     [Range(0f, 0.99f)]
     public float boatDecelerationSmoothing = 0.85f;
 
+    [Header("AAA Polish (Physics & Feel)")]
+    [Tooltip("Smooth Acceleration Rate")]
+    public float accelerationRate = 2f;
+    [Tooltip("Turn Smoothing Momentum")]
+    public float turnSmoothing = 5f;
+    [Tooltip("Water Bobbing Intensity (Up/Down)")]
+    public float waterBobAmount = 0.5f;
+    [Tooltip("Water Bobbing Speed")]
+    public float waterBobSpeed = 2f;
+
     public enum AxisDirection { Z_Forward, Y_Up, X_Right, Negative_Z, Negative_Y, Negative_X }
     
     [Tooltip("Boat model ka aage badhne wala axis konsa hai? (Blender models ke liye Y_Up select karo)")]
@@ -151,6 +161,10 @@ public class BoatSystem : MonoBehaviour
     private Transform        _runtimeMount; // Unscaled mount to fix 3000x scale issues
     private Vector3          _currentBoatVelocity;
 
+    // AAA State
+    private float _currentSpeed = 0f;
+    private float _currentTurn = 0f;
+
     // Animator hashes
     private int _hashClimb;
     private int _hashSitDown;
@@ -232,38 +246,54 @@ public class BoatSystem : MonoBehaviour
                 _playerAnimator.SetBool(_hashIsPaddling, false);
         }
 
-        // Boat steering (Mouse + A/D Keys)
-        float turnInput = mouseX + (h * 2f); // Mouse aur A/D dono se ghoomegi
-        if (Mathf.Abs(turnInput) > 0.01f)
+        // ─── AAA Steering (Smooth Momentum) ───
+        float targetTurn = mouseX + (h * 2f); 
+        _currentTurn = Mathf.Lerp(_currentTurn, targetTurn, Time.deltaTime * turnSmoothing);
+
+        if (Mathf.Abs(_currentTurn) > 0.01f)
         {
-            float turn = turnInput * boatTurnSpeed * Time.deltaTime;
-            // Space.World ensure karta hai ki boat hamesha left/right ghoome, chahe uski local Y axis kuch bhi ho
+            float turn = _currentTurn * boatTurnSpeed * Time.deltaTime;
+            // Space.World ensure karta hai ki boat hamesha left/right ghoome
             transform.Rotate(Vector3.up, turn, Space.World);
             
-            // Forcefully sync Rigidbody rotation instantly
             if (boatRigidbody != null)
             {
                 boatRigidbody.rotation = transform.rotation;
             }
         }
 
-        // Forward Movement (Smooth Coasting)
-        if (pressing)
-        {
-            _currentBoatVelocity = GetBoatForward() * v * boatForwardSpeed;
-        }
-        else
-        {
-            _currentBoatVelocity = Vector3.Lerp(_currentBoatVelocity, Vector3.zero, Time.deltaTime * 2f);
-        }
+        // ─── AAA Acceleration (Smooth Speed) ───
+        float targetSpeed = pressing ? (v * boatForwardSpeed) : 0f;
+        float accRate = pressing ? accelerationRate : (1f - boatDecelerationSmoothing) * 10f;
+        _currentSpeed = Mathf.Lerp(_currentSpeed, targetSpeed, Time.deltaTime * accRate);
+
+        _currentBoatVelocity = GetBoatForward() * _currentSpeed;
 
         // Apply Movement
         Vector3 deltaMove = _currentBoatVelocity * Time.deltaTime;
         transform.position += deltaMove;
         
+        // ─── AAA Water Bobbing (Sine Wave) ───
+        // Boat paani pe halke se upar-neeche hogi
+        float bobOffset = Mathf.Sin(Time.time * waterBobSpeed) * waterBobAmount * Time.deltaTime;
+        transform.position += new Vector3(0, bobOffset, 0);
+
         if (boatRigidbody != null)
         {
             boatRigidbody.position = transform.position;
+        }
+
+        // ─── AAA Dynamic Camera (Speed pe depend karega) ───
+        if (Camera.main != null)
+        {
+            CameraController cam = Camera.main.GetComponent<CameraController>();
+            if (cam != null)
+            {
+                // Jaise speed badhegi, camera thoda peeche (zoom out) jayega speed feel ke liye
+                float speedFactor = Mathf.Abs(_currentSpeed) / boatForwardSpeed;
+                float dynamicDist = camDistance + (speedFactor * 1.5f);
+                cam.StartCinematic(dynamicDist, camOffset, camYaw, camPitch);
+            }
         }
     }
 
