@@ -110,6 +110,12 @@ public class OarPickup : MonoBehaviour
         // UI band karo
         if (pickupPromptUI != null) pickupPromptUI.SetActive(false);
 
+        // Agar player ke haath mein koi weapon hai toh pehle usko unequip karo
+        if (_playerController != null && _playerController.WeaponIndex != 0)
+        {
+            yield return StartCoroutine(_playerController.UnequipCurrentWeaponForPickup());
+        }
+
         // Player ko freeze karo
         if (_playerController != null)
             _playerController.SetFrozen(true, lockWorldPosition: false);
