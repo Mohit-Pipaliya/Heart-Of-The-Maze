@@ -156,9 +156,24 @@ public class SpiderEnemy : MonoBehaviour
             anim.SetTrigger(hashAttack);
             lastAttackTime = Time.time;
             
-            // Yahan par Player ko damage dene ka function call karein.
-            // Jaise: player.GetComponent<PlayerHealth>().TakeDamage(damageToPlayer);
-            Debug.Log("Spider attacked player!");
+            // Damage player ko thode delay ke baad lagna chahiye taaki animation match ho
+            StartCoroutine(DealDamageAfterDelay(0.5f));
+        }
+    }
+
+    private System.Collections.IEnumerator DealDamageAfterDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        
+        // Agar spider mar gaya ya player bahar chala gaya to damage na de
+        if (isDead || player == null || Vector3.Distance(transform.position, player.position) > attackRange + 1f)
+            yield break;
+
+        PlayerController pc = player.GetComponent<PlayerController>();
+        if (pc != null && !pc.IsDead)
+        {
+            pc.TakeDamage((int)damageToPlayer);
+            Debug.Log("Spider attacked player for " + damageToPlayer + " damage!");
         }
     }
 
