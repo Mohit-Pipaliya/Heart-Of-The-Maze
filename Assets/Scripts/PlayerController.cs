@@ -50,8 +50,9 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float gunWalkSpeed   = 2f;
     [SerializeField] private float gunRunSpeed    = 5f;
     
-    [SerializeField] private float jumpForce      = 5f;
-    [SerializeField] private float gravity        = -20f;   // -20 = grounded feel, -9.81 = real world
+    [SerializeField] private float jumpForce      = 1.5f;   // Changed from 5 to 1.5 for realistic height
+    [SerializeField] private float gravity        = -30f;   // Changed from -20 to -30 for faster pull
+    [SerializeField] private float fallMultiplier = 2.5f;   // Makes the player fall faster after reaching jump apex
     [SerializeField] private float speedDampTime  = 0.1f;   // Blend-tree smoothing
 
     [Header("Ground Check")]
@@ -245,8 +246,19 @@ public class PlayerController : MonoBehaviour
 
     private void OnAnimatorMove()
     {
-        if (_lockWorldPosition)
-            return;
+        if (_isDead || _cc == null || !_cc.enabled) return;
+
+        // If root motion is enabled (e.g. during pickup or unequip), apply X/Z only
+        if (_anim.applyRootMotion)
+        {
+            Vector3 rootMotionDelta = _anim.deltaPosition;
+            rootMotionDelta.y = 0f; // STRICTLY discard Y-axis root motion so animation cannot lift player
+
+            // Apply rotation
+            transform.rotation *= _anim.deltaRotation;
+
+            _cc.Move(rootMotionDelta);
+        }
     }
 
     // ─── Foot IK ──────────────────────────────────────────────────────────────
@@ -312,17 +324,12 @@ public class PlayerController : MonoBehaviour
 
     private void LateUpdate()
     {
-        if (_isDead || !_lockWorldPosition) return;
+        if (_isDead) return;
 
-        _anim.applyRootMotion = false;
-        CompensateAnimatedBodyBelowGround();
-        ClampLockedPositionAboveGround();
-
-        Vector3 correction = _lockedWorldPosition - transform.position;
-        if (correction.sqrMagnitude > 0.000001f)
-            _cc.Move(correction);
-
-        _velocity = Vector3.zero;
+        if (isFrozen)
+        {
+            _velocity = Vector3.zero; // Prevent physics drifting while frozen
+        }
     }
 
     private bool TrySampleGroundY(Vector3 referencePosition, out float groundY)
@@ -373,11 +380,10 @@ public class PlayerController : MonoBehaviour
         {
             Transform leftFoot = _anim.GetBoneTransform(HumanBodyBones.LeftFoot);
             Transform rightFoot = _anim.GetBoneTransform(HumanBodyBones.RightFoot);
-            Transform hips = _anim.GetBoneTransform(HumanBodyBones.Hips);
 
             if (leftFoot != null) lowestWorldY = Mathf.Min(lowestWorldY, leftFoot.position.y);
             if (rightFoot != null) lowestWorldY = Mathf.Min(lowestWorldY, rightFoot.position.y);
-            if (hips != null) lowestWorldY = Mathf.Min(lowestWorldY, hips.position.y);
+            // Hips removed from check because pickup animations lower the hips, causing the player to fly up
         }
         else
         {
@@ -437,8 +443,21 @@ public class PlayerController : MonoBehaviour
             _velocity.y = -2f; 
         }
 
-        // Accumulate gravity
-        _velocity.y += gravity * Time.deltaTime;
+        // Apply stronger gravity when falling for a snappy, realistic jump
+        if (_velocity.y < 0 && !_isGrounded)
+        {
+            _velocity.y += gravity * fallMultiplier * Time.deltaTime;
+        }
+        else if (_velocity.y > 0 && !Input.GetKey(KeyCode.Space))
+        {
+            // Low jump if space is released early
+            _velocity.y += gravity * (fallMultiplier / 1.5f) * Time.deltaTime;
+        }
+        else
+        {
+            // Normal gravity going up
+            _velocity.y += gravity * Time.deltaTime;
+        }
     }
 
     private void CalculateHorizontalMovement()
@@ -1000,24 +1019,43 @@ public class PlayerController : MonoBehaviour
         {
             _velocity = Vector3.zero;
             _anim.SetFloat(HashSpeed, 0f);
-            _anim.applyRootMotion = false;
-
-            if (lockWorldPosition)
-            {
-                _lockWorldPosition = true;
-                _lockedWorldPosition = transform.position;
-            }
+            
+            // Enable root motion so OnAnimatorMove can intercept and zero out Y
+            _anim.applyRootMotion = true; 
         }
         else
         {
-            _lockWorldPosition = false;
+            _anim.applyRootMotion = false; // Back to script-driven movement
+            SnapToGround(); // Snap to ground to fix any floating glitches
+        }
+    }
+
+    /// <summary>
+    /// Snaps the character to the ground using a Raycast.
+    /// This fixes any Y-position floating that might have happened during animation.
+    /// </summary>
+    public void SnapToGround()
+    {
+        if (_cc == null || !_cc.enabled) return;
+        
+        Vector3 rayOrigin = transform.position + Vector3.up * 1.5f;
+        if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, 5f, groundMask, QueryTriggerInteraction.Ignore))
+        {
+            float capsuleBottomOffset = _cc.center.y - (_cc.height * 0.5f);
+            Vector3 targetPos = hit.point + Vector3.up * (-capsuleBottomOffset + 0.05f); // 0.05f clearance
+            
+            Vector3 delta = targetPos - transform.position;
+            if (delta.sqrMagnitude > 0.0001f)
+            {
+                _cc.Move(delta);
+            }
         }
     }
 
     /// <summary>Moves the CharacterController up (e.g. during pickup/unequip animations while frozen).</summary>
     public void ApplyGroundLift(float metres)
     {
-        if (metres <= 0f || _cc == null) return;
+        if (Mathf.Abs(metres) <= 0.001f || _cc == null) return;
 
         if (_lockWorldPosition)
         {

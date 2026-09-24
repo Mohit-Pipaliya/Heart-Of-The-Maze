@@ -242,10 +242,10 @@ public class GunEquipSystem : MonoBehaviour
             rb.useGravity = false;
         }
 
-        Collider col = gun.GetComponent<Collider>();
-        if (col != null)
+        Collider[] colliders = gun.GetComponentsInChildren<Collider>();
+        foreach (Collider c in colliders)
         {
-            col.enabled = false;
+            c.enabled = false;
         }
 
         isPickingUpSequence = true;
@@ -266,7 +266,6 @@ public class GunEquipSystem : MonoBehaviour
 
         if (playerAnimator != null)
         {
-            playerAnimator.applyRootMotion = false;
             playerAnimator.ResetTrigger(pickupTrigger);
             playerAnimator.SetTrigger(pickupTrigger);
         }
@@ -276,12 +275,10 @@ public class GunEquipSystem : MonoBehaviour
         if (playerController != null)
         {
             playerController.SetFrozen(true, lockWorldPosition: true);
-            if (pickupGroundLift > 0f)
-                playerController.ApplyGroundLift(pickupGroundLift);
+            // LIFTS DISABLED: No code will lift the player now.
+            // if (pickupGroundLift > 0f)
+            //    playerController.ApplyGroundLift(pickupGroundLift);
         }
-
-        if (playerAnimator != null)
-            playerAnimator.applyRootMotion = false;
 
         if (playerAnimator != null)
             yield return WaitUntilAnimationReaches(playerAnimator, pickupHash, grabNormalizedTime, animWaitTimeout);
@@ -316,14 +313,11 @@ public class GunEquipSystem : MonoBehaviour
                 playerController.SyncWeaponStateFromExternal(2, true);
 
             // ── Ground Snap ─────────────────────────────────────────────────────
-            // Pickup animation ke liye player ko upar uthaya tha — ab unequip
-            // animation shuru hone se pehle original ground Y pe wapas laao.
-            // Negative ApplyGroundLift = neeche move (gravity ki tarah).
-            float liftedY   = transform.position.y;
-            float snapDelta = originalY - liftedY;   // negative value = neeche
-            Debug.Log($"[Gun] Ground snap: liftedY={liftedY:F3}  originalY={originalY:F3}  delta={snapDelta:F3}");
-            if (playerController != null && Mathf.Abs(snapDelta) > 0.01f)
-                playerController.ApplyGroundLift(snapDelta); // negative = neeche move
+            // Lifts and snaps completely disabled.
+            // float liftedY   = transform.position.y;
+            // float snapDelta = originalY - liftedY;   
+            // if (playerController != null && Mathf.Abs(snapDelta) > 0.01f)
+            //     playerController.ApplyGroundLift(snapDelta);
 
 
             // WeaponState=2 set karo aur direct CrossFade se UnequipGun force karo.
