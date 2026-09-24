@@ -9,9 +9,10 @@ public class SpiderEnemy : MonoBehaviour
     public float maxHealth = 100f;
     private float currentHealth;
 
-    [Header("AI Ranges")]
-    public float patrolRadius = 15f;
-    public float chaseRange = 15f;
+    [Header("AI Ranges & Territory")]
+    [Tooltip("Yahan ek BoxCollider ya SphereCollider drag karein jo spider ka area define karega. Iske andar spider ghumega aur player ko chase karega.")]
+    public Collider territoryTrigger;
+    
     public float attackRange = 2f;
     
     [Header("Combat Settings")]
@@ -80,14 +81,15 @@ public class SpiderEnemy : MonoBehaviour
             return;
         }
 
-        // Distance calculate karo
+        // Distance aur territory check
         float distanceToPlayer = player != null ? Vector3.Distance(transform.position, player.position) : Mathf.Infinity;
+        bool isPlayerInTerritory = territoryTrigger != null && player != null && territoryTrigger.bounds.Contains(player.position);
 
         if (distanceToPlayer <= attackRange)
         {
             AttackPlayer();
         }
-        else if (distanceToPlayer <= chaseRange)
+        else if (isPlayerInTerritory)
         {
             ChasePlayer();
         }
@@ -107,10 +109,25 @@ public class SpiderEnemy : MonoBehaviour
 
         if (!agent.pathPending && agent.remainingDistance < 0.5f)
         {
-            Vector3 randomDir = Random.insideUnitSphere * patrolRadius;
-            randomDir += startPos;
+            Vector3 randomDir;
             
-            if (NavMesh.SamplePosition(randomDir, out NavMeshHit hit, patrolRadius, 1))
+            if (territoryTrigger != null)
+            {
+                // Trigger area ke andar ek random jagah chuno
+                Bounds b = territoryTrigger.bounds;
+                randomDir = new Vector3(
+                    Random.Range(b.min.x, b.max.x),
+                    transform.position.y,
+                    Random.Range(b.min.z, b.max.z)
+                );
+            }
+            else
+            {
+                // Fallback agar koi area assign na kiya ho
+                randomDir = startPos + Random.insideUnitSphere * 15f;
+            }
+            
+            if (NavMesh.SamplePosition(randomDir, out NavMeshHit hit, 10f, NavMesh.AllAreas))
             {
                 agent.SetDestination(hit.position);
             }
@@ -176,13 +193,9 @@ public class SpiderEnemy : MonoBehaviour
         Destroy(gameObject, 5f);
     }
     
-    // Editor me Trigger Areas dekhne ke liye (Visual Debug)
+    // Editor me Attack Area dekhne ke liye (Visual Debug)
     private void OnDrawGizmosSelected()
     {
-        Gizmos.color = Color.yellow;
-        Gizmos.DrawWireSphere(transform.position, patrolRadius); // Patrol area
-        Gizmos.color = Color.red;
-        Gizmos.DrawWireSphere(transform.position, chaseRange);   // Chase area
         Gizmos.color = Color.black;
         Gizmos.DrawWireSphere(transform.position, attackRange);  // Attack area
     }
