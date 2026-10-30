@@ -31,6 +31,19 @@ public static class GameAudio
     private static AudioClip _bulletFleshClip;
     private static AudioClip _bulletGroundClip;
 
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    public static void ResetCache()
+    {
+        _gunshotClip = null;
+        _swordSwingClip = null;
+        _swordClashClip = null;
+        _swordFleshClip = null;
+        _spiderAttackClip = null;
+        _spiderHurtClip = null;
+        _bulletFleshClip = null;
+        _bulletGroundClip = null;
+    }
+
     public static AudioClip GetClip(SoundType type)
     {
         switch (type)
