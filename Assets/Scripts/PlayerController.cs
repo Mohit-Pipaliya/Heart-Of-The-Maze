@@ -39,21 +39,27 @@ public class PlayerController : MonoBehaviour
 {
     // ─── Inspector Fields ──────────────────────────────────────────────────────
     [Header("Movement")]
-    [SerializeField] private float walkSpeed      = 2f;
-    [SerializeField] private float runSpeed       = 5f;
-    [SerializeField] private float rotationSpeed  = 150f; // Keyboard turning speed
-    [SerializeField] private float mouseSensitivity = 2.0f; // Mouse turning speed
+    [SerializeField] private float walkSpeed      = 4.8f;   // Natural human walk (~4.8 m/s)
+    [SerializeField] private float runSpeed       = 9.5f;   // Natural human run (~9.5 m/s)
+    [SerializeField] private float rotationSpeed  = 720f;   // Degrees/sec toward move (or aim) direction
+    [SerializeField] private float mouseSensitivity = 2.0f; // Fallback if no CameraController
+    [SerializeField] private float acceleration   = 60f;    // Snappy responsive start
+    [SerializeField] private float deceleration   = 120f;   // Snappy stop
+    [SerializeField] private float airControl     = 0.4f;
+    [SerializeField] private float moveDeadZone   = 0.05f;
 
+    [Header("Camera")]
+    [Tooltip("If empty, Camera.main CameraController is used. Mouse look lives on the camera; WASD is camera-relative.")]
+    [SerializeField] private CameraController cameraRig;
 
-    
     [Header("Gun Movement")]
-    [SerializeField] private float gunWalkSpeed   = 2f;
-    [SerializeField] private float gunRunSpeed    = 5f;
+    [SerializeField] private float gunWalkSpeed   = 4.2f;
+    [SerializeField] private float gunRunSpeed    = 8.5f;
     
-    [SerializeField] private float jumpForce      = 1.5f;   // Changed from 5 to 1.5 for realistic height
-    [SerializeField] private float gravity        = -30f;   // Changed from -20 to -30 for faster pull
-    [SerializeField] private float fallMultiplier = 2.5f;   // Makes the player fall faster after reaching jump apex
-    [SerializeField] private float speedDampTime  = 0.1f;   // Blend-tree smoothing
+    [SerializeField] private float jumpForce      = 1.8f;
+    [SerializeField] private float gravity        = -55f;   // Strong realistic gravity (was -22 — caused floating)
+    [SerializeField] private float fallMultiplier = 2.2f;
+    [SerializeField] private float speedDampTime  = 0.04f;  // Was 0.1 — animator blend faster, less glide
 
     [Header("Ground Check")]
     [SerializeField] private LayerMask groundMask;          // LayerMask to define what is "Ground"
@@ -126,6 +132,7 @@ public class PlayerController : MonoBehaviour
 
     // Animator parameter hashes (faster than string lookups every frame)
     private static readonly int HashSpeed       = Animator.StringToHash("Speed");
+    private static readonly int HashIsGrounded = Animator.StringToHash("IsGrounded");
     private static readonly int HashWeaponState = Animator.StringToHash("WeaponState");
     private static readonly int HashAttackIndex = Animator.StringToHash("AttackIndex");
     private static readonly int HashJump        = Animator.StringToHash("Jump");
@@ -210,6 +217,23 @@ public class PlayerController : MonoBehaviour
         */
         if (gunObject) gunObject.SetActive(false);
         _anim.SetInteger(HashWeaponState, (int)WeaponState.Unarmed);
+
+        if (cameraRig == null && Camera.main != null)
+            cameraRig = Camera.main.GetComponent<CameraController>();
+
+        // Ensure SwordAttackEffect is present for AAA sword VFX & sound
+        if (SwordAttackEffect.Instance == null)
+        {
+            SwordAttackEffect sae = GetComponentInChildren<SwordAttackEffect>(true);
+            if (sae == null)
+            {
+                GameObject sObj = swordObject;
+                if (sObj == null && _swordSystem != null && _swordSystem.sword != null)
+                    sObj = _swordSystem.sword;
+                if (sObj == null) sObj = gameObject;
+                sObj.AddComponent<SwordAttackEffect>();
+            }
+        }
     }
 
     private void Update()
@@ -218,7 +242,7 @@ public class PlayerController : MonoBehaviour
 
         if (isFrozen)
         {
-            _anim.SetBool("IsGrounded", _isGrounded);
+            _anim.SetBool(HashIsGrounded, _isGrounded);
             return;
         }
 
@@ -238,7 +262,7 @@ public class PlayerController : MonoBehaviour
         _cc.Move(_velocity * Time.deltaTime);
 
         // Step 6: Update Animator
-        _anim.SetBool("IsGrounded", _isGrounded);
+        _anim.SetBool(HashIsGrounded, _isGrounded);
 
         HandleWeaponSwitch();
         HandleAttack();
@@ -271,7 +295,14 @@ public class PlayerController : MonoBehaviour
     private void OnAnimatorIK(int layerIndex)
     {
         if (!useFootIK || _anim == null || !_anim.isHuman) return;
-        if (_isDead || isFrozen) return;
+        if (_isDead)
+        {
+            _leftFootIKWeight  = 0f;
+            _rightFootIKWeight = 0f;
+            ApplyFootIKWeights();
+            return;
+        }
+        if (isFrozen) return;
         // Jump ke dauraan IK off
         if (!_isGrounded) 
         {
@@ -421,16 +452,15 @@ public class PlayerController : MonoBehaviour
         _isGrounded = _cc.isGrounded;
         
         // 100% Pivot-Independent check: SphereCast/CheckSphere
-        // Better than Raycast because a thin ray can easily miss edges.
         if (!_isGrounded)
         {
-            // Position the sphere at the bottom of the capsule controller
             Vector3 spherePosition = _cc.bounds.center;
             spherePosition.y -= _cc.bounds.extents.y;     // Go to the base
             spherePosition.y += groundCheckRadius - groundCheckOffset; // Offset it slightly up
 
-            // Use LayerMask so we don't accidentally hit the player's own triggers/weapons
-            _isGrounded = Physics.CheckSphere(spherePosition, groundCheckRadius, groundMask);
+            // Include Default layer (1 << 0) so checkered plane, terrain, etc. are always ground
+            int effectiveMask = (groundMask.value != 0) ? (groundMask.value | (1 << 0)) : ~LayerMask.GetMask("Player", "Ignore Raycast");
+            _isGrounded = Physics.CheckSphere(spherePosition, groundCheckRadius, effectiveMask);
         }
     }
 
@@ -438,82 +468,133 @@ public class PlayerController : MonoBehaviour
     {
         if (_isGrounded && _velocity.y < 0f)
         {
-            // Setting a small negative value like -2f is perfectly correct! 
-            // It ensures the CharacterController stays snapped to the ground next frame.
-            _velocity.y = -2f; 
+            // Strong downward snap keeps player glued to ground slopes — NO FLOATING
+            _velocity.y = -15f; 
         }
 
-        // Apply stronger gravity when falling for a snappy, realistic jump
+        // Apply stronger gravity when falling for a snappy, realistic feel (no moon float)
         if (_velocity.y < 0 && !_isGrounded)
         {
             _velocity.y += gravity * fallMultiplier * Time.deltaTime;
         }
         else if (_velocity.y > 0 && !Input.GetKey(KeyCode.Space))
         {
-            // Low jump if space is released early
             _velocity.y += gravity * (fallMultiplier / 1.5f) * Time.deltaTime;
         }
         else
         {
-            // Normal gravity going up
             _velocity.y += gravity * Time.deltaTime;
         }
     }
 
     private void CalculateHorizontalMovement()
     {
-        // Raw input
-        float h = Input.GetAxis("Horizontal");
-        float v = Input.GetAxis("Vertical");
-        float mouseX = Input.GetAxis("Mouse X");
+        float h = Input.GetAxisRaw("Horizontal");
+        float v = Input.GetAxisRaw("Vertical");
+        Vector2 moveInput = new Vector2(h, v);
+        if (moveInput.sqrMagnitude > 1f)
+            moveInput.Normalize();
 
-        // 1. Player Rotation (A/D and Mouse X physically rotate the character)
-        float rotationInput = (h * rotationSpeed * Time.deltaTime) + (mouseX * mouseSensitivity);
-        if (Mathf.Abs(rotationInput) > 0.001f)
-        {
-            transform.Rotate(Vector3.up, rotationInput);
-        }
+        bool hasRawKey = Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.A) || 
+                         Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.D) ||
+                         Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.LeftArrow) ||
+                         Input.GetKey(KeyCode.DownArrow) || Input.GetKey(KeyCode.RightArrow);
 
         bool running = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-        
-        // Target blend-tree speed value
-        float targetSpeed = 0f;
-        float inputMag = Mathf.Clamp01(new Vector2(h, v).magnitude);
-        
-        if (inputMag > 0.1f)
-            targetSpeed = running ? 1f : 0.5f;
+        bool aiming = IsPlayerAiming();
+        bool hasMove = (hasRawKey || moveInput.sqrMagnitude > 0.01f) && moveInput.sqrMagnitude > moveDeadZone * moveDeadZone;
 
-        // Smooth transition for Animator
-        float currentSpeed = _anim.GetFloat(HashSpeed);
-        float smoothSpeed  = Mathf.MoveTowards(currentSpeed, targetSpeed, Time.deltaTime / speedDampTime);
-        _anim.SetFloat(HashSpeed, smoothSpeed);
+        Vector3 planarForward;
+        Vector3 planarRight;
+        GetCameraPlanarAxes(out planarForward, out planarRight);
 
-        // 2. Character-Relative Forward/Backward Movement
-        float forwardInput = v;
-        if (Mathf.Abs(h) > 0.01f && Mathf.Abs(v) < 0.01f)
-        {
-            // Give a slight forward movement when only turning
-            forwardInput = Mathf.Abs(h) * 0.2f; 
-        }
+        Vector3 desiredDir = Vector3.zero;
+        if (hasMove)
+            desiredDir = (planarForward * moveInput.y + planarRight * moveInput.x).normalized;
 
-        if (Mathf.Abs(forwardInput) > 0.01f)
+        float currentWalkSpeed = (_currentWeapon == WeaponState.Gun) ? gunWalkSpeed : walkSpeed;
+        float currentRunSpeed = (_currentWeapon == WeaponState.Gun) ? gunRunSpeed : runSpeed;
+        float maxSpeed = running ? currentRunSpeed : currentWalkSpeed;
+        if (aiming)
+            maxSpeed = currentWalkSpeed;
+
+        if (!hasMove)
         {
-            float currentWalkSpeed = (_currentWeapon == WeaponState.Gun) ? gunWalkSpeed : walkSpeed;
-            float currentRunSpeed = (_currentWeapon == WeaponState.Gun) ? gunRunSpeed : runSpeed;
-            float moveSpeed = running ? currentRunSpeed : currentWalkSpeed;
-            
-            // Move along the player's own forward vector
-            Vector3 dir = transform.forward * forwardInput;
-            
-            _velocity.x = dir.x * moveSpeed;
-            _velocity.z = dir.z * moveSpeed;
-        }
-        else 
-        {
-            // Reset horizontal velocity when no movement input
+            // ABSOLUTE ZERO SLIDING: When keys are released, velocity and speed are immediately zeroed
             _velocity.x = 0f;
             _velocity.z = 0f;
+            _anim.SetFloat(HashSpeed, 0f);
         }
+        else
+        {
+            Vector3 targetHoriz = desiredDir * maxSpeed;
+            Vector3 horiz = new Vector3(_velocity.x, 0f, _velocity.z);
+            horiz = Vector3.MoveTowards(horiz, targetHoriz, acceleration * Time.deltaTime);
+            _velocity.x = horiz.x;
+            _velocity.z = horiz.z;
+        }
+
+        Vector3 faceDir = Vector3.zero;
+        if (aiming)
+            faceDir = planarForward;
+        else if (hasMove)
+            faceDir = desiredDir;
+
+        if (faceDir.sqrMagnitude > 0.0001f)
+        {
+            Quaternion targetRot = Quaternion.LookRotation(faceDir, Vector3.up);
+            transform.rotation = Quaternion.RotateTowards(
+                transform.rotation, targetRot, rotationSpeed * Time.deltaTime);
+        }
+
+        // Drive the 1D blend tree: immediate snap to 0 on release, smooth blend on move
+        if (!hasMove)
+        {
+            _anim.SetFloat(HashSpeed, 0f);
+        }
+        else
+        {
+            float targetAnimSpeed = (running && !aiming) ? 1.0f : 0.5f;
+            float currentAnimSpeed = _anim.GetFloat(HashSpeed);
+            float smoothSpeed = Mathf.MoveTowards(currentAnimSpeed, targetAnimSpeed, Time.deltaTime / Mathf.Max(0.01f, speedDampTime));
+            _anim.SetFloat(HashSpeed, smoothSpeed);
+        }
+    }
+
+    private void GetCameraPlanarAxes(out Vector3 forward, out Vector3 right)
+    {
+        if (cameraRig != null)
+        {
+            forward = cameraRig.PlanarForward;
+            right = cameraRig.PlanarRight;
+            return;
+        }
+
+        if (Camera.main != null)
+        {
+            forward = Camera.main.transform.forward;
+            right = Camera.main.transform.right;
+        }
+        else
+        {
+            forward = transform.forward;
+            right = transform.right;
+        }
+
+        forward.y = 0f;
+        right.y = 0f;
+        if (forward.sqrMagnitude < 0.0001f)
+            forward = transform.forward;
+        if (right.sqrMagnitude < 0.0001f)
+            right = transform.right;
+        forward.Normalize();
+        right.Normalize();
+    }
+
+    private bool IsPlayerAiming()
+    {
+        if (_currentWeapon != WeaponState.Gun) return false;
+        return Input.GetMouseButton(1) || Input.GetMouseButton(0);
     }
 
     // ─── Jump ─────────────────────────────────────────────────────────────────
@@ -780,21 +861,20 @@ public class PlayerController : MonoBehaviour
                 _anim.SetInteger(HashAttackIndex, Random.Range(0, 2));
                 _anim.ResetTrigger(HashAttack);
                 _anim.SetTrigger(HashAttack);
+
+                // Play crisp, authentic sword swing SFX
+                GameAudio.PlaySwordSwing(transform.position);
+
+                // AAA sword VFX — blade trail + flash light + sound
+                if (SwordAttackEffect.Instance != null)
+                    SwordAttackEffect.Instance.TriggerAttack();
+
+                // Deal 15 damage to enemy in front of player
+                StartCoroutine(PerformSwordDamageWithDelay(0.2f, 15f));
             }
         }
         else if (_currentWeapon == WeaponState.Gun)
         {
-            // Firing Logic: Left Click (Mouse 0)
-            if (Input.GetMouseButton(0) && Time.time >= _nextFireTime)
-            {
-                _nextFireTime = Time.time + gunFireRate;
-                _lastFireTime = Time.time;
-                
-                // Fire ka animation chalao (Trigger se, ye zyada reliable hai)
-                _anim.ResetTrigger(HashFire);
-                _anim.SetTrigger(HashFire);
-            }
-
             // Aim Logic: 
             // 1. Right Click (Mouse 1) daba kar rakhne par Aim hoga.
             // 2. Left Click (Mouse 0) daba kar rakhne par bhi Aim hoga.
@@ -805,6 +885,43 @@ public class PlayerController : MonoBehaviour
 
             bool isAiming = isRightClickAiming || isLeftClickHeld || isFiringCooldown;
             _anim.SetBool(HashIsAiming, isAiming);
+        }
+    }
+
+    private IEnumerator PerformSwordDamageWithDelay(float delay, float damage)
+    {
+        yield return new WaitForSeconds(delay);
+        Vector3 attackCenter = transform.position + transform.forward * 2.5f + Vector3.up * 1.0f;
+        Collider[] hits = Physics.OverlapSphere(attackCenter, 3.2f);
+
+        foreach (Collider col in hits)
+        {
+            if (col.transform == transform || col.transform.IsChildOf(transform)) continue;
+            SpiderEnemy enemy = col.GetComponentInParent<SpiderEnemy>();
+            if (enemy != null && !enemy.IsDead)
+            {
+                enemy.TakeDamage(damage);
+                Vector3 contactPoint = col.ClosestPoint(attackCenter);
+                GameAudio.PlaySwordImpact(contactPoint, true);
+                if (SwordAttackEffect.Instance != null)
+                    SwordAttackEffect.Instance.TriggerImpact(contactPoint, -transform.forward, true);
+                if (GunShooter.Instance != null)
+                    GunShooter.Instance.RegisterHitMarker(enemy.IsDead);
+                break; // Hit one enemy per swing
+            }
+        }
+    }
+
+    /// <summary>
+    /// Synchronized trigger from GunShooter when a bullet is actually fired.
+    /// </summary>
+    public void TriggerFireAnimation()
+    {
+        _lastFireTime = Time.time;
+        if (_anim != null)
+        {
+            _anim.ResetTrigger(HashFire);
+            _anim.SetTrigger(HashFire);
         }
     }
 
@@ -835,12 +952,36 @@ public class PlayerController : MonoBehaviour
         if (_isDead) return;
         _isDead = true;
 
-        // The Animator plays Die (no weapon) or Die2 (with weapon) based on WeaponState.
-        // We set the WeaponState BEFORE firing the trigger so the Animator can branch.
-        _anim.SetTrigger(HashDie);
+        _velocity = Vector3.zero;
+
+        if (_anim != null)
+        {
+            _anim.applyRootMotion = false;
+
+            // Shooting Layer (UpperBody) disable karo taaki full-body death anim properly chale
+            for (int i = 1; i < _anim.layerCount; i++)
+            {
+                _anim.SetLayerWeight(i, 0f);
+            }
+
+            // Foot IK zero out karo taaki dead body hawa me na tange
+            _leftFootIKWeight = 0f;
+            _rightFootIKWeight = 0f;
+            ApplyFootIKWeights();
+
+            // The Animator plays Die (no weapon) or Die2 (with weapon) based on WeaponState.
+            // We set the WeaponState BEFORE firing the trigger so the Animator can branch.
+            _anim.SetTrigger(HashDie);
+        }
+        
+        // Zameen par snap karo taaki hawa me float na kare
+        SnapToGround();
 
         // Disable controller so the body stops moving
-        _cc.enabled = false;
+        if (_cc != null)
+        {
+            _cc.enabled = false;
+        }
     }
 
 
@@ -868,43 +1009,37 @@ public class PlayerController : MonoBehaviour
     private IEnumerator RunUnequipAnimation()
     {
         _anim.applyRootMotion = false;
-        if (unequipGroundLift > 0f)
+        if (unequipGroundLift > 0f && _cc != null && _cc.enabled)
             _cc.Move(Vector3.up * unequipGroundLift);
-        yield return FireTriggerInstant(HashUnequip);
+
+        _anim.SetInteger(HashWeaponState, 1);
+        _anim.ResetTrigger(HashUnequip);
+        _anim.CrossFadeInFixedTime("UnequipSword", 0.15f, 0, 0f);
+        yield return null;
     }
 
     private IEnumerator RunTorchUnequipAnimation()
     {
         _anim.applyRootMotion = false;
-        if (unequipGroundLift > 0f)
+        if (unequipGroundLift > 0f && _cc != null && _cc.enabled)
             _cc.Move(Vector3.up * unequipGroundLift);
         yield return FireTriggerInstant(HashUnequipTorch);
     }
 
     /// <summary>
     /// Gun ke liye special unequip:
-    /// Gun stance (WeaponState=2) mein character zyada jhuka hota hai.
-    /// Step 1: WeaponState=0 set karke Animator ko Unarmed stance mein lao (character seedha khada hoga)
-    /// Step 2: Extra lift apply karo (gun stance ke liye zyada zaroori)
-    /// Step 3: Trigger fire karo
-    /// Agar Animator mein Gun aur Sword ka alag Unequip hai, tab bhi apna kaam karega
-    /// kyunki hum pehle neutral (Unarmed) state mein jaate hain.
+    /// WeaponState = 2 set karke direct UnequipGun animation crossfade karta hai.
     /// </summary>
     public IEnumerator RunGunUnequipAnimation()
     {
         _anim.applyRootMotion = false;
-
-        // Gun stance se seedha Unarmed mein jao — character normal height pe aayega
-        _anim.SetInteger(HashWeaponState, 0);
-        yield return new WaitForFixedUpdate();
-        yield return new WaitForFixedUpdate();
-        yield return new WaitForFixedUpdate(); // 3 physics frames: Animator settle ho
-
-        // Extra lift for gun (gun pose me character sword se zyada neeche hota hai)
-        if (gunUnequipGroundLift > 0f)
+        if (gunUnequipGroundLift > 0f && _cc != null && _cc.enabled)
             _cc.Move(Vector3.up * gunUnequipGroundLift);
 
-        yield return FireTriggerInstant(HashUnequip);
+        _anim.SetInteger(HashWeaponState, 2);
+        _anim.ResetTrigger(HashUnequip);
+        _anim.CrossFadeInFixedTime("UnequipGun", 0.15f, 0, 0f);
+        yield return null;
     }
 
 
@@ -971,29 +1106,28 @@ public class PlayerController : MonoBehaviour
     }
 
     /// <summary>
-    /// Mashal pickup ke liye: currently equipped weapon ko unequip karta hai
+    /// Weapon pickup ke liye: currently equipped weapon ko unequip karta hai
     /// aur tab tak wait karta hai jab tak weapon holster/back pe nahi chala jaata.
-    /// TorchInteractionSystem ke GrabRoutine mein 'yield return' ke saath use karo.
+    /// Ground pickup shuru hone se pehle isko use karein.
     /// </summary>
     public IEnumerator UnequipCurrentWeaponForPickup()
     {
-        // Agar kuch bhi equipped nahi hai ya already busy hai toh seedha return karo
-        if (_currentWeapon == WeaponState.Unarmed || _isSequenceRunning) yield break;
+        // Agar kuch bhi equipped nahi hai ya already sequence chal raha hai toh seedha return karo
+        if (_currentWeapon == WeaponState.Unarmed) yield break;
 
         _isSequenceRunning = true;
+        SetFrozen(true);
 
         if (_currentWeapon == WeaponState.Sword && _swordSystem != null)
         {
             yield return RunUnequipAnimation();
             _swordSystem.StartUnequip();
-            yield return new WaitForSeconds(unequipAnimDuration);
             while (_swordSystem.CurrentState != SwordEquipSystem.SwordState.OnBack) yield return null;
         }
         else if (_currentWeapon == WeaponState.Gun && _gunSystem != null)
         {
             yield return RunGunUnequipAnimation();
             _gunSystem.StartUnequip();
-            yield return new WaitForSeconds(unequipAnimDuration);
             while (_gunSystem.CurrentState != GunEquipSystem.GunState.Holstered) yield return null;
         }
         else if (_currentWeapon == WeaponState.Torch && _torchSystem != null)
@@ -1001,14 +1135,13 @@ public class PlayerController : MonoBehaviour
             yield return RunTorchUnequipAnimation();
             _torchSystem.StartUnequip();
             while (_torchSystem.currentState != TorchInteractionSystem.TorchState.Placed) yield return null;
-            _anim.SetInteger(HashWeaponState, 0);
-            _anim.applyRootMotion = false;
-            yield return null;
         }
 
         _currentWeapon = WeaponState.Unarmed;
         _anim.SetInteger(HashWeaponState, 0);
         _anim.applyRootMotion = false;
+        _anim.CrossFadeInFixedTime("Locomotion", 0.15f, 0, 0f);
+        yield return new WaitForSeconds(0.15f);
         _isSequenceRunning = false;
     }
 
@@ -1036,18 +1169,24 @@ public class PlayerController : MonoBehaviour
     /// </summary>
     public void SnapToGround()
     {
-        if (_cc == null || !_cc.enabled) return;
-        
         Vector3 rayOrigin = transform.position + Vector3.up * 1.5f;
-        if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, 5f, groundMask, QueryTriggerInteraction.Ignore))
+        LayerMask mask = groundMask.value != 0 ? groundMask : Physics.DefaultRaycastLayers;
+        if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, 50f, mask, QueryTriggerInteraction.Ignore))
         {
-            float capsuleBottomOffset = _cc.center.y - (_cc.height * 0.5f);
+            float capsuleBottomOffset = (_cc != null) ? (_cc.center.y - (_cc.height * 0.5f)) : 0f;
             Vector3 targetPos = hit.point + Vector3.up * (-capsuleBottomOffset + 0.05f); // 0.05f clearance
             
-            Vector3 delta = targetPos - transform.position;
-            if (delta.sqrMagnitude > 0.0001f)
+            if (_cc != null && _cc.enabled)
             {
-                _cc.Move(delta);
+                Vector3 delta = targetPos - transform.position;
+                if (delta.sqrMagnitude > 0.0001f)
+                {
+                    _cc.Move(delta);
+                }
+            }
+            else
+            {
+                transform.position = targetPos;
             }
         }
     }
@@ -1078,6 +1217,12 @@ public class PlayerController : MonoBehaviour
     /// <summary>Returns true if the player is dead.</summary>
     public bool IsDead      => _isDead;
 
-    /// <summary>Returns the active weapon as an integer (0=None, 1=Sword, 2=Gun).</summary>
+    /// <summary>Returns the active weapon as an integer (0=None, 1=Sword, 2=Gun, 3=Torch).</summary>
     public int  WeaponIndex => (int)_currentWeapon;
+
+    /// <summary>Returns true if player currently has any weapon equipped in hand.</summary>
+    public bool IsHoldingWeapon => _currentWeapon != WeaponState.Unarmed;
+
+    /// <summary>Returns true if an unequip or equip sequence is currently active.</summary>
+    public bool IsSequenceRunning => _isSequenceRunning;
 }

@@ -13,25 +13,35 @@ public class SpiderEnemy : MonoBehaviour
     [Tooltip("Yahan ek BoxCollider ya SphereCollider drag karein jo spider ka area define karega. Iske andar spider ghumega aur player ko chase karega.")]
     public Collider territoryTrigger;
     
-    public float attackRange = 2f;
+    public float attackRange = 3.5f;         // Slightly larger attack zone for natural feel
     
     [Header("Combat Settings")]
-    public float attackCooldown = 2f;
+    public float attackCooldown = 2.2f;      // Natural attack cycle
     public float damageToPlayer = 10f;
+
+    [Header("Audio SFX")]
+    public AudioClip attackSound;
+    public AudioClip biteHitSound;
     
     [Header("Movement Settings")]
-    public float walkSpeed = 2f;
-    public float runSpeed = 5f;
+    public float walkSpeed = 1.8f;           // Natural, calm spider patrol speed
+    public float runSpeed = 4.2f;            // Natural chase speed (no supersonic rushing)
+    public float rotationSpeed = 6f;         // Smooth look-at speed during attack
 
     [Header("References")]
     public Transform player;
 
     private NavMeshAgent agent;
     private Animator anim;
+    private AudioSource audioSource;
     private Vector3 startPos;
     private float lastAttackTime;
+    private float _animSpeedTarget = 0f;     // Smooth animator Speed blending
+    private float _animSpeedCurrent = 0f;
     
     private bool isDead = false;
+    public bool IsDead => isDead;
+    public float CurrentHealth => currentHealth;
 
     // Animator Parameter Hashes (Fast lookup)
     private int hashSpeed;
@@ -40,10 +50,37 @@ public class SpiderEnemy : MonoBehaviour
     private int hashDie;
     private int hashJump;
 
+    private void Awake()
+    {
+        // Collider strictly required for bullets (Physics.Raycast) and sword (Physics.OverlapSphere)
+        Collider col = GetComponent<Collider>();
+        if (col == null)
+        {
+            CapsuleCollider cap = gameObject.AddComponent<CapsuleCollider>();
+            cap.center = new Vector3(0f, 1.0f, 0f);
+            cap.radius = 2.2f;
+            cap.height = 2.5f;
+            cap.direction = 1; // Y-axis
+        }
+    }
+
     void Start()
     {
         agent = GetComponent<NavMeshAgent>();
         anim = GetComponent<Animator>();
+        audioSource = GetComponent<AudioSource>();
+        if (audioSource == null)
+        {
+            audioSource = gameObject.AddComponent<AudioSource>();
+            audioSource.playOnAwake = false;
+            audioSource.spatialBlend = 0.4f;
+        }
+
+        if (attackSound == null)
+            attackSound = GameAudio.GetClip(GameAudio.SoundType.SpiderAttack);
+        if (biteHitSound == null)
+            biteHitSound = GameAudio.GetClip(GameAudio.SoundType.SpiderHurt);
+
         currentHealth = maxHealth;
         startPos = transform.position;
 
@@ -98,8 +135,10 @@ public class SpiderEnemy : MonoBehaviour
             Patrol();
         }
 
-        // Update Animator Speed parameter (Isse walk/run blend hoga)
-        anim.SetFloat(hashSpeed, agent.velocity.magnitude);
+        // Update Animator Speed parameter — smooth blend for natural transition
+        _animSpeedTarget = agent.velocity.magnitude;
+        _animSpeedCurrent = Mathf.Lerp(_animSpeedCurrent, _animSpeedTarget, Time.deltaTime * 8f);
+        anim.SetFloat(hashSpeed, _animSpeedCurrent);
     }
 
     private void Patrol()
@@ -146,18 +185,28 @@ public class SpiderEnemy : MonoBehaviour
     {
         agent.isStopped = true; // Attack ke time ruk jao
         
-        // Player ki taraf dekho
-        Vector3 direction = (player.position - transform.position).normalized;
-        direction.y = 0; // Tedi nahi honi chahiye
-        transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(direction), Time.deltaTime * 5f);
+        // Player ki taraf smooth rotation (natural head tracking)
+        if (player != null)
+        {
+            Vector3 direction = (player.position - transform.position).normalized;
+            direction.y = 0;
+            Quaternion targetRot = Quaternion.LookRotation(direction);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * rotationSpeed);
+        }
 
         if (Time.time >= lastAttackTime + attackCooldown)
         {
             anim.SetTrigger(hashAttack);
             lastAttackTime = Time.time;
+
+            if (audioSource != null && attackSound != null)
+            {
+                audioSource.pitch = Random.Range(0.85f, 1.15f);
+                audioSource.PlayOneShot(attackSound, 1.0f);
+            }
             
             // Damage player ko thode delay ke baad lagna chahiye taaki animation match ho
-            StartCoroutine(DealDamageAfterDelay(0.5f));
+            StartCoroutine(DealDamageAfterDelay(0.4f));
         }
     }
 
@@ -173,6 +222,8 @@ public class SpiderEnemy : MonoBehaviour
         if (pc != null && !pc.IsDead)
         {
             pc.TakeDamage((int)damageToPlayer);
+            if (audioSource != null && biteHitSound != null)
+                audioSource.PlayOneShot(biteHitSound, 1.2f);
             Debug.Log("Spider attacked player for " + damageToPlayer + " damage!");
         }
     }
@@ -183,6 +234,8 @@ public class SpiderEnemy : MonoBehaviour
         if (isDead) return;
 
         currentHealth -= amount;
+        GameAudio.PlaySpiderHurt(transform.position, audioSource, 1.2f);
+
         if (currentHealth <= 0)
         {
             Die();

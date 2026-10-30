@@ -10,6 +10,7 @@ public class GunPickup : MonoBehaviour
 
     private bool playerInRange = false;
     private GunEquipSystem playerEquipSystem;
+    private PlayerController playerController;
 
     private void Start()
     {
@@ -29,7 +30,11 @@ public class GunPickup : MonoBehaviour
     {
         if (playerInRange && playerEquipSystem != null)
         {
-            if (Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame)
+            if (playerController != null && (playerController.IsDead || playerController.isFrozen || playerController.IsSequenceRunning))
+                return;
+
+            bool ePressed = (Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame) || Input.GetKeyDown(KeyCode.E);
+            if (ePressed)
             {
                 Pickup();
             }
@@ -38,12 +43,14 @@ public class GunPickup : MonoBehaviour
 
     private void Pickup()
     {
+        playerInRange = false;
         if (pickupPrompt != null)
         {
             pickupPrompt.SetActive(false);
         }
 
-        playerEquipSystem.PickupGunFromGround();
+        if (playerEquipSystem != null)
+            playerEquipSystem.PickupGunFromGround();
         this.enabled = false; 
     }
 
@@ -56,6 +63,7 @@ public class GunPickup : MonoBehaviour
             {
                 playerInRange = true;
                 playerEquipSystem = sys;
+                playerController = other.GetComponentInParent<PlayerController>();
 
                 if (pickupPrompt != null)
                 {
@@ -73,6 +81,7 @@ public class GunPickup : MonoBehaviour
             {
                 playerInRange = false;
                 playerEquipSystem = null;
+                playerController = null;
 
                 if (pickupPrompt != null)
                 {

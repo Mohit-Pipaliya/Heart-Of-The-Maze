@@ -112,7 +112,11 @@ public class TorchInteractionSystem : MonoBehaviour
         // 1. Grab Phase (Press E)
         if (playerInRange && currentState == TorchState.OnGround)
         {
-            if (Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame)
+            if (playerController != null && (playerController.IsDead || playerController.isFrozen || playerController.IsSequenceRunning))
+                return;
+
+            bool ePressed = (Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame) || Input.GetKeyDown(KeyCode.E);
+            if (ePressed)
             {
                 StartCoroutine(GrabRoutine());
             }

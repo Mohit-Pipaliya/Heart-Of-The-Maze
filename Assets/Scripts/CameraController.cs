@@ -29,8 +29,50 @@ public class CameraController : MonoBehaviour
     [Range(-20f, 70f)]
     public float editorPreviewPitch = 15f;
 
+    [Header("AAA Gun Recoil & Shake")]
+    public float recoilRecoverySpeed = 14f;
+    private Vector2 _recoilOffset = Vector2.zero;
+    private Vector3 _shakeOffset = Vector3.zero;
+
+    public static CameraController Instance { get; private set; }
+
+    private void Awake()
+    {
+        Instance = this;
+    }
+
+    public void AddRecoil(float pitchKick, float yawKick, float shakeAmount)
+    {
+        _recoilOffset.x -= pitchKick; // Kick up
+        _recoilOffset.y += yawKick;   // Random horizontal sway
+        _shakeOffset += Random.insideUnitSphere * shakeAmount;
+    }
+
     private float mouseY = 0.0f;
+    private float mouseX = 0.0f;
     private Vector3 currentPosVelocity;
+
+    public float Yaw => mouseX;
+
+    public Vector3 PlanarForward
+    {
+        get
+        {
+            Vector3 f = Quaternion.Euler(0f, mouseX, 0f) * Vector3.forward;
+            f.y = 0f;
+            return f.sqrMagnitude > 0.0001f ? f.normalized : Vector3.forward;
+        }
+    }
+
+    public Vector3 PlanarRight
+    {
+        get
+        {
+            Vector3 r = Quaternion.Euler(0f, mouseX, 0f) * Vector3.right;
+            r.y = 0f;
+            return r.sqrMagnitude > 0.0001f ? r.normalized : Vector3.right;
+        }
+    }
     
     // Zoom ke liye variables
     private float _currentDistance;
@@ -71,6 +113,7 @@ public class CameraController : MonoBehaviour
             float startPitch = transform.eulerAngles.x;
             if (startPitch > 180f) startPitch -= 360f;
             mouseY = startPitch;
+            mouseX = target.eulerAngles.y;
 
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
@@ -85,10 +128,14 @@ public class CameraController : MonoBehaviour
 
         if (Application.isPlaying)
         {
-            // Mouse Y (Pitch up/down)
+            mouseX += Input.GetAxis("Mouse X") * mouseSensitivity;
             float mouseYInput = Input.GetAxis("Mouse Y") * mouseSensitivity;
             mouseY -= mouseYInput;
             mouseY = Mathf.Clamp(mouseY, yMinLimit, yMaxLimit);
+
+            // Procedural recoil & screen shake recovery
+            _recoilOffset = Vector2.Lerp(_recoilOffset, Vector2.zero, Time.deltaTime * recoilRecoverySpeed);
+            _shakeOffset = Vector3.Lerp(_shakeOffset, Vector3.zero, Time.deltaTime * 20f);
 
             // Check if player is aiming with gun
             if (_gunSystem != null && _gunSystem.IsGunEquipped && Input.GetMouseButton(1))
@@ -118,9 +165,10 @@ public class CameraController : MonoBehaviour
             _cinematicBlend = 0f;
         }
 
-        // Blend yaw and pitch for cinematic mode
-        float finalYaw = target.eulerAngles.y + Mathf.Lerp(0f, _cinematicYaw, _cinematicBlend);
-        float finalPitch = Mathf.Lerp(mouseY, _cinematicPitch, _cinematicBlend);
+        // Blend yaw and pitch for cinematic mode + recoil
+        float orbitYaw = Application.isPlaying ? mouseX : target.eulerAngles.y;
+        float finalYaw = orbitYaw + Mathf.Lerp(0f, _cinematicYaw, _cinematicBlend) + _recoilOffset.y;
+        float finalPitch = Mathf.Clamp(Mathf.Lerp(mouseY, _cinematicPitch, _cinematicBlend) + _recoilOffset.x, yMinLimit, yMaxLimit);
 
         if (_isCinematic)
         {
@@ -154,8 +202,8 @@ public class CameraController : MonoBehaviour
                 desiredPosition = actualTargetOffset - (rotation * Vector3.forward * finalDistance);
             }
 
-            // Smooth movement
-            transform.position = Vector3.SmoothDamp(transform.position, desiredPosition, ref currentPosVelocity, positionSmoothTime);
+            // Smooth movement + camera shake impulse
+            transform.position = Vector3.SmoothDamp(transform.position, desiredPosition, ref currentPosVelocity, positionSmoothTime) + _shakeOffset;
         }
         else
         {

@@ -342,14 +342,12 @@ public class BoatSystem : MonoBehaviour
         if (_playerAnimator != null)
         {
             _playerAnimator.ResetTrigger(_hashClimb);
-            _playerAnimator.SetTrigger(_hashClimb);
+            _playerAnimator.CrossFadeInFixedTime(climbStateName, 0.15f, 0, 0f);
         }
 
         yield return null; // Ek frame — animation start ho
 
-        // Climb animation start hone ka wait
         int climbStateHash = Animator.StringToHash(climbStateName);
-        yield return WaitForStateStart(_playerAnimator, climbStateHash, 5f);
 
         // ── Step 3: Realistic Climb Motion ──────────────────────────────────
         // Animation ke dauran player ko seat pe smoothly arc ke sath le jao
@@ -370,12 +368,10 @@ public class BoatSystem : MonoBehaviour
         if (_playerAnimator != null)
         {
             _playerAnimator.ResetTrigger(_hashSitDown);
-            _playerAnimator.SetTrigger(_hashSitDown);
+            _playerAnimator.CrossFadeInFixedTime(sitDownStateName, 0.15f, 0, 0f);
         }
 
-        int sitDownHash = Animator.StringToHash(sitDownStateName);
-        yield return WaitForStateStart(_playerAnimator, sitDownHash, 5f);
-        yield return WaitForStateNormalizedTime(_playerAnimator, sitDownHash, 0.95f, 10f);
+        yield return new WaitForSeconds(1.2f);
 
         // ── Step 5: Paddling ready (Ab SeatIdle default chalega) ─────────────
         _canPaddle  = true;
@@ -469,31 +465,30 @@ public class BoatSystem : MonoBehaviour
         Debug.Log("[BoatSystem] Player boat se utar gaya!");
     }
 
-    // ─── Helper: Player ko point tak walk karao (direct lerp) ─────────────────
+    // ─── Helper: Player ko point tak walk karao (direct lerp with timeout) ─
     private IEnumerator WalkPlayerToPoint(Transform player, Vector3 targetPos)
     {
-        // Player speed ko walk pe set karo (0.5f)
         int hashSpeed = Animator.StringToHash("Speed");
         if (_playerAnimator != null) _playerAnimator.SetFloat(hashSpeed, 0.5f);
 
-        // Sirf XZ mein move karo — Y height maintain raho
         Vector3 flatTarget = new Vector3(targetPos.x, player.position.y, targetPos.z);
+        float timer = 0f;
+        const float maxWalkTime = 1.8f; // Safety timeout prevents infinite walking
 
-        while (Vector3.Distance(new Vector3(player.position.x, 0, player.position.z),
-                                new Vector3(flatTarget.x, 0, flatTarget.z)) > 0.15f)
+        while (timer < maxWalkTime &&
+               Vector3.Distance(new Vector3(player.position.x, 0, player.position.z),
+                                new Vector3(flatTarget.x, 0, flatTarget.z)) > 0.25f)
         {
-            // Direction towards target
+            timer += Time.deltaTime;
             Vector3 dir = (flatTarget - player.position).normalized;
             dir.y = 0f;
 
-            // Rotate towards target
             if (dir != Vector3.zero)
             {
                 Quaternion targetRot = Quaternion.LookRotation(dir);
-                player.rotation = Quaternion.Slerp(player.rotation, targetRot, Time.deltaTime * 8f);
+                player.rotation = Quaternion.Slerp(player.rotation, targetRot, Time.deltaTime * 10f);
             }
 
-            // Move
             CharacterController cc = player.GetComponent<CharacterController>();
             if (cc != null && cc.enabled)
                 cc.Move(dir * walkToBoatSpeed * Time.deltaTime + Vector3.down * 2f * Time.deltaTime);
@@ -516,42 +511,24 @@ public class BoatSystem : MonoBehaviour
         CharacterController cc = player.GetComponent<CharacterController>();
         if (cc != null) cc.enabled = false;
 
-        float nt = 0f;
-        while (nt < 0.95f) // Jab tak animation 95% nahi ho jati
+        float timer = 0f;
+        const float motionDuration = 1.8f;
+
+        while (timer < motionDuration)
         {
-            if (anim != null)
-            {
-                for (int i = 0; i < anim.layerCount; i++)
-                {
-                    var info = anim.GetCurrentAnimatorStateInfo(i);
-                    if (info.shortNameHash == stateHash)
-                    {
-                        nt = info.normalizedTime;
-                        break;
-                    }
-                }
-            }
-            else
-            {
-                nt += Time.deltaTime * 0.5f; // Fallback agar animator na ho
-            }
-            
-            // Animation ka 10% se 90% wala hissa motion ke liye use karo
-            float t = Mathf.Clamp01((nt - 0.1f) / 0.8f);
+            timer += Time.deltaTime;
+            float t = Mathf.Clamp01(timer / motionDuration);
             t = Mathf.SmoothStep(0f, 1f, t);
 
-            // Ek halka sa Arc (jump/lift) add karo climb realistic lagne ke liye
             Vector3 currentPos = Vector3.Lerp(startPos, targetPoint.position, t);
-            float arc = Mathf.Sin(t * Mathf.PI) * 0.4f; // 0.4m height lift
+            float arc = Mathf.Sin(t * Mathf.PI) * 0.4f; // 0.4m arc lift
             currentPos.y += arc;
 
             player.position = currentPos;
             player.rotation = Quaternion.Slerp(startRot, targetPoint.rotation, t);
-            
             yield return null;
         }
 
-        // Final snap
         player.position = targetPoint.position;
         player.rotation = targetPoint.rotation;
     }

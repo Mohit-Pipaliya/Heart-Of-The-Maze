@@ -170,10 +170,18 @@ public class SwordEquipSystem : MonoBehaviour
 
     private System.Collections.IEnumerator PickupSequence()
     {
+        // ── STEP 0: Agar player ke haath mein koi doosra weapon hai, pehle uska UNEQUIP animation chalao ──
+        if (playerController != null && playerController.IsHoldingWeapon)
+        {
+            yield return playerController.UnequipCurrentWeaponForPickup();
+            yield return new WaitForSeconds(0.1f);
+        }
+
         if (playerAnimator != null)
         {
             playerAnimator.applyRootMotion = false;
-            playerAnimator.SetTrigger("PickupSword");
+            playerAnimator.ResetTrigger(pickupTrigger);
+            playerAnimator.CrossFadeInFixedTime("PickupSword", 0.15f, 0, 0f);
         }
 
         // Wait 1 frame to let Animator register the trigger before freezing
@@ -232,7 +240,8 @@ public class SwordEquipSystem : MonoBehaviour
         
         if (playerAnimator != null)
         {
-            playerAnimator.SetTrigger("Unequip");
+            playerAnimator.ResetTrigger("Unequip");
+            playerAnimator.CrossFadeInFixedTime("UnequipSword", 0.15f, 0, 0f);
         }
     }
 

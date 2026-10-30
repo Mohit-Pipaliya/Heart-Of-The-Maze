@@ -256,6 +256,13 @@ public class GunEquipSystem : MonoBehaviour
 
     private System.Collections.IEnumerator PickupSequence()
     {
+        // ── STEP 0: Agar player ke haath mein koi doosra weapon hai, pehle uska UNEQUIP animation chalao ──
+        if (playerController != null && playerController.IsHoldingWeapon)
+        {
+            yield return playerController.UnequipCurrentWeaponForPickup();
+            yield return new WaitForSeconds(0.1f);
+        }
+
         const float unequipCompleteTime = 0.95f;
         const float animWaitTimeout = 20f;
         const float unequipStartTimeout = 1.5f;
@@ -266,8 +273,9 @@ public class GunEquipSystem : MonoBehaviour
 
         if (playerAnimator != null)
         {
+            playerAnimator.applyRootMotion = false;
             playerAnimator.ResetTrigger(pickupTrigger);
-            playerAnimator.SetTrigger(pickupTrigger);
+            playerAnimator.CrossFadeInFixedTime("PickupGun", 0.15f, 0, 0f);
         }
 
         yield return null;

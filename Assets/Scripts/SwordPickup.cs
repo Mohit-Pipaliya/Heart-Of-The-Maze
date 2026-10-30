@@ -13,6 +13,7 @@ public class SwordPickup : MonoBehaviour
 
     private bool playerInRange = false;
     private SwordEquipSystem playerEquipSystem;
+    private PlayerController playerController;
 
     private void Start()
     {
@@ -35,7 +36,11 @@ public class SwordPickup : MonoBehaviour
         // Check if player is in range and presses 'E'
         if (playerInRange && playerEquipSystem != null)
         {
-            if (Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame)
+            if (playerController != null && (playerController.IsDead || playerController.isFrozen || playerController.IsSequenceRunning))
+                return;
+
+            bool ePressed = (Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame) || Input.GetKeyDown(KeyCode.E);
+            if (ePressed)
             {
                 Pickup();
             }
@@ -44,6 +49,7 @@ public class SwordPickup : MonoBehaviour
 
     private void Pickup()
     {
+        playerInRange = false;
         // Hide the prompt
         if (pickupPrompt != null)
         {
@@ -51,7 +57,8 @@ public class SwordPickup : MonoBehaviour
         }
 
         // Trigger the pickup logic on the player
-        playerEquipSystem.PickupSwordFromGround();
+        if (playerEquipSystem != null)
+            playerEquipSystem.PickupSwordFromGround();
 
         // Since the sword is moved to the player's back, we disable the pickup script and trigger
         this.enabled = false; 
@@ -66,6 +73,7 @@ public class SwordPickup : MonoBehaviour
             {
                 playerInRange = true;
                 playerEquipSystem = sys;
+                playerController = other.GetComponentInParent<PlayerController>();
 
                 if (pickupPrompt != null)
                 {
@@ -83,6 +91,7 @@ public class SwordPickup : MonoBehaviour
             {
                 playerInRange = false;
                 playerEquipSystem = null;
+                playerController = null;
 
                 if (pickupPrompt != null)
                 {
