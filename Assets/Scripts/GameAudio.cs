@@ -32,7 +32,12 @@ public static class GameAudio
         Paddle,
         Hit,
         Death,
-        UI
+        UI,
+        ZombieScream,
+        ZombieAttack,
+        ZombieHurt,
+        ZombieDeath,
+        ZombieGroan
     }
 
     private static AudioClip _gunshotClip;
@@ -52,6 +57,11 @@ public static class GameAudio
     private static AudioClip _hitClip;
     private static AudioClip _deathClip;
     private static AudioClip _uiClip;
+    private static AudioClip _zombieScreamClip;
+    private static AudioClip _zombieAttackClip;
+    private static AudioClip _zombieHurtClip;
+    private static AudioClip _zombieDeathClip;
+    private static AudioClip _zombieGroanClip;
 
     private static AudioSource[] _pool;
     private static int _poolIndex;
@@ -170,6 +180,21 @@ public static class GameAudio
             case SoundType.UI:
                 if (_uiClip == null) _uiClip = MakeProcedural("UI", 0.06f, 880f, 0.25f);
                 return _uiClip;
+            case SoundType.ZombieScream:
+                if (_zombieScreamClip == null) _zombieScreamClip = LoadAudioClip("ZombieScream") ?? MakeProcedural("ZombieScream", 1.2f, 130f, 0.75f);
+                return _zombieScreamClip;
+            case SoundType.ZombieAttack:
+                if (_zombieAttackClip == null) _zombieAttackClip = LoadAudioClip("ZombieAttack") ?? MakeProcedural("ZombieAttack", 0.5f, 110f, 0.65f);
+                return _zombieAttackClip;
+            case SoundType.ZombieHurt:
+                if (_zombieHurtClip == null) _zombieHurtClip = LoadAudioClip("ZombieHurt") ?? MakeProcedural("ZombieHurt", 0.35f, 150f, 0.6f);
+                return _zombieHurtClip;
+            case SoundType.ZombieDeath:
+                if (_zombieDeathClip == null) _zombieDeathClip = LoadAudioClip("ZombieDeath") ?? MakeProcedural("ZombieDeath", 0.9f, 75f, 0.8f);
+                return _zombieDeathClip;
+            case SoundType.ZombieGroan:
+                if (_zombieGroanClip == null) _zombieGroanClip = LoadAudioClip("ZombieGroan") ?? MakeProcedural("ZombieGroan", 0.8f, 95f, 0.45f);
+                return _zombieGroanClip;
 
             default:
                 return null;
@@ -335,6 +360,41 @@ public static class GameAudio
         if (Time.time - _lastPaddleTime < 0.35f) return;
         _lastPaddleTime = Time.time;
         PlayAtPoint(GetClip(SoundType.Paddle), pos, volume, 0.9f, 1.1f, 0.55f);
+    }
+
+    public static void PlayZombieScream(Vector3 pos, AudioSource source = null)
+    {
+        AudioClip clip = GetClip(SoundType.ZombieScream);
+        if (source != null) { source.pitch = Random.Range(0.92f, 1.05f); source.PlayOneShot(clip, 1.0f); }
+        else PlayAtPoint(clip, pos, 0.95f, 0.92f, 1.05f, 0.55f);
+    }
+
+    public static void PlayZombieAttack(Vector3 pos, AudioSource source = null)
+    {
+        AudioClip clip = GetClip(SoundType.ZombieAttack);
+        if (source != null) { source.pitch = Random.Range(0.95f, 1.08f); source.PlayOneShot(clip, 0.9f); }
+        else PlayAtPoint(clip, pos, 0.85f, 0.95f, 1.08f, 0.45f);
+    }
+
+    public static void PlayZombieHurt(Vector3 pos, AudioSource source = null)
+    {
+        AudioClip clip = GetClip(SoundType.ZombieHurt);
+        if (source != null) { source.pitch = Random.Range(0.9f, 1.1f); source.PlayOneShot(clip, 0.85f); }
+        else PlayAtPoint(clip, pos, 0.8f, 0.9f, 1.1f, 0.45f);
+    }
+
+    public static void PlayZombieDeath(Vector3 pos, AudioSource source = null)
+    {
+        AudioClip clip = GetClip(SoundType.ZombieDeath);
+        if (source != null) { source.pitch = Random.Range(0.85f, 0.98f); source.PlayOneShot(clip, 1.0f); }
+        else PlayAtPoint(clip, pos, 0.95f, 0.85f, 0.98f, 0.5f);
+    }
+
+    public static void PlayZombieGroan(Vector3 pos, AudioSource source = null)
+    {
+        AudioClip clip = GetClip(SoundType.ZombieGroan);
+        if (source != null) { source.pitch = Random.Range(0.88f, 1.05f); source.PlayOneShot(clip, 0.6f); }
+        else PlayAtPoint(clip, pos, 0.55f, 0.88f, 1.05f, 0.5f);
     }
 
     private static void EnsurePool()

@@ -142,15 +142,26 @@ public class Bullet : MonoBehaviour
 
         _hasHit = true;
 
-        SpiderEnemy enemy = hitCollider != null ? hitCollider.GetComponentInParent<SpiderEnemy>() : null;
-        bool isEnemy = enemy != null;
+        SpiderEnemy spider = hitCollider != null ? hitCollider.GetComponentInParent<SpiderEnemy>() : null;
+        ZombieAI zombie = hitCollider != null ? hitCollider.GetComponentInParent<ZombieAI>() : null;
+        bool isEnemy = (spider != null) || (zombie != null);
 
         if (isEnemy)
         {
-            enemy.TakeDamage(damage);
+            bool isKill = false;
+            if (spider != null)
+            {
+                spider.TakeDamage(damage);
+                isKill = spider.IsDead;
+            }
+            else if (zombie != null)
+            {
+                zombie.TakeDamage(damage);
+                isKill = zombie.IsDead;
+            }
 
             if (GunShooter.Instance != null)
-                GunShooter.Instance.RegisterHitMarker(enemy.IsDead);
+                GunShooter.Instance.RegisterHitMarker(isKill);
 
             GameAudio.PlayBulletHit(point, true);
 

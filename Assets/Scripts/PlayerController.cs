@@ -959,16 +959,28 @@ public class PlayerController : MonoBehaviour
             if (col == null) continue;
             if (col.transform == transform || col.transform.IsChildOf(transform)) continue;
 
-            SpiderEnemy enemy = col.GetComponentInParent<SpiderEnemy>();
-            if (enemy != null && !enemy.IsDead)
+            SpiderEnemy spider = col.GetComponentInParent<SpiderEnemy>();
+            ZombieAI zombie = col.GetComponentInParent<ZombieAI>();
+            if ((spider != null && !spider.IsDead) || (zombie != null && !zombie.IsDead))
             {
-                enemy.TakeDamage(damage);
+                bool isKill = false;
+                if (spider != null && !spider.IsDead)
+                {
+                    spider.TakeDamage(damage);
+                    isKill = spider.IsDead;
+                }
+                else if (zombie != null && !zombie.IsDead)
+                {
+                    zombie.TakeDamage(damage);
+                    isKill = zombie.IsDead;
+                }
+
                 Vector3 contactPoint = col.ClosestPoint(attackCenter);
                 GameAudio.PlaySwordImpact(contactPoint, true);
                 if (SwordAttackEffect.Instance != null)
                     SwordAttackEffect.Instance.TriggerImpact(contactPoint, -transform.forward, true);
                 if (GunShooter.Instance != null)
-                    GunShooter.Instance.RegisterHitMarker(enemy.IsDead);
+                    GunShooter.Instance.RegisterHitMarker(isKill);
                 if (cameraRig != null) cameraRig.AddRecoil(0.35f, 0f, 0.04f);
                 GameFeel.HitStop(0.04f);
                 GameFeel.FovPunch(2.0f);
