@@ -21,6 +21,8 @@ using UnityEngine;
 /// </summary>
 public class BoatSystem : MonoBehaviour
 {
+    public static BoatSystem Instance { get; private set; }
+
     // ─── Inspector: Mount Points ───────────────────────────────────────────────
     [Header("Boat Mount Points")]
     [Tooltip("Boat ke side pe Empty Object — player is point ke paas aane par Press B dekhega (BoatNear)")]
@@ -35,7 +37,7 @@ public class BoatSystem : MonoBehaviour
     // ─── Inspector: Proximity & UI ─────────────────────────────────────────────
     [Header("Proximity & Interaction")]
     [Tooltip("Kitni doori (meters) ke andar player aane par Press B prompt dikhega")]
-    public float enterDistance = 3.5f;
+    public float enterDistance = 9.0f;
 
     [Tooltip("Optional: Scene ka OarPickup script (agar oar collect karwana ho)")]
     public OarPickup oarPickup;
@@ -136,6 +138,7 @@ public class BoatSystem : MonoBehaviour
     // ─── Unity Lifecycle ───────────────────────────────────────────────────────
     private void Awake()
     {
+        Instance = this;
         if (boatRigidbody == null)
             boatRigidbody = GetComponent<Rigidbody>();
 
@@ -149,6 +152,11 @@ public class BoatSystem : MonoBehaviour
         _hashUnclimb     = Animator.StringToHash(unclimbTriggerName);
         _hashIsPaddling  = Animator.StringToHash(paddlingBoolName);
         _hashSeatIdle    = Animator.StringToHash(seatIdleBoolName);
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
     }
 
     private void Start()
@@ -194,6 +202,48 @@ public class BoatSystem : MonoBehaviour
 
     // ─── Proximity Detection & UI ──────────────────────────────────────────────
     private float _oarWarningTimer = 0f;
+    private bool _triggerReportedNear = false;
+
+    public void SetPlayerNear(bool near)
+    {
+        _triggerReportedNear = near;
+    }
+
+    private bool IsPlayerNearBoat()
+    {
+        if (_cachedPlayer == null) return false;
+        if (_triggerReportedNear) return true;
+
+        Vector3 playerPos = _cachedPlayer.transform.position;
+        Transform nearPoint = boatNearPoint != null ? boatNearPoint : transform;
+
+        // 1. Check Collider trigger bounds on boatNearPoint if present
+        Collider nearCol = nearPoint.GetComponent<Collider>();
+        if (nearCol != null)
+        {
+            if (nearCol.bounds.Contains(playerPos) || nearCol.bounds.SqrDistance(playerPos) < 25f)
+                return true;
+        }
+
+        // 2. Horizontal (XZ) distance check strictly ignoring Y height differences
+        Vector3 targetPos = nearPoint.position;
+        float dx = playerPos.x - targetPos.x;
+        float dz = playerPos.z - targetPos.z;
+        float horizontalDist = Mathf.Sqrt(dx * dx + dz * dz);
+        float verticalDist = Mathf.Abs(playerPos.y - targetPos.y);
+
+        if (horizontalDist <= enterDistance && verticalDist < 12.0f)
+            return true;
+
+        // 3. Fallback check relative to Boat root transform
+        float rootDx = playerPos.x - transform.position.x;
+        float rootDz = playerPos.z - transform.position.z;
+        float rootHorizDist = Mathf.Sqrt(rootDx * rootDx + rootDz * rootDz);
+        if (rootHorizDist <= (enterDistance + 4.0f) && verticalDist < 12.0f)
+            return true;
+
+        return false;
+    }
 
     private IEnumerator FlashOarWarning()
     {
@@ -223,9 +273,7 @@ public class BoatSystem : MonoBehaviour
         if (oarPickup == null)
             oarPickup = OarPickup.Instance ?? FindFirstObjectByType<OarPickup>();
 
-        Transform nearPoint = boatNearPoint != null ? boatNearPoint : transform;
-        float dist = Vector3.Distance(_cachedPlayer.transform.position, nearPoint.position);
-        bool inRange = dist <= enterDistance;
+        bool inRange = IsPlayerNearBoat();
 
         // Only allow boarding if oar has been collected
         bool hasOar = !requireOar || (oarPickup != null && oarPickup.IsPickedUp);
@@ -419,11 +467,16 @@ public class BoatSystem : MonoBehaviour
         _playerCC        = player.GetComponent<CharacterController>();
         _playerAnimator  = player.GetComponentInChildren<Animator>();
 
-        // 1. Freeze player and disable CC
+        // 1. Unequip any weapon before climbing
+        if (player.WeaponIndex != 0)
+        {
+            yield return StartCoroutine(player.UnequipCurrentWeaponForPickup());
+        }
+
+        // 2. Freeze player and disable CC
         player.SetFrozen(true, lockWorldPosition: false);
         if (_playerCC != null) _playerCC.enabled = false;
 
-        Transform mountSource = boatNearPoint != null ? boatNearPoint : transform;
         Transform seatTarget = boatSeatPoint != null ? boatSeatPoint : transform;
 
         // Guaranteed upright rotation for the boat seat (strictly zero pitch/roll from rotated FBX bone nodes)
@@ -433,41 +486,28 @@ public class BoatSystem : MonoBehaviour
         boatFwd.Normalize();
         Quaternion uprightSeatRot = Quaternion.LookRotation(boatFwd, Vector3.up);
 
-        // 2. Smoothly orient & align to boatNearPoint in 0.15s, facing towards the boat seat
+        // 3. Turn player to face the boat seat from current standing position (no teleporting!)
         Vector3 startP = _playerTransform.position;
-        Quaternion startR = _playerTransform.rotation;
-        Vector3 targetP = mountSource.position;
-
-        Vector3 dirToSeat = (seatTarget.position - targetP);
+        Vector3 dirToSeat = (seatTarget.position - startP);
         dirToSeat.y = 0f;
         Quaternion targetR = dirToSeat.sqrMagnitude > 0.001f 
             ? Quaternion.LookRotation(dirToSeat.normalized, Vector3.up) 
             : uprightSeatRot;
 
-        float snapElapsed = 0f;
-        while (snapElapsed < 0.15f)
-        {
-            snapElapsed += Time.deltaTime;
-            float t = Mathf.SmoothStep(0f, 1f, snapElapsed / 0.15f);
-            _playerTransform.position = Vector3.Lerp(startP, targetP, t);
-            _playerTransform.rotation = Quaternion.Slerp(startR, targetR, t);
-            yield return null;
-        }
-        _playerTransform.position = targetP;
         _playerTransform.rotation = targetR;
 
-        // 3. Immediately trigger BoatClimb animation
+        // 4. Immediately trigger BoatClimb animation
         if (_playerAnimator != null)
         {
             _playerAnimator.ResetTrigger(_hashClimb);
             _playerAnimator.SetTrigger(_hashClimb);
-            _playerAnimator.CrossFadeInFixedTime(climbStateName, 0.15f, 0, 0f);
+            _playerAnimator.CrossFadeInFixedTime(climbStateName, 0.12f, 0, 0f);
         }
 
         yield return null;
 
-        // 4. Smooth motion from boatNearPoint into boatSeatPoint with natural stepping arc
-        yield return StartCoroutine(SyncClimbMotion(_playerAnimator, _playerTransform, seatTarget, 0.85f, 0.35f, uprightSeatRot));
+        // 5. Smooth natural climb motion directly from ground over boat side into the seat
+        yield return StartCoroutine(SyncClimbMotion(_playerAnimator, _playerTransform, seatTarget, 0.85f, 0.45f, uprightSeatRot));
 
         // 5. Parent player to unscaled mount
         _runtimeMount.position = seatTarget.position;

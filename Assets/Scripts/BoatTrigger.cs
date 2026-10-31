@@ -16,7 +16,7 @@ public class BoatTrigger : MonoBehaviour
     {
         // Hand over UI references to BoatSystem if unassigned there
         if (boatSystem == null)
-            boatSystem = FindFirstObjectByType<BoatSystem>();
+            boatSystem = BoatSystem.Instance ?? FindFirstObjectByType<BoatSystem>();
 
         if (boatSystem != null)
         {
@@ -28,11 +28,30 @@ public class BoatTrigger : MonoBehaviour
                 boatSystem.oarPickup = oarPickup;
         }
 
-        // Disable trigger collider so it doesn't block player or raycasts
         Collider col = GetComponent<Collider>();
-        if (col != null) col.enabled = false;
-        this.enabled = false;
+        if (col != null) col.isTrigger = true;
     }
 
-    public void OnPlayerExitedBoat() { }
+    private void OnTriggerEnter(Collider other)
+    {
+        if (other.CompareTag("Player"))
+        {
+            if (boatSystem == null) boatSystem = BoatSystem.Instance ?? FindFirstObjectByType<BoatSystem>();
+            if (boatSystem != null) boatSystem.SetPlayerNear(true);
+        }
+    }
+
+    private void OnTriggerExit(Collider other)
+    {
+        if (other.CompareTag("Player"))
+        {
+            if (boatSystem == null) boatSystem = BoatSystem.Instance ?? FindFirstObjectByType<BoatSystem>();
+            if (boatSystem != null) boatSystem.SetPlayerNear(false);
+        }
+    }
+
+    public void OnPlayerExitedBoat()
+    {
+        if (boatSystem != null) boatSystem.SetPlayerNear(false);
+    }
 }

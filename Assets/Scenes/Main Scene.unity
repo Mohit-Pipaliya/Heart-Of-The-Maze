@@ -502,6 +502,32 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 236539249}
   m_CullTransparentMesh: 1
+--- !u!1 &256569657 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 5161379122121134553, guid: ac1e867d9556d493b92ce76b7f8e4ea5, type: 3}
+  m_PrefabInstance: {fileID: 1856042202965276701}
+  m_PrefabAsset: {fileID: 0}
+--- !u!65 &256569659
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 256569657}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 1
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 12.810544, y: 4.15907, z: 4.6389337}
+  m_Center: {x: 2.0910726, y: 1.579534, z: -1.8194714}
 --- !u!1 &268660815 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 1938892075264289952, guid: d1dd4797d65b14446b1ec1870972183c, type: 3}
@@ -1275,15 +1301,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ad17238848c1d449f8fabe7dbd65c041, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SpiderEnemy
-  maxHealth: 60
+  maxHealth: 1500
   territoryTrigger: {fileID: 387778993}
   attackRange: 4
+  aggroDistance: 45
   attackCooldown: 2.2
   damageToPlayer: 10
-  attackSound: {fileID: 0}
-  biteHitSound: {fileID: 0}
-  walkSpeed: 1.8
-  runSpeed: 4.2
+  attackSound: {fileID: 8300000, guid: 111cd503d26b74fe59a401ea5155696f, type: 3}
+  biteHitSound: {fileID: 8300000, guid: da77578531f164b3dacddb133d966380, type: 3}
+  walkSpeed: 4
+  runSpeed: 8
   rotationSpeed: 8
   player: {fileID: 1943372672}
 --- !u!195 &633680325
@@ -2403,7 +2430,7 @@ MonoBehaviour:
   deceleration: 120
   airControl: 0.4
   moveDeadZone: 0.05
-  cameraRig: {fileID: 0}
+  cameraRig: {fileID: 576991311}
   gunWalkSpeed: 9
   gunRunSpeed: 20
   jumpForce: 1.8
@@ -3052,6 +3079,26 @@ PrefabInstance:
       propertyPath: m_Name
       value: 'Boat '
       objectReference: {fileID: 0}
+    - target: {fileID: 2195853959259153986, guid: ac1e867d9556d493b92ce76b7f8e4ea5, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.49912655
+      objectReference: {fileID: 0}
+    - target: {fileID: 2195853959259153986, guid: ac1e867d9556d493b92ce76b7f8e4ea5, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0.49912655
+      objectReference: {fileID: 0}
+    - target: {fileID: 2195853959259153986, guid: ac1e867d9556d493b92ce76b7f8e4ea5, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: -0.50087196
+      objectReference: {fileID: 0}
+    - target: {fileID: 2195853959259153986, guid: ac1e867d9556d493b92ce76b7f8e4ea5, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0.50087196
+      objectReference: {fileID: 0}
+    - target: {fileID: 2195853959259153986, guid: ac1e867d9556d493b92ce76b7f8e4ea5, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: -0.2
+      objectReference: {fileID: 0}
     - target: {fileID: 6421094546922216778, guid: ac1e867d9556d493b92ce76b7f8e4ea5, type: 3}
       propertyPath: oarPickup
       value: 
@@ -3064,10 +3111,30 @@ PrefabInstance:
       propertyPath: collectOarUI
       value: 
       objectReference: {fileID: 586612228}
+    - target: {fileID: 7472114134125253078, guid: ac1e867d9556d493b92ce76b7f8e4ea5, type: 3}
+      propertyPath: oarPickup
+      value: 
+      objectReference: {fileID: 758697284}
+    - target: {fileID: 7472114134125253078, guid: ac1e867d9556d493b92ce76b7f8e4ea5, type: 3}
+      propertyPath: boatTrigger
+      value: 
+      objectReference: {fileID: 0}
+    - target: {fileID: 7472114134125253078, guid: ac1e867d9556d493b92ce76b7f8e4ea5, type: 3}
+      propertyPath: driveBoatUI
+      value: 
+      objectReference: {fileID: 422693329}
+    - target: {fileID: 7472114134125253078, guid: ac1e867d9556d493b92ce76b7f8e4ea5, type: 3}
+      propertyPath: collectOarUI
+      value: 
+      objectReference: {fileID: 586612228}
     m_RemovedComponents: []
-    m_RemovedGameObjects: []
+    m_RemovedGameObjects:
+    - {fileID: 5349101829973875893, guid: ac1e867d9556d493b92ce76b7f8e4ea5, type: 3}
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 5161379122121134553, guid: ac1e867d9556d493b92ce76b7f8e4ea5, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 256569659}
   m_SourcePrefab: {fileID: 100100000, guid: ac1e867d9556d493b92ce76b7f8e4ea5, type: 3}
 --- !u!1001 &2013528295220540376
 PrefabInstance:
