@@ -127,8 +127,6 @@ public class TorchInteractionSystem : MonoBehaviour
     {
         currentState = TorchState.Grabbing;
         if (pickupPromptUI != null) pickupPromptUI.SetActive(false);
-        GameAudio.PlayUI();
-        GameAudio.PlayPickup(transform.position);
 
         if (playerController != null)
             playerController.SetFrozen(true, lockWorldPosition: true);

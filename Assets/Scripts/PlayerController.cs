@@ -889,20 +889,17 @@ public class PlayerController : MonoBehaviour
         {
             if (Input.GetMouseButtonDown(0) && Time.time >= _swordReadyTime)
             {
-                _swordReadyTime = Time.time + 0.42f;
+                _swordReadyTime = Time.time + 0.48f;
                 _swordCombo = (_swordCombo + 1) % 2;
                 _anim.SetInteger(HashAttackIndex, _swordCombo);
                 _anim.ResetTrigger(HashAttack);
                 _anim.SetTrigger(HashAttack);
 
-                GameAudio.PlaySwordSwing(transform.position);
-                if (cameraRig != null) cameraRig.AddRecoil(0.15f, Random.Range(-0.12f, 0.12f), 0.018f);
-                GameFeel.FovPunch(1.2f);
+                // Subtle windup screen tension
+                if (cameraRig != null) cameraRig.AddRecoil(0.08f, Random.Range(-0.06f, 0.06f), 0.012f);
+                GameFeel.FovPunch(1.1f);
 
-                if (SwordAttackEffect.Instance != null)
-                    SwordAttackEffect.Instance.TriggerAttack();
-
-                StartCoroutine(PerformSwordDamageWithDelay(0.18f, 15f));
+                StartCoroutine(PerformSwordAttackSequence(15f));
             }
         }
         else if (_currentWeapon == WeaponState.Gun)
@@ -920,16 +917,31 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    private IEnumerator PerformSwordDamageWithDelay(float delay, float damage)
+    private IEnumerator PerformSwordAttackSequence(float damage)
     {
-        yield return new WaitForSeconds(delay);
-        Vector3 attackCenter = transform.position + transform.forward * 2.5f + Vector3.up * 1.0f;
-        Collider[] hits = Physics.OverlapSphere(attackCenter, 3.2f);
+        // ── Phase 1: Windup Anticipation (0.12s) ───────────────────────────
+        // Character pulls blade back into strike position
+        yield return new WaitForSeconds(0.12f);
+
+        // ── Phase 2: Swing Apex (Blade whips forward through the air!) ──────
+        // Frame-accurate sword slice whoosh & glowing trail
+        GameAudio.PlaySwordSwing(transform.position, _audioSource, 1.0f);
+        if (SwordAttackEffect.Instance != null)
+            SwordAttackEffect.Instance.TriggerAttack();
+
+        // ── Phase 3: Contact Apex (0.11s later = total 0.23s from click) ──
+        // Blade reaches strike zone in front of character
+        yield return new WaitForSeconds(0.11f);
+
+        Vector3 attackCenter = transform.position + transform.forward * 2.3f + Vector3.up * 1.0f;
+        Collider[] hits = Physics.OverlapSphere(attackCenter, 3.0f);
 
         bool hitSomething = false;
         foreach (Collider col in hits)
         {
+            if (col == null) continue;
             if (col.transform == transform || col.transform.IsChildOf(transform)) continue;
+
             SpiderEnemy enemy = col.GetComponentInParent<SpiderEnemy>();
             if (enemy != null && !enemy.IsDead)
             {
@@ -941,8 +953,8 @@ public class PlayerController : MonoBehaviour
                 if (GunShooter.Instance != null)
                     GunShooter.Instance.RegisterHitMarker(enemy.IsDead);
                 if (cameraRig != null) cameraRig.AddRecoil(0.35f, 0f, 0.04f);
-                GameFeel.HitStop(0.045f);
-                GameFeel.FovPunch(2.2f);
+                GameFeel.HitStop(0.04f);
+                GameFeel.FovPunch(2.0f);
                 hitSomething = true;
                 break;
             }
@@ -950,14 +962,15 @@ public class PlayerController : MonoBehaviour
 
         if (!hitSomething)
         {
-            Vector3 origin = transform.position + Vector3.up * 1.1f + transform.forward * 0.6f;
-            if (Physics.SphereCast(origin, 0.25f, transform.forward, out RaycastHit worldHit, 2.4f, ~0, QueryTriggerInteraction.Ignore))
+            Vector3 origin = transform.position + Vector3.up * 1.1f + transform.forward * 0.5f;
+            if (Physics.SphereCast(origin, 0.25f, transform.forward, out RaycastHit worldHit, 2.2f, ~0, QueryTriggerInteraction.Ignore))
             {
                 if (!worldHit.collider.transform.IsChildOf(transform))
                 {
                     GameAudio.PlaySwordImpact(worldHit.point, false);
                     if (SwordAttackEffect.Instance != null)
                         SwordAttackEffect.Instance.TriggerImpact(worldHit.point, worldHit.normal, false);
+                    if (cameraRig != null) cameraRig.AddRecoil(0.18f, 0f, 0.02f);
                 }
             }
         }

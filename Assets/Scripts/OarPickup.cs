@@ -109,8 +109,6 @@ public class OarPickup : MonoBehaviour
     private IEnumerator PickupSequence()
     {
         _isPickingUp = true;
-        GameAudio.PlayUI();
-        GameAudio.PlayPickup(transform.position);
 
         // UI band karo
         if (pickupPromptUI != null) pickupPromptUI.SetActive(false);

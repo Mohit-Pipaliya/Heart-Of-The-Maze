@@ -36,7 +36,6 @@ public class GunPickup : MonoBehaviour
             bool ePressed = (Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame) || Input.GetKeyDown(KeyCode.E);
             if (ePressed)
             {
-                GameAudio.PlayUI();
                 Pickup();
             }
         }

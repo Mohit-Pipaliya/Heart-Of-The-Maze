@@ -1,130 +1,38 @@
-using System.Collections;
 using UnityEngine;
 
 /// <summary>
-/// BoatTrigger — Boat ke around ek trigger zone.
-/// Player andar aaye to:
-///   • Oar hai → "Press B to Drive Boat" UI show karo
-///   • Oar nahi hai → "Collect the Oar First" UI show karo
-///
-/// Player B dabaye to BoatSystem.EnterBoat() start karo.
-///
-/// ── Scene Setup ─────────────────────────────────────────────────────────────
-///  1. Boat ke paas ek Empty GameObject banao "BoatTrigger" naam se.
-///  2. Is Empty pe BoatTrigger script aur Trigger Collider lagao.
-///  3. Inspector mein assign karo:
-///       • driveBoatUI       → "Press B to Drive Boat" UI
-///       • collectOarUI      → "Collect the Oar First" UI
-///       • oarPickup         → Scene mein rakha OarPickup script
-///       • boatSystem        → BoatSystem script (boat pe hai)
-///  4. Player tag "Player" hona chahiye.
+/// Legacy BoatTrigger component.
+/// Proximity detection and boarding are now handled directly by BoatSystem via boatNearPoint.
+/// This component is kept for scene compatibility without conflicts.
 /// </summary>
-[RequireComponent(typeof(Collider))]
 public class BoatTrigger : MonoBehaviour
 {
-    [Header("UI References")]
-    [Tooltip("'Press B to Drive Boat' UI Panel")]
     public GameObject driveBoatUI;
-
-    [Tooltip("'Collect the Oar First' UI Panel")]
     public GameObject collectOarUI;
-
-    [Header("References")]
-    [Tooltip("Scene mein rakha OarPickup script — oar pickup status check karne ke liye")]
     public OarPickup oarPickup;
-
-    [Tooltip("Boat ka BoatSystem script")]
     public BoatSystem boatSystem;
 
-    // ── Private State ──────────────────────────────────────────────────────────
-    private bool _playerInside = false;
-    private PlayerController _playerController;
-    private bool _waitingForReentry = false;
-
-    // ── Public: kya player is waqt trigger ke andar hai ──────────────────────
-    public bool IsPlayerInside => _playerInside;
-
-    // ─── Unity Lifecycle ───────────────────────────────────────────────────────
-    private void Start()
+    private void Awake()
     {
-        HideAllUI();
-        var col = GetComponent<Collider>();
-        col.isTrigger = true;
-    }
+        // Hand over UI references to BoatSystem if unassigned there
+        if (boatSystem == null)
+            boatSystem = FindFirstObjectByType<BoatSystem>();
 
-    private void Update()
-    {
-        if (_waitingForReentry) return;
-
-        if (!_playerInside) return;
-        if (boatSystem != null && boatSystem.IsOccupied) return;
-
-        // Har frame UI refresh karo (oar status change ho sakti hai)
-        RefreshUI();
-
-        // B press → boat enter karo
-        if (Input.GetKeyDown(KeyCode.B))
+        if (boatSystem != null)
         {
-            bool hasOar = oarPickup != null && oarPickup.IsPickedUp;
-            if (!hasOar)
-                return;
-
-            if (_playerController == null || _playerController.IsDead || _playerController.IsSequenceRunning)
-                return;
-
-            HideAllUI();
-            GameAudio.PlayUI();
-            if (boatSystem != null)
-                boatSystem.EnterBoat(_playerController);
+            if (boatSystem.driveBoatUI == null && driveBoatUI != null)
+                boatSystem.driveBoatUI = driveBoatUI;
+            if (boatSystem.collectOarUI == null && collectOarUI != null)
+                boatSystem.collectOarUI = collectOarUI;
+            if (boatSystem.oarPickup == null && oarPickup != null)
+                boatSystem.oarPickup = oarPickup;
         }
+
+        // Disable trigger collider so it doesn't block player or raycasts
+        Collider col = GetComponent<Collider>();
+        if (col != null) col.enabled = false;
+        this.enabled = false;
     }
 
-    // ─── Trigger Detection ─────────────────────────────────────────────────────
-    private void OnTriggerEnter(Collider other)
-    {
-        if (!other.CompareTag("Player")) return;
-        if (boatSystem != null && boatSystem.IsOccupied) return;
-
-        _playerController = other.GetComponentInParent<PlayerController>() ?? other.GetComponent<PlayerController>();
-        _playerInside = true;
-        _waitingForReentry = false; // Naye entry pe allow karo
-        RefreshUI();
-    }
-
-    private void OnTriggerExit(Collider other)
-    {
-        if (!other.CompareTag("Player")) return;
-        _playerInside = false;
-        _waitingForReentry = false; // Bahar jane pe reset karo
-        HideAllUI();
-    }
-
-    // ─── UI Helpers ────────────────────────────────────────────────────────────
-    private void RefreshUI()
-    {
-        bool hasOar = oarPickup != null && oarPickup.IsPickedUp;
-
-        if (driveBoatUI != null)  driveBoatUI.SetActive(hasOar);
-        if (collectOarUI != null) collectOarUI.SetActive(!hasOar);
-    }
-
-    private void HideAllUI()
-    {
-        if (driveBoatUI != null)  driveBoatUI.SetActive(false);
-        if (collectOarUI != null) collectOarUI.SetActive(false);
-    }
-
-    public void OnPlayerExitedBoat()
-    {
-        HideAllUI();
-        _waitingForReentry = true; // Ek baar nikal gaya toh wapas trigger leave karke aane tak UI hide!
-        
-        // Target point pe aane ke baad hi oar drop hogi
-        if (oarPickup != null && oarPickup.IsPickedUp && _playerController != null)
-        {
-            Vector3 dropPos = _playerController.transform.position + _playerController.transform.forward * 0.5f + Vector3.up * 0.1f;
-            oarPickup.DropOar(dropPos);
-            Debug.Log("[BoatTrigger] Player reached exit target — Oar dropped!");
-        }
-    }
+    public void OnPlayerExitedBoat() { }
 }

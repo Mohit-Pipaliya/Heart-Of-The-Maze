@@ -321,7 +321,10 @@ public static class GameAudio
 
     public static void PlayJump(Vector3 pos) => PlayAtPoint(GetClip(SoundType.Jump), pos, 0.45f, 0.95f, 1.08f, 0.3f);
     public static void PlayLand(Vector3 pos) => PlayAtPoint(GetClip(SoundType.Land), pos, 0.55f, 0.9f, 1.05f, 0.4f);
-    public static void PlayPickup(Vector3 pos) => PlayAtPoint(GetClip(SoundType.Pickup), pos, 0.5f, 0.96f, 1.06f, 0.25f);
+    public static void PlayPickup(Vector3 pos)
+    {
+        // Pickup sounds removed as requested by user
+    }
     public static void PlayEquip(Vector3 pos) => PlayAtPoint(GetClip(SoundType.Equip), pos, 0.45f, 0.94f, 1.06f, 0.25f);
     public static void PlayHit(Vector3 pos) => PlayAtPoint(GetClip(SoundType.Hit), pos, 0.7f, 0.92f, 1.08f, 0.35f);
     public static void PlayDeath(Vector3 pos) => PlayAtPoint(GetClip(SoundType.Death), pos, 0.8f, 0.85f, 1.0f, 0.4f);
