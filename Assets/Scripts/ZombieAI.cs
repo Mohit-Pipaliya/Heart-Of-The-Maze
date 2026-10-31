@@ -526,20 +526,97 @@ public class ZombieAI : MonoBehaviour
 
     private void PlayAnimation(string stateName, float crossfade = 0.15f)
     {
-        if (_anim == null || _currentAnimState == stateName) return;
+        if (_anim == null) return;
 
+        // Synchronize Animator Parameters for Transition Conditions
+        switch (stateName)
+        {
+            case "Walk":
+                SetAnimBoolSafe("IsMoving", true);
+                SetAnimBoolSafe("IsRunning", false);
+                SetAnimFloatSafe("Speed", walkSpeed);
+                break;
+
+            case "Run":
+                SetAnimBoolSafe("IsMoving", true);
+                SetAnimBoolSafe("IsRunning", true);
+                SetAnimFloatSafe("Speed", runSpeed);
+                break;
+
+            case "Raad":
+                SetAnimBoolSafe("IsMoving", false);
+                SetAnimBoolSafe("IsRunning", false);
+                SetAnimFloatSafe("Speed", 0f);
+                SetAnimTriggerSafe("Raad");
+                break;
+
+            case "Attack":
+                SetAnimBoolSafe("IsMoving", false);
+                SetAnimFloatSafe("Speed", 0f);
+                SetAnimTriggerSafe("Attack");
+                break;
+
+            case "Hit":
+                SetAnimTriggerSafe("Hit");
+                break;
+
+            case "Die":
+                SetAnimBoolSafe("IsMoving", false);
+                SetAnimBoolSafe("IsRunning", false);
+                SetAnimFloatSafe("Speed", 0f);
+                SetAnimTriggerSafe("Die");
+                SetAnimBoolSafe("IsDead", true);
+                break;
+        }
+
+        if (_currentAnimState == stateName) return;
         _currentAnimState = stateName;
 
-        // 1. Direct State Crossfade (works with Zombie.controller states)
+        // Direct State Crossfade (works reliably with Zombie.controller states)
         int hash = Animator.StringToHash(stateName);
         if (_anim.HasState(0, hash))
         {
             _anim.CrossFadeInFixedTime(stateName, crossfade);
-            return;
         }
+    }
 
-        // 2. Trigger fallback
-        _anim.SetTrigger(stateName);
+    private void SetAnimTriggerSafe(string paramName)
+    {
+        if (_anim == null) return;
+        foreach (var p in _anim.parameters)
+        {
+            if (p.name == paramName && p.type == AnimatorControllerParameterType.Trigger)
+            {
+                _anim.SetTrigger(paramName);
+                return;
+            }
+        }
+    }
+
+    private void SetAnimBoolSafe(string paramName, bool value)
+    {
+        if (_anim == null) return;
+        foreach (var p in _anim.parameters)
+        {
+            if (p.name == paramName && p.type == AnimatorControllerParameterType.Bool)
+            {
+                _anim.SetBool(paramName, value);
+                return;
+            }
+        }
+    }
+
+    private void SetAnimFloatSafe(string paramName, float value)
+    {
+        if (_anim == null) return;
+        foreach (var p in _anim.parameters)
+        {
+            if (p.name == paramName && p.type == AnimatorControllerParameterType.Float)
+            {
+                _anim.SetFloat(paramName, value);
+                return;
+            }
+        }
     }
 
     // ─── Floating AAA Health Bar & Gizmos ────────────────────────────────────

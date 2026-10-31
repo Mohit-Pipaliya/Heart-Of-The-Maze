@@ -26,6 +26,10 @@ public static class ZombieAutoSetup
         if (controller != null)
         {
             anim.runtimeAnimatorController = controller;
+            if (controller is UnityEditor.Animations.AnimatorController ac)
+            {
+                ZombieAnimatorAutoSetup.ConfigureAnimatorController(ac);
+            }
         }
 
         // 2. NavMeshAgent Setup
