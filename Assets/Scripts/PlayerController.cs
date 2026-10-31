@@ -197,6 +197,14 @@ public class PlayerController : MonoBehaviour
         _swordSystem = GetComponentInChildren<SwordEquipSystem>();
         _gunSystem = GetComponentInChildren<GunEquipSystem>();
 
+        if (_swordSystem != null && _swordSystem.sword != null)
+        {
+            if (_swordSystem.sword.GetComponent<SwordAttackEffect>() == null)
+            {
+                _swordSystem.sword.AddComponent<SwordAttackEffect>();
+            }
+        }
+
         // Disable NavMeshAgent during normal gameplay so it does not fight CharacterController,
         // cause sliding/floating, or block the player at NavMesh borders when walking to enemies.
         // (MeetingSeatSystem will selectively enable it only during its seated meeting cutscene).

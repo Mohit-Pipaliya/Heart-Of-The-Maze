@@ -1303,7 +1303,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SpiderEnemy
   maxHealth: 1500
   territoryTrigger: {fileID: 387778993}
-  attackRange: 4
+  attackRange: 2.2
   aggroDistance: 45
   attackCooldown: 2.2
   damageToPlayer: 10

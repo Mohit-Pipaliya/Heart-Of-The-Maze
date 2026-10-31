@@ -56,26 +56,38 @@ public class SpiderEnemy : MonoBehaviour
 
     private void Awake()
     {
-        // Collider strictly required for bullets (Physics.Raycast) and sword (Physics.OverlapSphere)
+        attackRange = Mathf.Clamp(attackRange, 1.8f, 2.2f);
+
+        anim = GetComponent<Animator>();
+        if (anim != null)
+        {
+            anim.applyRootMotion = false;
+        }
+
+        // Trigger collider ensures bullet raycasts and sword scans hit the spider,
+        // while Player CharacterController NEVER collides, pushes, or slides against the spider.
         Collider col = GetComponent<Collider>();
         if (col == null)
         {
             CapsuleCollider cap = gameObject.AddComponent<CapsuleCollider>();
             cap.center = new Vector3(0f, 0.75f, 0f);
-            cap.radius = 1.0f;
-            cap.height = 1.8f;
+            cap.radius = 0.85f;
+            cap.height = 1.6f;
             cap.direction = 1; // Y-axis
+            cap.isTrigger = true;
         }
-        else if (col is CapsuleCollider capCol)
+        else
         {
-            capCol.radius = Mathf.Min(capCol.radius, 1.1f);
+            col.isTrigger = true;
         }
     }
 
     void Start()
     {
+        attackRange = Mathf.Clamp(attackRange, 1.8f, 2.2f);
         agent = GetComponent<NavMeshAgent>();
         anim = GetComponent<Animator>();
+        if (anim != null) anim.applyRootMotion = false;
         audioSource = GetComponent<AudioSource>();
         if (audioSource == null)
         {
@@ -101,7 +113,7 @@ public class SpiderEnemy : MonoBehaviour
 
         if (agent != null)
         {
-            agent.stoppingDistance = Mathf.Max(1.8f, attackRange * 0.7f);
+            agent.stoppingDistance = 1.3f;
         }
 
         IgnorePlayerBodyCollision();
@@ -233,7 +245,7 @@ public class SpiderEnemy : MonoBehaviour
         if (player == null) return;
         agent.isStopped = false;
         agent.speed = runSpeed;
-        agent.stoppingDistance = Mathf.Max(1.8f, attackRange * 0.7f);
+        agent.stoppingDistance = 1.3f;
         agent.SetDestination(player.position);
     }
 
@@ -247,8 +259,11 @@ public class SpiderEnemy : MonoBehaviour
         {
             Vector3 direction = (player.position - transform.position).normalized;
             direction.y = 0;
-            Quaternion targetRot = Quaternion.LookRotation(direction);
-            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * rotationSpeed);
+            if (direction.sqrMagnitude > 0.001f)
+            {
+                Quaternion targetRot = Quaternion.LookRotation(direction);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * rotationSpeed);
+            }
         }
 
         if (!_isAttacking && Time.time >= lastAttackTime + attackCooldown)
@@ -269,7 +284,7 @@ public class SpiderEnemy : MonoBehaviour
         _isAttacking = true;
         yield return new WaitForSeconds(delay);
 
-        if (!isDead && player != null && Vector3.Distance(transform.position, player.position) <= attackRange + 1f)
+        if (!isDead && player != null && Vector3.Distance(transform.position, player.position) <= attackRange + 1.2f)
         {
             PlayerController pc = player.GetComponent<PlayerController>();
             if (pc != null && !pc.IsDead)
@@ -298,7 +313,26 @@ public class SpiderEnemy : MonoBehaviour
             agent.SetDestination(player.position);
         }
 
+        // Visceral Hit Knockback (push spider back away from player on impact so it flinches)
+        if (player != null)
+        {
+            Vector3 pushDir = (transform.position - player.position).normalized;
+            pushDir.y = 0f;
+            if (agent != null && agent.enabled)
+            {
+                agent.Move(pushDir * 0.4f);
+            }
+            else
+            {
+                transform.position += pushDir * 0.4f;
+            }
+        }
+
+        if (GunShooter.Instance != null)
+            GunShooter.Instance.RegisterHitMarker(currentHealth <= 0);
+
         GameAudio.PlaySpiderHurt(transform.position, audioSource, 1.2f);
+        VFXUtil.SpawnFadingLight(transform.position + Vector3.up * 0.8f, new Color(0.9f, 0.1f, 0.05f), 4f, 2.0f, 0.08f);
         VFXUtil.Burst(transform.position + Vector3.up * 0.8f, Vector3.up,
             new Color(0.7f, 0.12f, 0.08f, 1f), 16, 3f, 9f, 0.08f, 0.2f, 0.15f, 0.35f, true, true, 1.8f, 40f);
         _hitStunUntil = Time.time + 0.45f;

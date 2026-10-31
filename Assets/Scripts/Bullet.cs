@@ -23,6 +23,8 @@ public class Bullet : MonoBehaviour
 
     private void Awake()
     {
+        if (damage < 50f) damage = 75f;
+
         _rb = GetComponent<Rigidbody>();
         if (_rb != null)
         {
@@ -68,9 +70,9 @@ public class Bullet : MonoBehaviour
         if (_trail == null)
             _trail = gameObject.AddComponent<TrailRenderer>();
 
-        _trail.time = 0.07f;
-        _trail.startWidth = 0.075f;
-        _trail.endWidth = 0.012f;
+        _trail.time = 0.12f;
+        _trail.startWidth = 0.18f;
+        _trail.endWidth = 0.03f;
         _trail.minVertexDistance = 0.02f;
         _trail.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         _trail.receiveShadows = false;
@@ -86,9 +88,9 @@ public class Bullet : MonoBehaviour
         Gradient gradient = new Gradient();
         gradient.SetKeys(
             new GradientColorKey[] {
-                new GradientColorKey(new Color(2.5f, 2.3f, 1.8f), 0f),   // White-hot core
-                new GradientColorKey(new Color(1.6f, 1.1f, 0.3f), 0.3f), // Gold flame
-                new GradientColorKey(new Color(1.0f, 0.35f, 0.05f), 1f)  // Fiery ember tail
+                new GradientColorKey(new Color(2.8f, 2.6f, 2.0f), 0f),   // White-hot core
+                new GradientColorKey(new Color(1.8f, 1.2f, 0.35f), 0.3f), // Gold flame
+                new GradientColorKey(new Color(1.2f, 0.4f, 0.08f), 1f)  // Fiery ember tail
             },
             new GradientAlphaKey[] {
                 new GradientAlphaKey(1f,   0f),
@@ -104,8 +106,8 @@ public class Bullet : MonoBehaviour
         _bulletLight = lightObj.AddComponent<Light>();
         _bulletLight.type = LightType.Point;
         _bulletLight.color = new Color(1f, 0.85f, 0.45f);
-        _bulletLight.range = 6.0f;
-        _bulletLight.intensity = 2.2f;
+        _bulletLight.range = 8.0f;
+        _bulletLight.intensity = 3.5f;
         _bulletLight.shadows = LightShadows.None;
     }
 
@@ -125,8 +127,8 @@ public class Bullet : MonoBehaviour
         Vector3 moveStep = _velocity * Time.deltaTime;
         float distance = moveStep.magnitude;
 
-        // High-precision raycast sweep (skips player colliders, prevents high-speed tunneling)
-        RaycastHit[] hits = Physics.RaycastAll(_prevPos, moveStep.normalized, distance, hitMask, QueryTriggerInteraction.Ignore);
+        // High-precision raycast sweep (checks triggers too for enemies, skips player colliders & non-enemy triggers)
+        RaycastHit[] hits = Physics.RaycastAll(_prevPos, moveStep.normalized, distance, hitMask, QueryTriggerInteraction.Collide);
         if (hits != null && hits.Length > 0)
         {
             System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
@@ -135,6 +137,16 @@ public class Bullet : MonoBehaviour
                 Collider hitCol = hits[i].collider;
                 if (hitCol == null) continue;
                 if (hitCol.GetComponentInParent<PlayerController>() != null) continue;
+
+                // For triggers, only hit if it belongs to an enemy (SpiderEnemy or ZombieAI)
+                if (hitCol.isTrigger)
+                {
+                    bool isEnemy = hitCol.GetComponentInParent<SpiderEnemy>() != null ||
+                                   hitCol.GetComponentInParent<ZombieAI>() != null ||
+                                   hitCol.GetComponentInChildren<SpiderEnemy>() != null ||
+                                   hitCol.GetComponentInChildren<ZombieAI>() != null;
+                    if (!isEnemy) continue;
+                }
 
                 transform.position = hits[i].point;
                 OnImpact(hits[i].point, hits[i].normal, hitCol);
@@ -160,7 +172,14 @@ public class Bullet : MonoBehaviour
         if (hitCollider != null)
         {
             if (hitCollider.GetComponentInParent<PlayerController>() != null) return;
-            if (hitCollider.isTrigger) return;
+            if (hitCollider.isTrigger)
+            {
+                bool isEnemyTrigger = hitCollider.GetComponentInParent<SpiderEnemy>() != null ||
+                                      hitCollider.GetComponentInParent<ZombieAI>() != null ||
+                                      hitCollider.GetComponentInChildren<SpiderEnemy>() != null ||
+                                      hitCollider.GetComponentInChildren<ZombieAI>() != null;
+                if (!isEnemyTrigger) return;
+            }
         }
 
         _hasHit = true;
@@ -171,15 +190,16 @@ public class Bullet : MonoBehaviour
 
         if (isEnemy)
         {
+            float effectiveDamage = Mathf.Max(damage, 75f);
             bool isKill = false;
             if (spider != null)
             {
-                spider.TakeDamage(damage);
+                spider.TakeDamage(effectiveDamage);
                 isKill = spider.IsDead;
             }
             else if (zombie != null)
             {
-                zombie.TakeDamage(damage);
+                zombie.TakeDamage(effectiveDamage);
                 isKill = zombie.IsDead;
             }
 

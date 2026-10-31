@@ -133,13 +133,18 @@ public class ZombieAI : MonoBehaviour
             capsule.radius = 0.45f;
             capsule.height = 1.8f;
             capsule.direction = 1;
+            capsule.isTrigger = true;
             _collider = capsule;
         }
-        else if (_collider is CapsuleCollider cap)
+        else
         {
-            cap.center = new Vector3(0f, 0.9f, 0f);
-            cap.height = 1.8f;
-            cap.radius = Mathf.Min(cap.radius, 0.45f);
+            _collider.isTrigger = true;
+            if (_collider is CapsuleCollider cap)
+            {
+                cap.center = new Vector3(0f, 0.9f, 0f);
+                cap.height = 1.8f;
+                cap.radius = Mathf.Min(cap.radius, 0.45f);
+            }
         }
 
         _audioSource = GetComponent<AudioSource>();
@@ -542,6 +547,9 @@ public class ZombieAI : MonoBehaviour
         VFXUtil.SpawnFadingLight(hitPoint, new Color(0.9f, 0.1f, 0.05f), 4f, 2.0f, 0.08f);
         VFXUtil.Burst(hitPoint, Vector3.up, new Color(0.85f, 0.08f, 0.05f, 1f),
             20, 4f, 12f, 0.07f, 0.22f, 0.14f, 0.38f, true, true, 2.0f, 40f);
+
+        if (GunShooter.Instance != null)
+            GunShooter.Instance.RegisterHitMarker(_currentHealth <= 0f);
 
         // Visceral Hit Knockback (push zombie back away from player on impact so it visibly flinches)
         if (player != null)
