@@ -5,6 +5,39 @@ using UnityEngine.AI;
 
 public static class ZombieAutoSetup
 {
+    [MenuItem("Tools/Heart Of The Maze/Spawn & Setup Zombie in Scene (Near Player)", false, 1)]
+    public static void SpawnZombieNearPlayer()
+    {
+        GameObject fbx = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Animations/Zombie/Female/FemaleZombie.fbx");
+        if (fbx == null)
+        {
+            EditorUtility.DisplayDialog("Error", "FemaleZombie.fbx nahi mila Assets/Animations/Zombie/Female/ me!", "OK");
+            return;
+        }
+
+        GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
+        Vector3 spawnPos = playerObj != null 
+            ? playerObj.transform.position + playerObj.transform.forward * 8.5f 
+            : new Vector3(126.6f, 0f, 62f);
+        Quaternion spawnRot = playerObj != null 
+            ? Quaternion.LookRotation(-playerObj.transform.forward) 
+            : Quaternion.identity;
+
+        GameObject zombieInstance = (GameObject)PrefabUtility.InstantiatePrefab(fbx);
+        zombieInstance.name = "FemaleZombie_Enemy";
+        zombieInstance.transform.position = spawnPos;
+        zombieInstance.transform.rotation = spawnRot;
+
+        Undo.RegisterCreatedObjectUndo(zombieInstance, "Spawn Zombie");
+        Selection.activeGameObject = zombieInstance;
+
+        ConfigureZombieComponents(zombieInstance);
+        EditorUtility.SetDirty(zombieInstance);
+        UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(zombieInstance.scene);
+
+        EditorUtility.DisplayDialog("Zombie Created!", "Zombie successfully spawned in front of Player with all AI, Animations, NavMesh, and 1000 HP!", "OK");
+    }
+
     [MenuItem("Tools/Heart Of The Maze/Setup Zombie AI on Selected GameObject", false, 50)]
     [MenuItem("GameObject/Heart Of The Maze/Setup Zombie AI", false, 10)]
     public static void SetupZombie()
@@ -17,7 +50,13 @@ public static class ZombieAutoSetup
         }
 
         Undo.RegisterFullObjectHierarchyUndo(go, "Setup Zombie AI");
+        ConfigureZombieComponents(go);
+        EditorUtility.SetDirty(go);
+        EditorUtility.DisplayDialog("Zombie AI Setup", $"Successfully configured Zombie AI on '{go.name}'!\n\n• Health: 1000\n• Walk & Wander: Active\n• Raad & Chase: Ready\n• Attack Range: 2.2m\n• Hit & Die animations: Ready", "OK");
+    }
 
+    public static void ConfigureZombieComponents(GameObject go)
+    {
         // 1. Animator & Controller Setup
         Animator anim = go.GetComponent<Animator>();
         if (anim == null) anim = Undo.AddComponent<Animator>(go);
@@ -49,7 +88,7 @@ public static class ZombieAutoSetup
         agent.speed = 1.6f;
         agent.angularSpeed = 260f;
         agent.acceleration = 14f;
-        agent.stoppingDistance = 0.5f;
+        agent.stoppingDistance = 1.8f;
         agent.radius = 0.45f;
         agent.height = 1.8f;
         agent.baseOffset = 0f;
@@ -62,13 +101,14 @@ public static class ZombieAutoSetup
             rb.useGravity = false;
         }
 
-        // 5. Capsule Collider Setup
+        // 5. Capsule Collider Setup (Trigger so player NEVER auto-slides away!)
         CapsuleCollider col = go.GetComponent<CapsuleCollider>();
         if (col == null) col = Undo.AddComponent<CapsuleCollider>(go);
         col.center = new Vector3(0f, 0.9f, 0f);
         col.radius = 0.45f;
         col.height = 1.8f;
         col.direction = 1;
+        col.isTrigger = true;
 
         // 6. AudioSource Setup
         AudioSource audioSource = go.GetComponent<AudioSource>();
@@ -95,9 +135,6 @@ public static class ZombieAutoSetup
         // Find Player
         GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
         if (playerObj != null) zombie.player = playerObj.transform;
-
-        EditorUtility.SetDirty(go);
-        EditorUtility.DisplayDialog("Zombie AI Setup", $"Successfully configured Zombie AI on '{go.name}'!\n\n• Health: 1000\n• Walk & Wander: Active\n• Raad & Chase: Ready\n• Attack Range: 2.2m\n• Hit & Die animations: Ready", "OK");
     }
 }
 #endif

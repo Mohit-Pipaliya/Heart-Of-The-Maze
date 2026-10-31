@@ -230,16 +230,16 @@ public class Bullet : MonoBehaviour
     private void SpawnFleshImpactEffect(Vector3 pos, Vector3 normal)
     {
         // AAA Flesh Impact: Dynamic red flash + high-velocity arterial blood spray + mist
-        VFXUtil.SpawnFadingLight(pos, new Color(0.95f, 0.08f, 0.05f), 5.5f, 2.8f, 0.09f);
-        VFXUtil.Burst(pos, normal, new Color(0.85f, 0.08f, 0.05f, 1f), 26, 8f, 20f, 0.08f, 0.28f, 0.14f, 0.38f, true, true, 2.0f, 38f);
-        VFXUtil.Burst(pos, Vector3.up, new Color(0.6f, 0.05f, 0.04f, 0.5f), 8, 1.2f, 3.8f, 0.2f, 0.5f, 0.25f, 0.6f, false, false, -0.05f, 55f);
+        VFXUtil.SpawnFadingLight(pos, new Color(1f, 0.05f, 0.02f), 7.0f, 6.0f, 0.12f);
+        VFXUtil.Burst(pos, normal, new Color(0.85f, 0.05f, 0.02f, 1f), 32, 9f, 22f, 0.12f, 0.35f, 0.18f, 0.45f, true, true, 2.0f, 40f);
+        VFXUtil.Burst(pos, Vector3.up, new Color(0.65f, 0.04f, 0.03f, 0.6f), 12, 1.5f, 4.5f, 0.3f, 0.7f, 0.35f, 0.8f, false, false, -0.05f, 55f);
     }
 
     private void SpawnRicochetImpactEffect(Vector3 pos, Vector3 normal)
     {
         // AAA Ricochet Impact: Luminous golden flash + bouncing embers + dirt dust puff
-        VFXUtil.SpawnFadingLight(pos, new Color(1f, 0.82f, 0.35f), 6.5f, 3.0f, 0.07f);
-        VFXUtil.Burst(pos, normal, new Color(1f, 0.82f, 0.28f, 1f), 24, 12f, 26f, 0.05f, 0.16f, 0.1f, 0.28f, true, true, 1.4f, 48f);
-        VFXUtil.Burst(pos, Vector3.up, new Color(0.65f, 0.62f, 0.55f, 0.45f), 10, 1.5f, 4.5f, 0.3f, 0.8f, 0.3f, 0.8f, false, false, -0.08f, 50f);
+        VFXUtil.SpawnFadingLight(pos, new Color(1f, 0.85f, 0.35f), 8.0f, 7.0f, 0.10f);
+        VFXUtil.Burst(pos, normal, new Color(1f, 0.85f, 0.28f, 1f), 28, 14f, 28f, 0.08f, 0.22f, 0.12f, 0.35f, true, true, 1.5f, 50f);
+        VFXUtil.Burst(pos, Vector3.up, new Color(0.7f, 0.68f, 0.6f, 0.5f), 14, 2.0f, 5.5f, 0.4f, 0.9f, 0.4f, 1.0f, false, false, -0.08f, 50f);
     }
 }

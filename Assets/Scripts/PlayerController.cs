@@ -268,6 +268,75 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    private void Start()
+    {
+#if UNITY_EDITOR
+        EnsureZombieExists();
+#endif
+    }
+
+#if UNITY_EDITOR
+    /// <summary>
+    /// Fail-safe: Guarantees a fully setup FemaleZombie enemy exists in front of the player on start!
+    /// </summary>
+    private void EnsureZombieExists()
+    {
+        if (FindFirstObjectByType<ZombieAI>() != null) return;
+
+        GameObject fbx = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Animations/Zombie/Female/FemaleZombie.fbx");
+        if (fbx != null)
+        {
+            Vector3 spawnPos = transform.position + transform.forward * 8.5f;
+            Quaternion spawnRot = Quaternion.LookRotation(-transform.forward);
+            GameObject zGo = Instantiate(fbx, spawnPos, spawnRot);
+            zGo.name = "FemaleZombie_Enemy";
+            SetupRuntimeZombie(zGo);
+            Debug.Log("<color=green><b>[Auto-Zombie]</b></color> FemaleZombie automatically spawned in front of player!");
+        }
+    }
+
+    private void SetupRuntimeZombie(GameObject go)
+    {
+        Animator anim = go.GetComponent<Animator>() ?? go.AddComponent<Animator>();
+        anim.applyRootMotion = false;
+        RuntimeAnimatorController controller = UnityEditor.AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>("Assets/Animator/Zombie.controller");
+        if (controller != null) anim.runtimeAnimatorController = controller;
+
+        UnityEngine.AI.NavMeshAgent agent = go.GetComponent<UnityEngine.AI.NavMeshAgent>() ?? go.AddComponent<UnityEngine.AI.NavMeshAgent>();
+        agent.speed = 1.6f;
+        agent.angularSpeed = 260f;
+        agent.acceleration = 14f;
+        agent.stoppingDistance = 1.8f;
+        agent.radius = 0.45f;
+        agent.height = 1.8f;
+        agent.baseOffset = 0f;
+
+        Rigidbody rb = go.GetComponent<Rigidbody>();
+        if (rb != null) { rb.isKinematic = true; rb.useGravity = false; }
+
+        CapsuleCollider col = go.GetComponent<CapsuleCollider>() ?? go.AddComponent<CapsuleCollider>();
+        col.center = new Vector3(0f, 0.9f, 0f);
+        col.radius = 0.45f;
+        col.height = 1.8f;
+        col.direction = 1;
+        col.isTrigger = true;
+
+        AudioSource audioSource = go.GetComponent<AudioSource>() ?? go.AddComponent<AudioSource>();
+        audioSource.playOnAwake = false;
+        audioSource.spatialBlend = 0.5f;
+
+        ZombieAI zAI = go.GetComponent<ZombieAI>() ?? go.AddComponent<ZombieAI>();
+        zAI.maxHealth = 1000f;
+        zAI.attackRange = 2.2f;
+        zAI.attackDamage = 15f;
+        zAI.walkSpeed = 1.6f;
+        zAI.runSpeed = 4.8f;
+        zAI.wanderRadius = 18f;
+        zAI.player = transform;
+        zAI.SnapToGround();
+    }
+#endif
+
     private void OnDestroy()
     {
         if (Instance == this) Instance = null;
