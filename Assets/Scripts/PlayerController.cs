@@ -37,6 +37,8 @@ using UnityEngine;
 [RequireComponent(typeof(CharacterController))]
 public class PlayerController : MonoBehaviour
 {
+    public static PlayerController Instance { get; private set; }
+
     // ─── Inspector Fields ──────────────────────────────────────────────────────
     [Header("Movement")]
     [SerializeField] private float walkSpeed      = 4.8f;   // Natural human walk (~4.8 m/s)
@@ -182,6 +184,7 @@ public class PlayerController : MonoBehaviour
 
     private void Awake()
     {
+        Instance = this;
         _anim   = GetComponent<Animator>();
         _cc     = GetComponent<CharacterController>();
         _health = maxHealth;
@@ -240,6 +243,11 @@ public class PlayerController : MonoBehaviour
                 sObj.AddComponent<SwordAttackEffect>();
             }
         }
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
     }
 
     private void Update()
@@ -925,7 +933,7 @@ public class PlayerController : MonoBehaviour
 
         // ── Phase 2: Swing Apex (Blade whips forward through the air!) ──────
         // Frame-accurate sword slice whoosh & glowing trail
-        GameAudio.PlaySwordSwing(transform.position, _audioSource, 1.0f);
+        GameAudio.PlaySwordSwing(transform.position);
         if (SwordAttackEffect.Instance != null)
             SwordAttackEffect.Instance.TriggerAttack();
 

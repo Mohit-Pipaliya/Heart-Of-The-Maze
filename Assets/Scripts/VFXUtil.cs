@@ -67,15 +67,20 @@ public static class VFXUtil
     {
         // 1. Try standard URP particle / unlit shaders
         Shader s = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        if (s != null && (!s.isSupported || s.name.Contains("Error"))) s = null;
         if (s == null) s = Shader.Find("Universal Render Pipeline/Unlit");
+        if (s != null && (!s.isSupported || s.name.Contains("Error"))) s = null;
         if (s == null) s = Shader.Find("Universal Render Pipeline/Lit");
+        if (s != null && (!s.isSupported || s.name.Contains("Error"))) s = null;
 
         // 2. Try URP 2D / Sprites fallback
         if (s == null) s = Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default");
+        if (s != null && (!s.isSupported || s.name.Contains("Error"))) s = null;
         if (s == null) s = Shader.Find("Sprites/Default");
+        if (s != null && (!s.isSupported || s.name.Contains("Error"))) s = null;
 
         // 3. Fallback: Borrow a verified working URP shader from any active renderer in the scene
-        if (s == null || s.name.Contains("Error"))
+        if (s == null)
         {
             Renderer[] allRenderers = Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None);
             for (int i = 0; i < allRenderers.Length; i++)
@@ -83,11 +88,12 @@ public static class VFXUtil
                 Renderer r = allRenderers[i];
                 if (r != null && r.sharedMaterial != null && r.sharedMaterial.shader != null)
                 {
-                    string sn = r.sharedMaterial.shader.name;
+                    Shader rs = r.sharedMaterial.shader;
+                    string sn = rs.name;
                     if (!sn.Contains("Error") && !sn.Contains("InternalError") && 
-                        !sn.Contains("Standard") && !sn.Contains("Diffuse"))
+                        !sn.Contains("Standard") && !sn.Contains("Diffuse") && rs.isSupported)
                     {
-                        s = r.sharedMaterial.shader;
+                        s = rs;
                         break;
                     }
                 }
@@ -96,8 +102,8 @@ public static class VFXUtil
 
         // 4. Absolute emergency fallback
         if (s == null) s = Shader.Find("Hidden/Universal/CoreBlit");
+        if (s != null && (!s.isSupported || s.name.Contains("Error"))) s = null;
         if (s == null) s = Shader.Find("UI/Default");
-
         return s;
     }
 
@@ -166,7 +172,7 @@ public static class VFXUtil
         }
 #endif
 
-        if (loaded != null && loaded.shader != null && !loaded.shader.name.Contains("Error"))
+        if (loaded != null && loaded.shader != null && !loaded.shader.name.Contains("Error") && loaded.shader.isSupported)
         {
             Material clone = new Material(loaded);
             ApplyTexture(clone);

@@ -50,7 +50,6 @@ public class TorchFireSetup
         psMain.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         
         var main = psMain.main;
-        main.duration = 1f;
         main.startLifetime = new ParticleSystem.MinMaxCurve(0.6f, 1.2f);
         main.startSpeed = new ParticleSystem.MinMaxCurve(1.5f, 3f);
         main.startSize = new ParticleSystem.MinMaxCurve(0.3f, 0.6f);
@@ -97,7 +96,6 @@ public class TorchFireSetup
         psCore.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         
         var cMain = psCore.main;
-        cMain.duration = 1f;
         cMain.startLifetime = new ParticleSystem.MinMaxCurve(0.4f, 0.8f);
         cMain.startSpeed = new ParticleSystem.MinMaxCurve(1f, 2f);
         cMain.startSize = new ParticleSystem.MinMaxCurve(0.2f, 0.4f);
@@ -136,7 +134,6 @@ public class TorchFireSetup
         psEmbers.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         
         var eMain = psEmbers.main;
-        eMain.duration = 1f;
         eMain.startLifetime = new ParticleSystem.MinMaxCurve(1f, 2.5f);
         eMain.startSpeed = new ParticleSystem.MinMaxCurve(2f, 4f);
         eMain.startSize = new ParticleSystem.MinMaxCurve(0.02f, 0.06f);

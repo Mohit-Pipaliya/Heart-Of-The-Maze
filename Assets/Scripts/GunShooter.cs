@@ -455,6 +455,37 @@ public class GunShooter : MonoBehaviour
         Destroy(flashObj, 0.6f);
     }
 
+    private static Material _casingMat;
+
+    private Material GetCasingMaterial()
+    {
+        if (_casingMat != null && _casingMat.shader != null && !_casingMat.shader.name.Contains("Error"))
+            return _casingMat;
+
+        // Guaranteed working shader directly from the active gun or scene renderer
+        Shader s = null;
+        if (_gunSystem != null && _gunSystem.gun != null)
+        {
+            Renderer gunRend = _gunSystem.gun.GetComponentInChildren<Renderer>();
+            if (gunRend != null && gunRend.sharedMaterial != null && gunRend.sharedMaterial.shader != null)
+            {
+                string sn = gunRend.sharedMaterial.shader.name;
+                if (!sn.Contains("Error")) s = gunRend.sharedMaterial.shader;
+            }
+        }
+
+        if (s == null) s = VFXUtil.GetValidOpaqueShader();
+        if (s == null) s = Shader.Find("Universal Render Pipeline/Lit");
+
+        _casingMat = new Material(s);
+        Color brassCol = new Color(0.92f, 0.74f, 0.25f);
+        if (_casingMat.HasProperty("_BaseColor")) _casingMat.SetColor("_BaseColor", brassCol);
+        if (_casingMat.HasProperty("_Color")) _casingMat.SetColor("_Color", brassCol);
+        if (_casingMat.HasProperty("_Metallic")) _casingMat.SetFloat("_Metallic", 0.95f);
+        if (_casingMat.HasProperty("_Smoothness")) _casingMat.SetFloat("_Smoothness", 0.85f);
+        return _casingMat;
+    }
+
     private void EjectShellCasing()
     {
         if (!ejectShellCasings || barrelPoint == null) return;
@@ -470,17 +501,10 @@ public class GunShooter : MonoBehaviour
         if (_playerCollider != null && col != null)
             Physics.IgnoreCollision(col, _playerCollider, true);
 
-        Shader shader = VFXUtil.GetValidOpaqueShader();
-        if (shader != null && !shader.name.Contains("Error"))
+        Renderer rend = casing.GetComponent<Renderer>();
+        if (rend != null)
         {
-            Material brassMat = new Material(shader);
-            Color brassCol = new Color(0.94f, 0.76f, 0.28f);
-            brassMat.color = brassCol;
-            if (brassMat.HasProperty("_BaseColor")) brassMat.SetColor("_BaseColor", brassCol);
-            if (brassMat.HasProperty("_Color")) brassMat.SetColor("_Color", brassCol);
-            if (brassMat.HasProperty("_Metallic")) brassMat.SetFloat("_Metallic", 0.95f);
-            if (brassMat.HasProperty("_Smoothness")) brassMat.SetFloat("_Smoothness", 0.85f);
-            casing.GetComponent<Renderer>().material = brassMat;
+            rend.sharedMaterial = GetCasingMaterial();
         }
 
         Rigidbody rb = casing.AddComponent<Rigidbody>();
