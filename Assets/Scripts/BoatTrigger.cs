@@ -67,12 +67,13 @@ public class BoatTrigger : MonoBehaviour
         {
             bool hasOar = oarPickup != null && oarPickup.IsPickedUp;
             if (!hasOar)
-            {
-                Debug.Log("[BoatTrigger] Oar nahi hai! Pehle oar collect karo.");
                 return;
-            }
+
+            if (_playerController == null || _playerController.IsDead || _playerController.IsSequenceRunning)
+                return;
 
             HideAllUI();
+            GameAudio.PlayUI();
             if (boatSystem != null)
                 boatSystem.EnterBoat(_playerController);
         }
@@ -84,7 +85,7 @@ public class BoatTrigger : MonoBehaviour
         if (!other.CompareTag("Player")) return;
         if (boatSystem != null && boatSystem.IsOccupied) return;
 
-        _playerController = other.GetComponent<PlayerController>();
+        _playerController = other.GetComponentInParent<PlayerController>() ?? other.GetComponent<PlayerController>();
         _playerInside = true;
         _waitingForReentry = false; // Naye entry pe allow karo
         RefreshUI();

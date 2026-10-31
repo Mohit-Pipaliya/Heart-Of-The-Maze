@@ -1275,7 +1275,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ad17238848c1d449f8fabe7dbd65c041, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SpiderEnemy
-  maxHealth: 1500
+  maxHealth: 60
   territoryTrigger: {fileID: 387778993}
   attackRange: 4
   attackCooldown: 2.2
@@ -2395,8 +2395,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 60be44d48c58d4d19a6ce3370d13b3db, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
-  walkSpeed: 2.5
-  runSpeed: 6
+  walkSpeed: 8
+  runSpeed: 20
   rotationSpeed: 720
   mouseSensitivity: 2
   acceleration: 60
@@ -2404,8 +2404,8 @@ MonoBehaviour:
   airControl: 0.4
   moveDeadZone: 0.05
   cameraRig: {fileID: 0}
-  gunWalkSpeed: 2.3
-  gunRunSpeed: 5.5
+  gunWalkSpeed: 9
+  gunRunSpeed: 20
   jumpForce: 1.8
   gravity: -55
   fallMultiplier: 2.2

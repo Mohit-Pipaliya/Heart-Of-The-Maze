@@ -47,6 +47,7 @@ public class TorchFireSetup
         mainFlame.transform.SetParent(fireRoot.transform);
         mainFlame.transform.localPosition = Vector3.zero;
         ParticleSystem psMain = mainFlame.AddComponent<ParticleSystem>();
+        psMain.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         
         var main = psMain.main;
         main.duration = 1f;
@@ -93,6 +94,7 @@ public class TorchFireSetup
         coreFlame.transform.SetParent(fireRoot.transform);
         coreFlame.transform.localPosition = Vector3.up * 0.1f;
         ParticleSystem psCore = coreFlame.AddComponent<ParticleSystem>();
+        psCore.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         
         var cMain = psCore.main;
         cMain.duration = 1f;
@@ -131,6 +133,7 @@ public class TorchFireSetup
         embers.transform.SetParent(fireRoot.transform);
         embers.transform.localPosition = Vector3.zero;
         ParticleSystem psEmbers = embers.AddComponent<ParticleSystem>();
+        psEmbers.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         
         var eMain = psEmbers.main;
         eMain.duration = 1f;

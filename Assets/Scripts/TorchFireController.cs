@@ -39,7 +39,10 @@ public class TorchFireController : MonoBehaviour
         {
             // Perlin noise creates smooth, natural random flickering
             float noise = Mathf.PerlinNoise(Time.time * flickerSpeed, randomOffset);
+            float noise2 = Mathf.PerlinNoise(randomOffset, Time.time * flickerSpeed * 1.7f);
             torchLight.intensity = Mathf.Lerp(minLightIntensity, maxLightIntensity, noise) * fireIntensity;
+            torchLight.range = Mathf.Lerp(6f, 9.5f, noise2);
+            torchLight.color = Color.Lerp(new Color(1f, 0.45f, 0.12f), new Color(1f, 0.72f, 0.28f), noise);
         }
 
         // 2. Adjust particle emission rate based on the fireIntensity parameter

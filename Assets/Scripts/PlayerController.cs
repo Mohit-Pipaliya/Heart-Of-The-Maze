@@ -172,6 +172,12 @@ public class PlayerController : MonoBehaviour
     private float _jumpCooldownTimer;
     private float jumpCooldown = 0.15f; // Brief delay before we can be grounded again
 
+    private bool _wasGrounded = true;
+    private float _nextFootstepTime;
+    private float _swordReadyTime;
+    private int _swordCombo;
+    private float _lastAirYVelocity;
+
     // ─── Unity Lifecycle ───────────────────────────────────────────────────────
 
     private void Awake()
@@ -218,16 +224,6 @@ public class PlayerController : MonoBehaviour
         if (gunObject) gunObject.SetActive(false);
         _anim.SetInteger(HashWeaponState, (int)WeaponState.Unarmed);
 
-        // Calibrate responsive AAA speeds (perfect stride matching, zero foot sliding)
-        walkSpeed = 2.5f;
-        runSpeed = 6.0f;
-        gunWalkSpeed = 2.3f;
-        gunRunSpeed = 5.5f;
-
-        // Ensure NavMeshAgent on player is disabled by default so it doesn't fight CharacterController
-        var nma = GetComponent<UnityEngine.AI.NavMeshAgent>();
-        if (nma != null) nma.enabled = false;
-
         if (cameraRig == null && Camera.main != null)
             cameraRig = Camera.main.GetComponent<CameraController>();
 
@@ -249,19 +245,6 @@ public class PlayerController : MonoBehaviour
     private void Update()
     {
         if (_isDead) return;
-
-        // Safety: If weapon is equipped and no cutscene/interaction sequence is running, ensure isFrozen is false
-        if (isFrozen && !_isSequenceRunning && !_isEquipping)
-        {
-            if (_gunSystem != null && _gunSystem.IsGunEquipped)
-            {
-                SetFrozen(false);
-            }
-            else if (_swordSystem != null && _swordSystem.IsSwordEquipped)
-            {
-                SetFrozen(false);
-            }
-        }
 
         if (isFrozen)
         {
@@ -287,6 +270,7 @@ public class PlayerController : MonoBehaviour
         // Step 6: Update Animator
         _anim.SetBool(HashIsGrounded, _isGrounded);
 
+        HandleLocomotionFeel();
         HandleWeaponSwitch();
         HandleAttack();
     }
@@ -383,6 +367,15 @@ public class PlayerController : MonoBehaviour
         if (isFrozen)
         {
             _velocity = Vector3.zero; // Prevent physics drifting while frozen
+        }
+
+        if (_lockWorldPosition && _cc != null && _cc.enabled)
+        {
+            CompensateAnimatedBodyBelowGround();
+            ClampLockedPositionAboveGround();
+            Vector3 delta = _lockedWorldPosition - transform.position;
+            if (delta.sqrMagnitude > 0.000001f)
+                _cc.Move(delta);
         }
     }
 
@@ -541,18 +534,28 @@ public class PlayerController : MonoBehaviour
         if (aiming)
             maxSpeed = currentWalkSpeed;
 
+        float accel = _isGrounded ? acceleration : acceleration * airControl;
         if (!hasMove)
         {
-            // ABSOLUTE ZERO SLIDING: When keys are released, velocity and speed are immediately zeroed
-            _velocity.x = 0f;
-            _velocity.z = 0f;
+            if (_isGrounded)
+            {
+                _velocity.x = 0f;
+                _velocity.z = 0f;
+            }
+            else
+            {
+                Vector3 horizAir = new Vector3(_velocity.x, 0f, _velocity.z);
+                horizAir = Vector3.MoveTowards(horizAir, Vector3.zero, deceleration * 0.15f * Time.deltaTime);
+                _velocity.x = horizAir.x;
+                _velocity.z = horizAir.z;
+            }
             _anim.SetFloat(HashSpeed, 0f);
         }
         else
         {
             Vector3 targetHoriz = desiredDir * maxSpeed;
             Vector3 horiz = new Vector3(_velocity.x, 0f, _velocity.z);
-            horiz = Vector3.MoveTowards(horiz, targetHoriz, acceleration * Time.deltaTime);
+            horiz = Vector3.MoveTowards(horiz, targetHoriz, accel * Time.deltaTime);
             _velocity.x = horiz.x;
             _velocity.z = horiz.z;
         }
@@ -639,7 +642,10 @@ public class PlayerController : MonoBehaviour
         {
             _jumpBufferCounter = 0f;  // Buffer clear
             _velocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
+            _anim.ResetTrigger(HashJump);
             _anim.SetTrigger(HashJump);
+            GameAudio.PlayJump(transform.position);
+            if (cameraRig != null) cameraRig.AddRecoil(0.25f, 0f, 0.02f);
             
             // Start the jump cooldown so the ground check sphere doesn't immediately 
             // touch the ground in the next few frames while we're starting to rise up.
@@ -655,7 +661,7 @@ public class PlayerController : MonoBehaviour
         if (_isEquipping || _isSequenceRunning) return;
 
         // Press 1: Jo bhi weapon hath mein hai, uska unequip animation chalao → Unarmed
-        if (Input.GetKeyDown(KeyCode.Alpha1))
+        if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1))
         {
             if (_currentWeapon != WeaponState.Unarmed)
                 StartCoroutine(DoUnequip());
@@ -664,7 +670,7 @@ public class PlayerController : MonoBehaviour
         // Press 2: Sword equip karo
         // - Agar hath khali (Unarmed): Seedha Sword equip animation
         // - Agar Gun hath mein hai: Pehle Gun unequip → phir Sword equip
-        else if (Input.GetKeyDown(KeyCode.Alpha2))
+        else if (Input.GetKeyDown(KeyCode.Alpha2) || Input.GetKeyDown(KeyCode.Keypad2))
         {
             if (_currentWeapon == WeaponState.Sword) return; // Pehle se sword hai
             bool swordAvailable = _swordSystem != null &&
@@ -675,7 +681,7 @@ public class PlayerController : MonoBehaviour
         }
 
         // Press 3: Gun equip karo
-        else if (Input.GetKeyDown(KeyCode.Alpha3))
+        else if (Input.GetKeyDown(KeyCode.Alpha3) || Input.GetKeyDown(KeyCode.Keypad3))
         {
             if (_currentWeapon == WeaponState.Gun) return; // Pehle se gun hai
             bool gunAvailable = _gunSystem != null &&
@@ -686,7 +692,7 @@ public class PlayerController : MonoBehaviour
         }
 
         // Press 4: Torch equip karo
-        else if (Input.GetKeyDown(KeyCode.Alpha4))
+        else if (Input.GetKeyDown(KeyCode.Alpha4) || Input.GetKeyDown(KeyCode.Keypad4))
         {
             if (_currentWeapon == WeaponState.Torch) return; // Pehle se torch hai
             bool torchAvailable = _torchSystem != null && _torchSystem.currentState == TorchInteractionSystem.TorchState.Placed;
@@ -770,6 +776,7 @@ public class PlayerController : MonoBehaviour
             yield return new WaitForFixedUpdate();
             yield return new WaitForFixedUpdate();
             yield return FireTriggerInstant(HashEquip);
+            GameAudio.PlayEquip(transform.position);
             _swordSystem.StartEquip();
             yield return new WaitForSeconds(equipAnimDuration);
             while (_swordSystem.CurrentState != SwordEquipSystem.SwordState.Equipped) yield return null;
@@ -814,6 +821,7 @@ public class PlayerController : MonoBehaviour
             yield return new WaitForFixedUpdate();
             yield return new WaitForFixedUpdate();
             yield return FireTriggerInstant(HashEquip);
+            GameAudio.PlayEquip(transform.position);
             _gunSystem.StartEquip();
             yield return new WaitForSeconds(equipAnimDuration);
             while (_gunSystem.CurrentState != GunEquipSystem.GunState.Equipped) yield return null;
@@ -861,6 +869,7 @@ public class PlayerController : MonoBehaviour
         if (_torchSystem != null && _torchSystem.currentState == TorchInteractionSystem.TorchState.Placed)
         {
             _anim.applyRootMotion = false;
+            GameAudio.PlayEquip(transform.position);
             _torchSystem.StartEquip();   // EquipTorch trigger + lighter + fire VFX
             while (_torchSystem.currentState != TorchInteractionSystem.TorchState.Equipped) yield return null;
         }
@@ -878,22 +887,22 @@ public class PlayerController : MonoBehaviour
 
         if (_currentWeapon == WeaponState.Sword)
         {
-            if (Input.GetMouseButtonDown(0))
+            if (Input.GetMouseButtonDown(0) && Time.time >= _swordReadyTime)
             {
-                // Randomly pick one of the 2 sword attack animations
-                _anim.SetInteger(HashAttackIndex, Random.Range(0, 2));
+                _swordReadyTime = Time.time + 0.42f;
+                _swordCombo = (_swordCombo + 1) % 2;
+                _anim.SetInteger(HashAttackIndex, _swordCombo);
                 _anim.ResetTrigger(HashAttack);
                 _anim.SetTrigger(HashAttack);
 
-                // Play crisp, authentic sword swing SFX
                 GameAudio.PlaySwordSwing(transform.position);
+                if (cameraRig != null) cameraRig.AddRecoil(0.15f, Random.Range(-0.12f, 0.12f), 0.018f);
+                GameFeel.FovPunch(1.2f);
 
-                // AAA sword VFX — blade trail + flash light + sound
                 if (SwordAttackEffect.Instance != null)
                     SwordAttackEffect.Instance.TriggerAttack();
 
-                // Deal 15 damage to enemy in front of player
-                StartCoroutine(PerformSwordDamageWithDelay(0.2f, 15f));
+                StartCoroutine(PerformSwordDamageWithDelay(0.18f, 15f));
             }
         }
         else if (_currentWeapon == WeaponState.Gun)
@@ -917,6 +926,7 @@ public class PlayerController : MonoBehaviour
         Vector3 attackCenter = transform.position + transform.forward * 2.5f + Vector3.up * 1.0f;
         Collider[] hits = Physics.OverlapSphere(attackCenter, 3.2f);
 
+        bool hitSomething = false;
         foreach (Collider col in hits)
         {
             if (col.transform == transform || col.transform.IsChildOf(transform)) continue;
@@ -930,9 +940,57 @@ public class PlayerController : MonoBehaviour
                     SwordAttackEffect.Instance.TriggerImpact(contactPoint, -transform.forward, true);
                 if (GunShooter.Instance != null)
                     GunShooter.Instance.RegisterHitMarker(enemy.IsDead);
-                break; // Hit one enemy per swing
+                if (cameraRig != null) cameraRig.AddRecoil(0.35f, 0f, 0.04f);
+                GameFeel.HitStop(0.045f);
+                GameFeel.FovPunch(2.2f);
+                hitSomething = true;
+                break;
             }
         }
+
+        if (!hitSomething)
+        {
+            Vector3 origin = transform.position + Vector3.up * 1.1f + transform.forward * 0.6f;
+            if (Physics.SphereCast(origin, 0.25f, transform.forward, out RaycastHit worldHit, 2.4f, ~0, QueryTriggerInteraction.Ignore))
+            {
+                if (!worldHit.collider.transform.IsChildOf(transform))
+                {
+                    GameAudio.PlaySwordImpact(worldHit.point, false);
+                    if (SwordAttackEffect.Instance != null)
+                        SwordAttackEffect.Instance.TriggerImpact(worldHit.point, worldHit.normal, false);
+                }
+            }
+        }
+    }
+
+    private void HandleLocomotionFeel()
+    {
+        if (_isGrounded && !_wasGrounded)
+        {
+            float impact = Mathf.Clamp01(-_lastAirYVelocity / 18f);
+            if (impact > 0.08f)
+            {
+                GameAudio.PlayLand(transform.position);
+                if (cameraRig != null)
+                    cameraRig.AddRecoil(0.2f + impact * 0.5f, 0f, 0.015f + impact * 0.04f);
+            }
+        }
+
+        if (!_isGrounded)
+            _lastAirYVelocity = _velocity.y;
+
+        if (_isGrounded && !isFrozen)
+        {
+            float spd = new Vector3(_velocity.x, 0f, _velocity.z).magnitude;
+            if (spd > 1.2f && Time.time >= _nextFootstepTime)
+            {
+                float interval = spd > runSpeed * 0.75f ? 0.32f : 0.46f;
+                _nextFootstepTime = Time.time + interval;
+                GameAudio.PlayFootstep(transform.position, spd > runSpeed * 0.75f ? 0.38f : 0.24f);
+            }
+        }
+
+        _wasGrounded = _isGrounded;
     }
 
     /// <summary>
@@ -966,7 +1024,11 @@ public class PlayerController : MonoBehaviour
         }
         else
         {
-            _anim.SetTrigger(HashHit);   // Play hit reaction
+            _anim.ResetTrigger(HashHit);
+            _anim.SetTrigger(HashHit);
+            GameAudio.PlayHit(transform.position);
+            if (cameraRig != null) cameraRig.AddRecoil(0.55f, Random.Range(-0.3f, 0.3f), 0.06f);
+            GameFeel.FovPunch(2.5f);
         }
     }
 
@@ -976,6 +1038,7 @@ public class PlayerController : MonoBehaviour
         _isDead = true;
 
         _velocity = Vector3.zero;
+        GameAudio.PlayDeath(transform.position);
 
         if (_anim != null)
         {
@@ -1171,18 +1234,19 @@ public class PlayerController : MonoBehaviour
     public void SetFrozen(bool frozen, bool lockWorldPosition = false)
     {
         isFrozen = frozen;
+        _lockWorldPosition = frozen && lockWorldPosition;
         if (frozen)
         {
             _velocity = Vector3.zero;
             _anim.SetFloat(HashSpeed, 0f);
-            
-            // Enable root motion so OnAnimatorMove can intercept and zero out Y
-            _anim.applyRootMotion = true; 
+            _lockedWorldPosition = transform.position;
+            _anim.applyRootMotion = true;
         }
         else
         {
-            _anim.applyRootMotion = false; // Back to script-driven movement
-            SnapToGround(); // Snap to ground to fix any floating glitches
+            _lockWorldPosition = false;
+            _anim.applyRootMotion = false;
+            SnapToGround();
         }
     }
 
@@ -1247,5 +1311,5 @@ public class PlayerController : MonoBehaviour
     public bool IsHoldingWeapon => _currentWeapon != WeaponState.Unarmed;
 
     /// <summary>Returns true if an unequip or equip sequence is currently active.</summary>
-    public bool IsSequenceRunning { get => _isSequenceRunning; set => _isSequenceRunning = value; }
+    public bool IsSequenceRunning => _isSequenceRunning;
 }

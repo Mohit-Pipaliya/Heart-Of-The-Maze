@@ -208,7 +208,7 @@ public class GunShooter : MonoBehaviour
             return;
         }
 
-        isAiming = Input.GetMouseButton(1);
+        isAiming = Input.GetMouseButton(1) || Input.GetMouseButton(0);
         float targetSize = isAiming ? aimBaseSize : crosshairBaseSize;
         _currentSize = Mathf.Lerp(_currentSize, targetSize, Time.deltaTime * recoilRecoverSpeed);
 
@@ -269,7 +269,12 @@ public class GunShooter : MonoBehaviour
 
     private void Fire()
     {
-        if (barrelPoint == null) return;
+        if (barrelPoint == null)
+        {
+            if (_gunSystem != null && _gunSystem.gun != null)
+                barrelPoint = _gunSystem.gun.transform;
+            if (barrelPoint == null) return;
+        }
 
         Vector3 fireDir = CalculateAimDirection();
 
@@ -286,6 +291,7 @@ public class GunShooter : MonoBehaviour
 
         // 2. Play Punchy Gunshot SFX with pitch variation
         GameAudio.PlayGunshot(barrelPoint.position, _audioSource, 1.0f);
+        GameFeel.FovPunch(1.8f);
 
         // 3. Scale-Adjusted 3-Stage Muzzle Flash & Dynamic Light
         SpawnRealisticMuzzleFlash();
@@ -343,60 +349,14 @@ public class GunShooter : MonoBehaviour
     private static Material _sharedAdditiveMat;
     private static Material _sharedAlphaMat;
 
-    /// <summary>
-    /// Returns a particle material using URP shaders with proper asset loading.
-    /// additive=true → URP Additive Glow
-    /// additive=false → URP Alpha Blended Smoke
-    /// </summary>
     private Material GetParticleMat(bool additive = true)
     {
-        if (additive && _sharedAdditiveMat != null) return _sharedAdditiveMat;
-        if (!additive && _sharedAlphaMat != null) return _sharedAlphaMat;
-
-        Material loaded = Resources.Load<Material>(additive ? "VFX/M_ParticleAdditive" : "VFX/M_ParticleAlpha");
-
-#if UNITY_EDITOR
-        if (loaded == null)
-        {
-            string path = additive 
-                ? "Assets/Materials/VFX/M_ParticleAdditive.mat" 
-                : "Assets/Materials/VFX/M_ParticleAlpha.mat";
-            loaded = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>(path);
-        }
-#endif
-
-        if (loaded == null)
-        {
-            loaded = Resources.Load<Material>("VFX/M_TorchFire");
-#if UNITY_EDITOR
-            if (loaded == null)
-                loaded = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/VFX/M_TorchFire.mat");
-#endif
-        }
-
-        if (loaded != null)
-        {
-            Material cloned = new Material(loaded);
-            if (additive) _sharedAdditiveMat = cloned;
-            else _sharedAlphaMat = cloned;
-            return cloned;
-        }
-
-        Shader s = Shader.Find("Universal Render Pipeline/Particles/Unlit");
-        if (s == null) s = Shader.Find("Universal Render Pipeline/Unlit");
-        if (s == null) s = Shader.Find("Sprites/Default");
-
-        Material m = new Material(s != null ? s : Shader.Find("Sprites/Default"));
-        m.color = Color.white;
-        if (additive) _sharedAdditiveMat = m;
-        else _sharedAlphaMat = m;
-        return m;
+        return VFXUtil.Get(additive);
     }
 
     private void SpawnRealisticMuzzleFlash()
     {
         GameObject flashObj = new GameObject("AAA_MuzzleFlash");
-        flashObj.SetActive(false); // Keeps particles stopped during configuration
         flashObj.transform.position = barrelPoint.position;
         flashObj.transform.rotation = barrelPoint.rotation;
 
@@ -406,8 +366,9 @@ public class GunShooter : MonoBehaviour
         Light light = lightObj.AddComponent<Light>();
         light.type = LightType.Point;
         light.color = new Color(1f, 0.78f, 0.3f);
-        light.range = 35f;
-        light.intensity = 5.5f;
+        light.range = 8f;
+        light.intensity = 3.2f;
+        lightObj.AddComponent<VFXLightFade>().Init(light, 3.2f, 0.07f);
 
         Material mat = GetParticleMat(additive: true);
 
@@ -415,11 +376,12 @@ public class GunShooter : MonoBehaviour
         GameObject coreObj = new GameObject("FlashCore");
         coreObj.transform.SetParent(flashObj.transform, false);
         ParticleSystem psCore = coreObj.AddComponent<ParticleSystem>();
+        psCore.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         var main1 = psCore.main;
         main1.loop = false;
         main1.startLifetime = 0.04f;
         main1.startSpeed = 0f;
-        main1.startSize = new ParticleSystem.MinMaxCurve(2.5f, 4.0f);
+        main1.startSize = new ParticleSystem.MinMaxCurve(0.35f, 0.7f);
         main1.startColor = new Color(1.8f, 1.4f, 0.8f, 1f);
         main1.simulationSpace = ParticleSystemSimulationSpace.World;
         main1.playOnAwake = false;
@@ -428,23 +390,25 @@ public class GunShooter : MonoBehaviour
         em1.SetBursts(new ParticleSystem.Burst[] { new ParticleSystem.Burst(0, 1) });
         var rend1 = coreObj.GetComponent<ParticleSystemRenderer>();
         rend1.material = mat;
+        VFXUtil.ApplyTexture(mat);
         rend1.renderMode = ParticleSystemRenderMode.Billboard;
 
         // 3. Sparks Shower (Stretched high-speed fire sparks)
         GameObject sparksObj = new GameObject("Sparks");
         sparksObj.transform.SetParent(flashObj.transform, false);
         ParticleSystem psSparks = sparksObj.AddComponent<ParticleSystem>();
+        psSparks.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         var main2 = psSparks.main;
         main2.loop = false;
         main2.startLifetime = new ParticleSystem.MinMaxCurve(0.04f, 0.09f);
-        main2.startSpeed = new ParticleSystem.MinMaxCurve(60f, 100f);
-        main2.startSize = new ParticleSystem.MinMaxCurve(0.15f, 0.35f);
+        main2.startSpeed = new ParticleSystem.MinMaxCurve(12f, 22f);
+        main2.startSize = new ParticleSystem.MinMaxCurve(0.04f, 0.1f);
         main2.startColor = new Color(1f, 0.82f, 0.25f, 1f);
         main2.simulationSpace = ParticleSystemSimulationSpace.World;
         main2.playOnAwake = false;
         var em2 = psSparks.emission;
         em2.rateOverTime = 0;
-        em2.SetBursts(new ParticleSystem.Burst[] { new ParticleSystem.Burst(0, 22, 35) });
+        em2.SetBursts(new ParticleSystem.Burst[] { new ParticleSystem.Burst(0, 10, 16) });
         var shape2 = psSparks.shape;
         shape2.shapeType = ParticleSystemShapeType.Cone;
         shape2.angle = 20f;
@@ -458,11 +422,12 @@ public class GunShooter : MonoBehaviour
         GameObject smokeObj = new GameObject("SmokePuff");
         smokeObj.transform.SetParent(flashObj.transform, false);
         ParticleSystem psSmoke = smokeObj.AddComponent<ParticleSystem>();
+        psSmoke.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         var main3 = psSmoke.main;
         main3.loop = false;
         main3.startLifetime = new ParticleSystem.MinMaxCurve(0.25f, 0.5f);
         main3.startSpeed = new ParticleSystem.MinMaxCurve(3f, 8f);
-        main3.startSize = new ParticleSystem.MinMaxCurve(1.5f, 3.2f);
+        main3.startSize = new ParticleSystem.MinMaxCurve(0.25f, 0.55f);
         main3.startColor = new Color(0.6f, 0.6f, 0.6f, 0.35f);
         main3.simulationSpace = ParticleSystemSimulationSpace.World;
         main3.playOnAwake = false;
@@ -483,7 +448,6 @@ public class GunShooter : MonoBehaviour
         var rend3 = smokeObj.GetComponent<ParticleSystemRenderer>();
         rend3.material = GetParticleMat(additive: false); // Alpha-blend for semi-transparent smoke
 
-        flashObj.SetActive(true);
         psCore.Play();
         psSparks.Play();
         psSmoke.Play();
@@ -491,59 +455,40 @@ public class GunShooter : MonoBehaviour
         Destroy(flashObj, 0.6f);
     }
 
-    private static Material _sharedBrassMat;
-
-    private Material GetBrassMaterial()
-    {
-        if (_sharedBrassMat != null) return _sharedBrassMat;
-
-        _sharedBrassMat = Resources.Load<Material>("Materials/M_BrassCasing");
-        if (_sharedBrassMat == null)
-            _sharedBrassMat = Resources.Load<Material>("VFX/M_BrassCasing");
-
-        if (_sharedBrassMat != null)
-            return _sharedBrassMat;
-
-        // Fallback to URP Lit shader
-        Shader s = Shader.Find("Universal Render Pipeline/Lit");
-        if (s == null) s = Shader.Find("Universal Render Pipeline/Simple Lit");
-        if (s == null) s = Shader.Find("Universal Render Pipeline/Unlit");
-
-        Material m = new Material(s != null ? s : Shader.Find("Sprites/Default"));
-        m.color = new Color(0.95f, 0.78f, 0.28f);
-        if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", new Color(0.95f, 0.78f, 0.28f));
-        if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", 0.95f);
-        if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0.85f);
-
-        _sharedBrassMat = m;
-        return _sharedBrassMat;
-    }
-
     private void EjectShellCasing()
     {
         if (!ejectShellCasings || barrelPoint == null) return;
 
-        Vector3 spawnPos = barrelPoint.position - barrelPoint.forward * 0.35f + barrelPoint.up * 0.08f;
+        Vector3 spawnPos = barrelPoint.position - barrelPoint.forward * 0.4f + barrelPoint.up * 0.1f;
         GameObject casing = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         casing.name = "ShellCasing";
         casing.transform.position = spawnPos;
         casing.transform.rotation = barrelPoint.rotation * Quaternion.Euler(0, 90f, 0);
-        casing.transform.localScale = new Vector3(0.015f, 0.04f, 0.015f); // Realistic 5.56mm casing scale
+        casing.transform.localScale = new Vector3(0.06f, 0.14f, 0.06f);
 
         Collider col = casing.GetComponent<Collider>();
         if (_playerCollider != null && col != null)
             Physics.IgnoreCollision(col, _playerCollider, true);
 
-        Renderer rend = casing.GetComponent<Renderer>();
-        if (rend != null)
-            rend.sharedMaterial = GetBrassMaterial();
+        Shader shader = VFXUtil.GetValidOpaqueShader();
+        if (shader != null && !shader.name.Contains("Error"))
+        {
+            Material brassMat = new Material(shader);
+            Color brassCol = new Color(0.94f, 0.76f, 0.28f);
+            brassMat.color = brassCol;
+            if (brassMat.HasProperty("_BaseColor")) brassMat.SetColor("_BaseColor", brassCol);
+            if (brassMat.HasProperty("_Color")) brassMat.SetColor("_Color", brassCol);
+            if (brassMat.HasProperty("_Metallic")) brassMat.SetFloat("_Metallic", 0.95f);
+            if (brassMat.HasProperty("_Smoothness")) brassMat.SetFloat("_Smoothness", 0.85f);
+            casing.GetComponent<Renderer>().material = brassMat;
+        }
 
         Rigidbody rb = casing.AddComponent<Rigidbody>();
-        rb.mass = 0.01f;
+        rb.mass = 0.02f;
 
-        Vector3 ejectDir = (barrelPoint.right * 1.6f + barrelPoint.up * 1.1f - barrelPoint.forward * 0.3f).normalized;
-        ejectDir += Random.insideUnitSphere * 0.12f;
-        rb.linearVelocity = ejectDir * Random.Range(3.8f, 6.2f);
+        Vector3 ejectDir = (barrelPoint.right * 1.5f + barrelPoint.up * 1.2f - barrelPoint.forward * 0.4f).normalized;
+        ejectDir += Random.insideUnitSphere * 0.15f;
+        rb.linearVelocity = ejectDir * Random.Range(4.5f, 7.0f);
         rb.angularVelocity = Random.insideUnitSphere * Random.Range(30f, 60f);
 
         Destroy(casing, 2.5f);

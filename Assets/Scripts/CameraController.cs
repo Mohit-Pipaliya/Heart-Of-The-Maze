@@ -43,9 +43,10 @@ public class CameraController : MonoBehaviour
 
     public void AddRecoil(float pitchKick, float yawKick, float shakeAmount)
     {
-        _recoilOffset.x -= pitchKick; // Kick up
-        _recoilOffset.y += yawKick;   // Random horizontal sway
+        _recoilOffset.x -= pitchKick;
+        _recoilOffset.y += yawKick;
         _shakeOffset += Random.insideUnitSphere * shakeAmount;
+        GameFeel.FovPunch(Mathf.Abs(pitchKick) * 1.4f);
     }
 
     private float mouseY = 0.0f;
@@ -137,8 +138,8 @@ public class CameraController : MonoBehaviour
             _recoilOffset = Vector2.Lerp(_recoilOffset, Vector2.zero, Time.deltaTime * recoilRecoverySpeed);
             _shakeOffset = Vector3.Lerp(_shakeOffset, Vector3.zero, Time.deltaTime * 20f);
 
-            // Check if player is aiming with gun
-            if (_gunSystem != null && _gunSystem.IsGunEquipped && Input.GetMouseButton(1))
+            if (_gunSystem != null && _gunSystem.IsGunEquipped &&
+                (Input.GetMouseButton(1) || Input.GetMouseButton(0)))
             {
                 isAiming = true;
             }
@@ -195,10 +196,10 @@ public class CameraController : MonoBehaviour
             float finalDistance = scaledDistance;
             Vector3 directionToCamera = (desiredPosition - actualTargetOffset).normalized;
             
-            // Wall Collision Check
-            if (Physics.SphereCast(actualTargetOffset, 0.2f, directionToCamera, out RaycastHit hit, scaledDistance, collisionMask))
+            int mask = collisionMask.value != 0 ? collisionMask.value : ~LayerMask.GetMask("Player", "Ignore Raycast");
+            if (Physics.SphereCast(actualTargetOffset, 0.18f, directionToCamera, out RaycastHit hit, scaledDistance, mask, QueryTriggerInteraction.Ignore))
             {
-                finalDistance = Mathf.Clamp(hit.distance, minDistance, scaledDistance);
+                finalDistance = Mathf.Clamp(hit.distance - 0.12f, minDistance, scaledDistance);
                 desiredPosition = actualTargetOffset - (rotation * Vector3.forward * finalDistance);
             }
 

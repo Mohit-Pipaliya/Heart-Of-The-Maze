@@ -6,7 +6,7 @@ using UnityEngine.AI;
 public class SpiderEnemy : MonoBehaviour
 {
     [Header("Health Settings")]
-    public float maxHealth = 1500f;
+    public float maxHealth = 60f;
     private float currentHealth;
 
     [Header("AI Ranges & Territory")]
@@ -24,8 +24,8 @@ public class SpiderEnemy : MonoBehaviour
     public AudioClip biteHitSound;
     
     [Header("Movement Settings")]
-    public float walkSpeed = 1.4f;           // Natural, calm spider patrol speed
-    public float runSpeed = 3.0f;            // Natural chase speed (no supersonic rushing)
+    public float walkSpeed = 1.8f;           // Natural, calm spider patrol speed
+    public float runSpeed = 4.2f;            // Natural chase speed (no supersonic rushing)
     public float rotationSpeed = 6f;         // Smooth look-at speed during attack
 
     [Header("References")]
@@ -40,6 +40,9 @@ public class SpiderEnemy : MonoBehaviour
     private float _animSpeedCurrent = 0f;
     
     private bool isDead = false;
+    private bool _isAttacking;
+    private float _hitStunUntil;
+    private bool _offMeshJumping;
     public bool IsDead => isDead;
     public float CurrentHealth => currentHealth;
 
@@ -68,7 +71,6 @@ public class SpiderEnemy : MonoBehaviour
     {
         agent = GetComponent<NavMeshAgent>();
         anim = GetComponent<Animator>();
-        if (anim != null) anim.speed = 0.85f; // Realistic weighted animation speed (no frantic cartoon twitching)
         audioSource = GetComponent<AudioSource>();
         if (audioSource == null)
         {
@@ -103,19 +105,20 @@ public class SpiderEnemy : MonoBehaviour
     {
         if (isDead) return;
 
-        // Agar Hit animation chal raha hai, toh enemy ko roko (stun effect)
-        AnimatorStateInfo stateInfo = anim.GetCurrentAnimatorStateInfo(0);
-        if (stateInfo.IsTag("Hit"))
+        if (anim != null)
         {
-            agent.isStopped = true;
-            return;
+            AnimatorStateInfo stateInfo = anim.GetCurrentAnimatorStateInfo(0);
+            if (stateInfo.IsTag("Hit") || Time.time < _hitStunUntil)
+            {
+                if (agent != null && agent.enabled) agent.isStopped = true;
+                return;
+            }
         }
 
-        // ── Off-Mesh Link (Jump over rocks/obstacles) ──
-        if (agent.isOnOffMeshLink)
+        if (agent != null && agent.enabled && agent.isOnOffMeshLink)
         {
-            anim.SetTrigger(hashJump);
-            agent.CompleteOffMeshLink();
+            if (!_offMeshJumping)
+                StartCoroutine(CompleteOffMeshJump());
             return;
         }
 
@@ -136,10 +139,23 @@ public class SpiderEnemy : MonoBehaviour
             Patrol();
         }
 
-        // Update Animator Speed parameter — smooth blend for natural transition
-        _animSpeedTarget = agent.velocity.magnitude;
+        _animSpeedTarget = agent != null && agent.enabled ? agent.velocity.magnitude : 0f;
         _animSpeedCurrent = Mathf.Lerp(_animSpeedCurrent, _animSpeedTarget, Time.deltaTime * 8f);
-        anim.SetFloat(hashSpeed, _animSpeedCurrent);
+        if (anim != null) anim.SetFloat(hashSpeed, _animSpeedCurrent);
+    }
+
+    private System.Collections.IEnumerator CompleteOffMeshJump()
+    {
+        _offMeshJumping = true;
+        if (anim != null)
+        {
+            anim.ResetTrigger(hashJump);
+            anim.SetTrigger(hashJump);
+        }
+        yield return new WaitForSeconds(0.35f);
+        if (agent != null && agent.enabled && agent.isOnOffMeshLink)
+            agent.CompleteOffMeshLink();
+        _offMeshJumping = false;
     }
 
     private void Patrol()
@@ -195,38 +211,36 @@ public class SpiderEnemy : MonoBehaviour
             transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * rotationSpeed);
         }
 
-        if (Time.time >= lastAttackTime + attackCooldown)
+        if (!_isAttacking && Time.time >= lastAttackTime + attackCooldown)
         {
-            anim.SetTrigger(hashAttack);
-            lastAttackTime = Time.time;
-
-            if (audioSource != null && attackSound != null)
+            if (anim != null)
             {
-                audioSource.pitch = Random.Range(0.85f, 1.15f);
-                audioSource.PlayOneShot(attackSound, 1.0f);
+                anim.ResetTrigger(hashAttack);
+                anim.SetTrigger(hashAttack);
             }
-            
-            // Damage player ko thode delay ke baad lagna chahiye taaki animation match ho
+            lastAttackTime = Time.time;
+            GameAudio.PlaySpiderAttack(transform.position, audioSource);
             StartCoroutine(DealDamageAfterDelay(0.4f));
         }
     }
 
     private System.Collections.IEnumerator DealDamageAfterDelay(float delay)
     {
+        _isAttacking = true;
         yield return new WaitForSeconds(delay);
-        
-        // Agar spider mar gaya ya player bahar chala gaya to damage na de
-        if (isDead || player == null || Vector3.Distance(transform.position, player.position) > attackRange + 1f)
-            yield break;
 
-        PlayerController pc = player.GetComponent<PlayerController>();
-        if (pc != null && !pc.IsDead)
+        if (!isDead && player != null && Vector3.Distance(transform.position, player.position) <= attackRange + 1f)
         {
-            pc.TakeDamage((int)damageToPlayer);
-            if (audioSource != null && biteHitSound != null)
-                audioSource.PlayOneShot(biteHitSound, 1.2f);
-            Debug.Log("Spider attacked player for " + damageToPlayer + " damage!");
+            PlayerController pc = player.GetComponent<PlayerController>();
+            if (pc != null && !pc.IsDead)
+            {
+                pc.TakeDamage((int)damageToPlayer);
+                GameAudio.PlayBulletHit(player.position, true);
+                VFXUtil.Burst(player.position + Vector3.up * 1.1f, transform.forward,
+                    new Color(0.8f, 0.08f, 0.05f, 1f), 12, 4f, 10f, 0.06f, 0.16f, 0.15f, 0.3f, true, true, 1.5f, 30f);
+            }
         }
+        _isAttacking = false;
     }
 
     // Player jab attack kare toh ye function call karega
@@ -235,14 +249,20 @@ public class SpiderEnemy : MonoBehaviour
         if (isDead) return;
 
         currentHealth -= amount;
+        Debug.Log($"<color=#FF2222><b>[Spider Hit!]</b></color> Damage: {amount} | HP: {Mathf.Max(0f, currentHealth)}/{maxHealth}");
+
         GameAudio.PlaySpiderHurt(transform.position, audioSource, 1.2f);
+        VFXUtil.Burst(transform.position + Vector3.up * 0.8f, Vector3.up,
+            new Color(0.7f, 0.12f, 0.08f, 1f), 16, 3f, 9f, 0.08f, 0.2f, 0.15f, 0.35f, true, true, 1.8f, 40f);
+        _hitStunUntil = Time.time + 0.45f;
 
         if (currentHealth <= 0)
         {
             Die();
         }
-        else
+        else if (anim != null)
         {
+            anim.ResetTrigger(hashHit);
             anim.SetTrigger(hashHit);
         }
     }
@@ -252,7 +272,11 @@ public class SpiderEnemy : MonoBehaviour
         isDead = true;
         agent.isStopped = true;
         agent.enabled = false;
-        anim.SetTrigger(hashDie);
+        if (anim != null)
+        {
+            anim.ResetTrigger(hashDie);
+            anim.SetTrigger(hashDie);
+        }
         
         // Collider band kardo taaki player iss se na takraye
         Collider col = GetComponent<Collider>();

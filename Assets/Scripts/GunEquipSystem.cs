@@ -36,9 +36,10 @@ public class GunEquipSystem : MonoBehaviour
         // If it never started within timeout, just return to prevent infinite freezing
         if (!hasStarted) yield break;
 
-        // Now wait for it to reach the target time
-        while (true)
+        timer = 0f;
+        while (timer < timeout)
         {
+            timer += Time.deltaTime;
             bool isPlaying = false;
             bool reachedTarget = false;
 
@@ -54,11 +55,11 @@ public class GunEquipSystem : MonoBehaviour
                 }
                 else if (next.shortNameHash == stateHash)
                 {
-                    isPlaying = true; // Still transitioning into it
+                    isPlaying = true;
                 }
             }
 
-            if (reachedTarget || !isPlaying) break;
+            if (reachedTarget || !isPlaying) yield break;
             yield return null;
         }
     }
@@ -263,8 +264,13 @@ public class GunEquipSystem : MonoBehaviour
             yield return new WaitForSeconds(0.1f);
         }
 
-        const float animWaitTimeout = 5f;
+        const float unequipCompleteTime = 0.95f;
+        const float animWaitTimeout = 20f;
+        const float unequipStartTimeout = 1.5f;
+        float originalY = transform.position.y; // Ground Y yaad rakho
+
         int pickupHash = Animator.StringToHash("PickupGun");
+        int unequipGunHash = Animator.StringToHash("UnequipGun");
 
         if (playerAnimator != null)
         {
@@ -277,7 +283,10 @@ public class GunEquipSystem : MonoBehaviour
 
         if (playerController != null)
         {
-            playerController.SetFrozen(true, lockWorldPosition: false);
+            playerController.SetFrozen(true, lockWorldPosition: true);
+            // LIFTS DISABLED: No code will lift the player now.
+            // if (pickupGroundLift > 0f)
+            //    playerController.ApplyGroundLift(pickupGroundLift);
         }
 
         if (playerAnimator != null)
@@ -291,25 +300,88 @@ public class GunEquipSystem : MonoBehaviour
         else
             SwitchGunToHand();
 
+        // Note: Yahan extra lift nahi — pickup lift already lag chuki hai.
+        // Double lift player ko hawa mein bhej deta tha.
+
         isPickingUpSequence = false;
-
-        // Pickup complete — Gun is now directly EQUIPPED in player's hand!
-        currentState = GunState.Equipped;
-
-        if (playerController != null)
-        {
-            playerController.SyncWeaponStateFromExternal(2, false);
-            playerController.SetFrozen(false);
-            playerController.IsSequenceRunning = false;
-        }
 
         if (playerAnimator != null)
         {
-            playerAnimator.SetInteger(HashWeaponState, 2);
-            playerAnimator.CrossFadeInFixedTime("GunLocomotion", 0.25f, 0, 0f);
+            // PickupGun animation ke khatam hone ka wait karo
+            yield return WaitUntilStateNormalizedTime(
+                playerAnimator, pickupHash, pickupCompleteNormalizedTime, animWaitTimeout);
+
+            // Animator ko PickupGun state se bahar snap karo
+            SnapAnimatorStateToEnd(playerAnimator, pickupHash, 0.99f);
+            yield return null;
+            yield return null;
+            yield return null;
+
+            currentState = GunState.Unequipping;
+            if (playerController != null)
+                playerController.SyncWeaponStateFromExternal(2, true);
+
+            // ── Ground Snap ─────────────────────────────────────────────────────
+            // Lifts and snaps completely disabled.
+            // float liftedY   = transform.position.y;
+            // float snapDelta = originalY - liftedY;   
+            // if (playerController != null && Mathf.Abs(snapDelta) > 0.01f)
+            //     playerController.ApplyGroundLift(snapDelta);
+
+
+            // WeaponState=2 set karo aur direct CrossFade se UnequipGun force karo.
+            // Trigger approach unreliable hai jab PickupGun → UnequipGun transition
+            // Animator Controller mein sahi conditions nahi hoti — CrossFade guaranteed hai.
+            SetWeaponStateForUnequip(2);
+            yield return null;
+
+            playerAnimator.ResetTrigger(HashUnequip);
+            Debug.Log("[Gun] Forcing UnequipGun via CrossFade...");
+            playerAnimator.CrossFadeInFixedTime(unequipGunHash, 0.15f, 0, 0f);
+
+            // State active hone ka wait karo (5 sec timeout)
+            const float unequipWaitTimeout = 5f;
+            yield return WaitUntilStateActive(playerAnimator, unequipGunHash, unequipWaitTimeout);
+
+            bool unequipStarted = IsInOrTransitioningToState(playerAnimator, unequipGunHash);
+            Debug.Log($"[Gun] UnequipGun state active: {unequipStarted}");
+
+            if (!unequipStarted)
+            {
+                Debug.LogWarning("[Gun] UnequipGun state nahi mila! Animator mein 'UnequipGun' state ka naam check karo.");
+            }
+            else
+            {
+                // Current state banne ka wait (transition complete)
+                yield return WaitUntilCurrentStateIs(playerAnimator, unequipGunHash, unequipWaitTimeout);
+
+                // Animation 95% complete hone tak wait karo
+                float unequipTimer = 0f;
+                while (unequipTimer < animWaitTimeout)
+                {
+                    unequipTimer += Time.deltaTime;
+                    float nt = GetStateNormalizedTime(playerAnimator, unequipGunHash);
+                    if (nt >= unequipCompleteTime)
+                        break;
+                    yield return null;
+                }
+                Debug.Log("[Gun] UnequipGun animation complete.");
+            }
+        }
+        else
+        {
+            currentState = GunState.Unequipping;
+            if (playerController != null)
+                playerController.SyncWeaponStateFromExternal(2, true);
         }
 
-        Debug.Log("[Gun] Pickup complete! Gun equipped in hand, player free to move & shoot.");
+        SwitchGunToHolster();
+        OnUnequipAnimationFinished();
+
+        SetWeaponStateForUnequip(0);
+
+        if (playerController != null)
+            playerController.SetFrozen(false);
     }
 
     public void StartEquip()
@@ -370,20 +442,6 @@ public class GunEquipSystem : MonoBehaviour
         
         Debug.Log("[Gun] Switched To Hand");
         
-        if (gun != null)
-        {
-            // Ensure all colliders on gun are disabled so they can never push or block CharacterController
-            Collider[] colliders = gun.GetComponentsInChildren<Collider>();
-            foreach (Collider c in colliders) c.enabled = false;
-
-            Rigidbody rb = gun.GetComponent<Rigidbody>();
-            if (rb != null)
-            {
-                rb.isKinematic = true;
-                rb.useGravity = false;
-            }
-        }
-
         if (gunHandlePoint != null)
         {
             gun.transform.SetParent(gunHandSocket);
@@ -404,19 +462,6 @@ public class GunEquipSystem : MonoBehaviour
     {
         if (currentState != GunState.Equipping) yield break;
         if (gun == null || gunHandSocket == null) { SwitchGunToHand(); yield break; }
-
-        if (gun != null)
-        {
-            Collider[] colliders = gun.GetComponentsInChildren<Collider>();
-            foreach (Collider c in colliders) c.enabled = false;
-
-            Rigidbody rb = gun.GetComponent<Rigidbody>();
-            if (rb != null)
-            {
-                rb.isKinematic = true;
-                rb.useGravity = false;
-            }
-        }
 
         // ── Target world rotation compute karo (ek baar, constant hai) ──
         Quaternion rotOffset = gunHandlePoint != null
@@ -459,20 +504,6 @@ public class GunEquipSystem : MonoBehaviour
         if (currentState != GunState.Unequipping) return;
         
         Debug.Log("[Gun] Switched To Holster");
-
-        if (gun != null)
-        {
-            Collider[] colliders = gun.GetComponentsInChildren<Collider>();
-            foreach (Collider c in colliders) c.enabled = false;
-
-            Rigidbody rb = gun.GetComponent<Rigidbody>();
-            if (rb != null)
-            {
-                rb.isKinematic = true;
-                rb.useGravity = false;
-            }
-        }
-
         AttachToSocket(gunHolsterSocket, holsterLocalPosition, holsterLocalRotation);
     }
 
@@ -482,12 +513,7 @@ public class GunEquipSystem : MonoBehaviour
         
         Debug.Log("[Gun] Equip Finished");
         currentState = GunState.Equipped;
-        if (playerController != null)
-        {
-            playerController.SyncWeaponStateFromExternal(2, false);
-            playerController.SetFrozen(false);
-            playerController.IsSequenceRunning = false;
-        }
+        if (playerController != null) playerController.SyncWeaponStateFromExternal(2, false);
     }
 
     public void OnUnequipAnimationFinished()

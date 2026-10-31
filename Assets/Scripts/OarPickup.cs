@@ -75,6 +75,9 @@ public class OarPickup : MonoBehaviour
 
         if (_playerInRange && Input.GetKeyDown(KeyCode.E))
         {
+            if (_playerController != null &&
+                (_playerController.IsDead || _playerController.isFrozen || _playerController.IsSequenceRunning))
+                return;
             StartCoroutine(PickupSequence());
         }
     }
@@ -89,7 +92,7 @@ public class OarPickup : MonoBehaviour
         if (playerAnimator == null)
             playerAnimator = other.GetComponentInChildren<Animator>();
         if (_playerController == null)
-            _playerController = other.GetComponent<PlayerController>();
+            _playerController = other.GetComponentInParent<PlayerController>() ?? other.GetComponent<PlayerController>();
 
         _playerInRange = true;
         if (pickupPromptUI != null) pickupPromptUI.SetActive(true);
@@ -106,6 +109,8 @@ public class OarPickup : MonoBehaviour
     private IEnumerator PickupSequence()
     {
         _isPickingUp = true;
+        GameAudio.PlayUI();
+        GameAudio.PlayPickup(transform.position);
 
         // UI band karo
         if (pickupPromptUI != null) pickupPromptUI.SetActive(false);

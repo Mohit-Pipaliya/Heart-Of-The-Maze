@@ -36,9 +36,10 @@ public class SwordEquipSystem : MonoBehaviour
         // If it never started within timeout, just return to prevent infinite freezing
         if (!hasStarted) yield break;
 
-        // Now wait for it to reach the target time
-        while (true)
+        timer = 0f;
+        while (timer < timeout)
         {
+            timer += Time.deltaTime;
             bool isPlaying = false;
             bool reachedTarget = false;
 
@@ -54,11 +55,11 @@ public class SwordEquipSystem : MonoBehaviour
                 }
                 else if (next.shortNameHash == stateHash)
                 {
-                    isPlaying = true; // Still transitioning into it
+                    isPlaying = true;
                 }
             }
 
-            if (reachedTarget || !isPlaying) break;
+            if (reachedTarget || !isPlaying) yield break;
             yield return null;
         }
     }
@@ -223,23 +224,26 @@ public class SwordEquipSystem : MonoBehaviour
         
         isPickingUpSequence = false;
         
-        // Pickup complete — Sword is now directly EQUIPPED in player's hand!
-        currentState = SwordState.Equipped;
-
+        // Unfreeze player BEFORE unequip so physics doesn't sink into terrain
+        if (playerController != null)
+            playerController.SetFrozen(false);
+        
+        // Small lift to prevent sinking at the Pickup→Unequip transition
         if (playerController != null)
         {
-            playerController.SyncWeaponStateFromExternal(1, false);
-            playerController.SetFrozen(false);
-            playerController.IsSequenceRunning = false;
+            CharacterController cc = playerController.GetComponent<CharacterController>();
+            if (cc != null) cc.Move(Vector3.up * 0.3f);
         }
-
+        
+        // MUST call StartUnequip FIRST so WeaponState is synced to 1.
+        // If WeaponState is 0, the Animator will ignore the Unequip trigger!
+        StartUnequip();
+        
         if (playerAnimator != null)
         {
-            playerAnimator.SetInteger(Animator.StringToHash("WeaponState"), 1);
-            playerAnimator.CrossFadeInFixedTime("SwordLocomotion", 0.25f, 0, 0f);
+            playerAnimator.ResetTrigger("Unequip");
+            playerAnimator.CrossFadeInFixedTime("UnequipSword", 0.15f, 0, 0f);
         }
-
-        Debug.Log("[Sword] Pickup complete! Sword equipped in hand, player free to move & attack.");
     }
 
 
@@ -366,18 +370,6 @@ public class SwordEquipSystem : MonoBehaviour
         else
         {
             AttachToSocket(swordHandSocket, handLocalPosition, handLocalRotation);
-        }
-
-        if (sword != null)
-        {
-            foreach (var c in sword.GetComponentsInChildren<Collider>())
-                c.enabled = false;
-            Rigidbody rb = sword.GetComponent<Rigidbody>();
-            if (rb != null)
-            {
-                rb.isKinematic = true;
-                rb.useGravity = false;
-            }
         }
     }
 

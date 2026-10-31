@@ -127,6 +127,11 @@ public class TorchInteractionSystem : MonoBehaviour
     {
         currentState = TorchState.Grabbing;
         if (pickupPromptUI != null) pickupPromptUI.SetActive(false);
+        GameAudio.PlayUI();
+        GameAudio.PlayPickup(transform.position);
+
+        if (playerController != null)
+            playerController.SetFrozen(true, lockWorldPosition: true);
 
         // ── Step 0: Agar player ke haath mein koi weapon hai, pehle unequip karo ──
         if (playerController != null && playerController.WeaponIndex != 0)
@@ -157,6 +162,8 @@ public class TorchInteractionSystem : MonoBehaviour
         if (playerController != null) playerController.RegisterTorch(this);
         
         currentState = TorchState.Placed;
+        if (playerController != null)
+            playerController.SetFrozen(false);
     }
 
     public void StartEquip()

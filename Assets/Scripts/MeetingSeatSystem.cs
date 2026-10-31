@@ -123,7 +123,8 @@ public class MeetingSeatSystem : MonoBehaviour
 
     private void Update()
     {
-        if (_playerInRange && !_busy && Input.GetKeyDown(KeyCode.C))
+        if (_playerInRange && !_busy && _pc != null && !_pc.IsDead && !_pc.IsSequenceRunning &&
+            Input.GetKeyDown(KeyCode.C))
             StartCoroutine(MeetingSequence());
     }
 
@@ -132,6 +133,7 @@ public class MeetingSeatSystem : MonoBehaviour
     {
         _busy = true;
         if (joinPromptUI != null) joinPromptUI.SetActive(false);
+        GameAudio.PlayUI();
 
         // 1. Weapon unequip karo (agar equipped hai)
         if (_pc != null)
@@ -145,8 +147,7 @@ public class MeetingSeatSystem : MonoBehaviour
             _anim.applyRootMotion = false;
         }
 
-        // 2. Player controls freeze karo
-        if (_pc != null) _pc.isFrozen = true;
+        if (_pc != null) _pc.SetFrozen(true, lockWorldPosition: false);
 
         // 3. NavMeshAgent ON karo, CharacterController ko OFF karo (dono ek saath ladenge)
         if (_cc != null) _cc.enabled = false;
@@ -157,9 +158,13 @@ public class MeetingSeatSystem : MonoBehaviour
             _agent.stoppingDistance = stoppingDistance;
         }
 
-        // 4. Seat tak walk karo (NavMesh)
-        if (seatArrivalPoint != null && _agent != null)
-            yield return StartCoroutine(WalkToSeat());
+        if (seatArrivalPoint != null)
+        {
+            if (_agent != null)
+                yield return StartCoroutine(WalkToSeat());
+            else
+                yield return StartCoroutine(WalkToSeatFallback());
+        }
 
         // 5. NavMeshAgent band karo
         if (_agent != null) { _agent.ResetPath(); _agent.enabled = false; }
@@ -268,9 +273,7 @@ public class MeetingSeatSystem : MonoBehaviour
             _anim.SetFloat(HashSpeed, 0f);
             _anim.applyRootMotion = originalRootMotion;
         }
-        if (_pc != null) _pc.isFrozen = false;
-        
-        // Sab kuch hone ke baad CharacterController wapas ON karo
+        if (_pc != null) _pc.SetFrozen(false);
         if (_cc != null) _cc.enabled = true;
 
         _busy = false;
@@ -297,6 +300,36 @@ public class MeetingSeatSystem : MonoBehaviour
                 float currentSpeed = _anim.GetFloat(HashSpeed);
                 float smoothSpeed = Mathf.MoveTowards(currentSpeed, 0.5f, Time.deltaTime / 0.1f);
                 _anim.SetFloat(HashSpeed, smoothSpeed);
+            }
+            yield return null;
+        }
+
+        if (_anim != null) _anim.SetFloat(HashSpeed, 0f);
+    }
+
+    private IEnumerator WalkToSeatFallback()
+    {
+        if (_pc == null || seatArrivalPoint == null) yield break;
+        if (_anim != null) _anim.SetFloat(HashSpeed, 0.5f);
+
+        Vector3 target = seatArrivalPoint.position;
+        float timeout = 8f, elapsed = 0f;
+        while (elapsed < timeout)
+        {
+            elapsed += Time.deltaTime;
+            Vector3 pos = _pc.transform.position;
+            Vector3 flat = target;
+            flat.y = pos.y;
+            if (Vector3.Distance(new Vector3(pos.x, 0f, pos.z), new Vector3(target.x, 0f, target.z)) <= stoppingDistance)
+                break;
+
+            Vector3 dir = (flat - pos);
+            dir.y = 0f;
+            if (dir.sqrMagnitude > 0.0001f)
+            {
+                dir.Normalize();
+                _pc.transform.rotation = Quaternion.Slerp(_pc.transform.rotation, Quaternion.LookRotation(dir), Time.deltaTime * 8f);
+                _pc.transform.position = Vector3.MoveTowards(pos, flat, walkToSeatSpeed * Time.deltaTime);
             }
             yield return null;
         }

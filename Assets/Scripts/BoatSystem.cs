@@ -122,10 +122,10 @@ public class BoatSystem : MonoBehaviour
 
     [Header("Timings")]
     [Tooltip("Climb animation ke baad idle me kitne seconds ruko")]
-    public float idleAfterClimbDuration = 2f;
+    public float idleAfterClimbDuration = 0.35f;
 
     [Tooltip("SitUp ke baad BoatUnclimb se pehle idle me kitne seconds ruko")]
-    public float idleAfterSitUpDuration = 2f;
+    public float idleAfterSitUpDuration = 0.4f;
 
     [Tooltip("Player kitni speed se BoatNear tak walk kare (NavMesh nahi — direct lerp)")]
     public float walkToBoatSpeed = 2.5f;
@@ -164,6 +164,9 @@ public class BoatSystem : MonoBehaviour
     // AAA State
     private float _currentSpeed = 0f;
     private float _currentTurn = 0f;
+    private float _waterRestY;
+    private bool _hasWaterRest;
+    private float _nextSplashTime;
 
     // Animator hashes
     private int _hashClimb;
@@ -272,11 +275,24 @@ public class BoatSystem : MonoBehaviour
         // Apply Movement
         Vector3 deltaMove = _currentBoatVelocity * Time.deltaTime;
         transform.position += deltaMove;
-        
-        // ─── AAA Water Bobbing (Sine Wave) ───
-        // Boat paani pe halke se upar-neeche hogi
-        float bobOffset = Mathf.Sin(Time.time * waterBobSpeed) * waterBobAmount * Time.deltaTime;
-        transform.position += new Vector3(0, bobOffset, 0);
+
+        if (!_hasWaterRest)
+        {
+            _waterRestY = transform.position.y;
+            _hasWaterRest = true;
+        }
+
+        float bob = Mathf.Sin(Time.time * waterBobSpeed) * waterBobAmount * 0.08f;
+        Vector3 p = transform.position;
+        p.y = _waterRestY + bob;
+        transform.position = p;
+
+        if (pressing && Time.time >= _nextSplashTime)
+        {
+            _nextSplashTime = Time.time + 0.45f;
+            VFXUtil.WaterSplash(transform.position + GetBoatForward() * 0.8f, 0.7f);
+            GameAudio.PlayPaddle(transform.position);
+        }
 
         if (boatRigidbody != null)
         {
@@ -300,7 +316,7 @@ public class BoatSystem : MonoBehaviour
     // ─── Exit Input ────────────────────────────────────────────────────────────
     private void HandleExitInput()
     {
-        if ((Input.GetKeyDown(KeyCode.G) || Input.GetKeyDown(KeyCode.B)) && !_isExiting && !_isEntering)
+        if ((Input.GetKeyDown(KeyCode.G) || Input.GetKeyDown(KeyCode.F)) && !_isExiting)
         {
             StartCoroutine(ExitBoatSequence());
         }
@@ -327,65 +343,53 @@ public class BoatSystem : MonoBehaviour
         _playerCC         = player.GetComponent<CharacterController>();
         _playerAnimator   = player.GetComponentInChildren<Animator>();
 
-        // Step 0: Agar player ke hath mein koi weapon hai, pehle smoothly unequip karo
-        if (_playerController != null && _playerController.IsHoldingWeapon)
-        {
-            yield return _playerController.UnequipCurrentWeaponForPickup();
-            yield return new WaitForSeconds(0.1f);
-        }
-
-        // ── Step 1: Player ko freeze karke Boat boarding point tak smoothly align karo ──
+        // ── Step 1: Player ko freeze karke BoatNear tak walk karo ───────────
         player.SetFrozen(true, lockWorldPosition: false);
+        
+        // Boat ke collider se takra ke player stuck na ho uske liye CC band karo
         if (_playerCC != null) _playerCC.enabled = false;
 
-        Vector3 boardPos = (boatNearPoint != null) ? boatNearPoint.position : transform.position - transform.right * 1.5f;
-        Vector3 boardFwd = (boatNearPoint != null) ? boatNearPoint.forward : transform.forward;
+        yield return StartCoroutine(WalkPlayerToPoint(_playerTransform, boatNearPoint.position));
 
-        // Walk animation band karo, clean align karo
-        if (_playerAnimator != null)
-            _playerAnimator.SetFloat(Animator.StringToHash("Speed"), 0f);
-
-        yield return StartCoroutine(SmoothAlignTo(_playerTransform, boardPos, boardFwd, 0.35f));
+        // BoatNear ke paas pohonch ke boat ki taraf rotate karo
+        yield return StartCoroutine(SmoothRotateToward(_playerTransform, boatNearPoint.forward, 0.3f));
 
         // ── Step 2: BoatClimb animation ─────────────────────────────────────
         if (_playerAnimator != null)
         {
             _playerAnimator.ResetTrigger(_hashClimb);
-            _playerAnimator.SetTrigger(_hashClimb);
-            _playerAnimator.CrossFadeInFixedTime(climbStateName, 0.1f, 0, 0f);
+            _playerAnimator.CrossFadeInFixedTime(climbStateName, 0.15f, 0, 0f);
         }
 
-        yield return null;
+        yield return null; // Ek frame — animation start ho
 
         int climbStateHash = Animator.StringToHash(climbStateName);
 
-        // ── Step 3: Realistic Climb Motion (Seat tak smooth arc lift) ────────
+        // ── Step 3: Realistic Climb Motion ──────────────────────────────────
+        // Animation ke dauran player ko seat pe smoothly arc ke sath le jao
         yield return StartCoroutine(SyncClimbMotion(_playerAnimator, climbStateHash, _playerTransform, boatSeatPoint));
 
-        // Player ko runtime mount ka child banao taaki boat ke saath lock rahe
+        // Player ko runtime mount ka child banao taaki Boat ka 3000x scale player ko hawa me na phenke
         _runtimeMount.position = boatSeatPoint.position;
         _runtimeMount.rotation = boatSeatPoint.rotation;
         _playerTransform.SetParent(_runtimeMount);
-        _playerTransform.localPosition = Vector3.zero;
-        _playerTransform.localRotation = Quaternion.identity;
 
-        // Boat ko thoda shift karo agar offset ho
+        // Boat ko thoda left (ya jo bhi offset ho) shift karo
         if (boatEnterShiftOffset != Vector3.zero)
         {
-            yield return StartCoroutine(SmoothShiftBoat(boatEnterShiftOffset, 0.4f));
+            yield return StartCoroutine(SmoothShiftBoat(boatEnterShiftOffset, 0.5f));
         }
 
         // ── Step 4: SitDown animation ───────────────────────────────────────
         if (_playerAnimator != null)
         {
             _playerAnimator.ResetTrigger(_hashSitDown);
-            _playerAnimator.SetTrigger(_hashSitDown);
             _playerAnimator.CrossFadeInFixedTime(sitDownStateName, 0.15f, 0, 0f);
         }
 
-        yield return new WaitForSeconds(0.9f);
+        yield return new WaitForSeconds(1.2f);
 
-        // ── Step 5: Paddling ready ──────────────────────────────────────────
+        // ── Step 5: Paddling ready (Ab SeatIdle default chalega) ─────────────
         _canPaddle  = true;
         _isEntering = false;
 
@@ -396,7 +400,7 @@ public class BoatSystem : MonoBehaviour
             if (cam != null) cam.StartCinematic(camDistance, camOffset, camYaw, camPitch);
         }
 
-        Debug.Log("[BoatSystem] Player boat mein successfully baith gaya!");
+        Debug.Log("[BoatSystem] Player boat mein aa gaya!");
     }
 
     // ─── EXIT BOAT ─────────────────────────────────────────────────────────────
@@ -429,26 +433,24 @@ public class BoatSystem : MonoBehaviour
         {
             _playerAnimator.ResetTrigger(_hashSitUp);
             _playerAnimator.SetTrigger(_hashSitUp);
-            _playerAnimator.CrossFadeInFixedTime(sitUpStateName, 0.15f, 0, 0f);
         }
 
         int sitUpHash = Animator.StringToHash(sitUpStateName);
-        yield return WaitForStateStart(_playerAnimator, sitUpHash, 2f);
-        yield return WaitForStateNormalizedTime(_playerAnimator, sitUpHash, 0.9f, 3f);
+        yield return WaitForStateStart(_playerAnimator, sitUpHash, 5f);
+        yield return WaitForStateNormalizedTime(_playerAnimator, sitUpHash, 0.95f, 10f);
 
-        // ── Step 2: Normal idle mein thoda rest ─────────────────────────────
-        yield return new WaitForSeconds(Mathf.Min(idleAfterSitUpDuration, 0.8f));
+        // ── Step 2: Normal idle mein 2 seconds ─────────────────────────────
+        yield return new WaitForSeconds(idleAfterSitUpDuration);
 
         // ── Step 3: BoatUnclimb animation ──────────────────────────────────
         if (_playerAnimator != null)
         {
             _playerAnimator.ResetTrigger(_hashUnclimb);
             _playerAnimator.SetTrigger(_hashUnclimb);
-            _playerAnimator.CrossFadeInFixedTime(unclimbStateName, 0.15f, 0, 0f);
         }
 
         int unclimbHash = Animator.StringToHash(unclimbStateName);
-        yield return WaitForStateStart(_playerAnimator, unclimbHash, 2f);
+        yield return WaitForStateStart(_playerAnimator, unclimbHash, 5f);
 
         // ── Step 4: Player ko BoatNear pe utaro ────────────────────────────
         _playerTransform.SetParent(null); // Boat se alag karo
@@ -467,15 +469,7 @@ public class BoatSystem : MonoBehaviour
         if (_playerCC != null) _playerCC.enabled = true;
         
         if (_playerController != null)
-        {
             _playerController.SetFrozen(false);
-            _playerController.SnapToGround();
-        }
-
-        if (_playerAnimator != null)
-        {
-            _playerAnimator.CrossFadeInFixedTime("UnarmedLocomotion", 0.2f, 0, 0f);
-        }
 
         // Boat trigger se bahar gaya — oar drop ho jayega (OnTriggerExit se auto)
         if (boatTrigger != null)
@@ -485,30 +479,6 @@ public class BoatSystem : MonoBehaviour
         _isExiting  = false;
 
         Debug.Log("[BoatSystem] Player boat se utar gaya!");
-    }
-
-    // ─── Helper: Player ko smoothly align karo position & rotation ───────
-    private IEnumerator SmoothAlignTo(Transform target, Vector3 targetPos, Vector3 targetForward, float duration)
-    {
-        if (target == null) yield break;
-        Vector3 startPos = target.position;
-        Quaternion startRot = target.rotation;
-        Quaternion destRot = targetForward != Vector3.zero 
-            ? Quaternion.LookRotation(new Vector3(targetForward.x, 0f, targetForward.z)) 
-            : startRot;
-        float elapsed = 0f;
-
-        while (elapsed < duration)
-        {
-            elapsed += Time.deltaTime;
-            float t = Mathf.SmoothStep(0f, 1f, elapsed / duration);
-            target.position = Vector3.Lerp(startPos, targetPos, t);
-            target.rotation = Quaternion.Slerp(startRot, destRot, t);
-            yield return null;
-        }
-
-        target.position = targetPos;
-        target.rotation = destRot;
     }
 
     // ─── Helper: Player ko point tak walk karao (direct lerp with timeout) ─

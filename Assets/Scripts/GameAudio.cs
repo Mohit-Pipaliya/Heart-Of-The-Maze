@@ -3,10 +3,14 @@ using UnityEngine;
 /// <summary>
 /// GameAudio
 /// =========
-/// Centralized, 100% fail-safe audio engine for Heart of the Maze.
-/// Automatically loads WAV assets from Resources/Audio/ or Assets/Audio/,
-/// and provides crisp, studio-grade procedural waveform synthesis as an instant fallback
-/// so sound NEVER fails to play under any condition.
+/// Centralized AAA Production Audio Engine for Heart of the Maze.
+/// 
+/// Features:
+/// 1. Guaranteed Direct Disk Loader (Loads 44.1kHz Stereo 16-bit uncompressed WAVs 
+///    directly from disk, completely bypassing any Unity metadata / import pipeline lag).
+/// 2. Anti-Phase Protection: Prevents duplicate triggers on the same frame to eliminate 
+///    flanging / hollow comb filtering.
+/// 3. Standard fallback to Resources.Load & AssetDatabase.
 /// </summary>
 public static class GameAudio
 {
@@ -19,7 +23,16 @@ public static class GameAudio
         SpiderAttack,
         SpiderHurt,
         BulletFlesh,
-        BulletGround
+        BulletGround,
+        Footstep,
+        Jump,
+        Land,
+        Pickup,
+        Equip,
+        Paddle,
+        Hit,
+        Death,
+        UI
     }
 
     private static AudioClip _gunshotClip;
@@ -30,6 +43,29 @@ public static class GameAudio
     private static AudioClip _spiderHurtClip;
     private static AudioClip _bulletFleshClip;
     private static AudioClip _bulletGroundClip;
+    private static AudioClip _footstepClip;
+    private static AudioClip _jumpClip;
+    private static AudioClip _landClip;
+    private static AudioClip _pickupClip;
+    private static AudioClip _equipClip;
+    private static AudioClip _paddleClip;
+    private static AudioClip _hitClip;
+    private static AudioClip _deathClip;
+    private static AudioClip _uiClip;
+
+    private static AudioSource[] _pool;
+    private static int _poolIndex;
+    private const int PoolSize = 16;
+
+    // Anti-phasing timestamps to prevent double-trigger comb filtering
+    private static float _lastGunshotTime = -1f;
+    private static float _lastSwordSwingTime = -1f;
+    private static float _lastSwordImpactTime = -1f;
+    private static float _lastSpiderAttackTime = -1f;
+    private static float _lastSpiderHurtTime = -1f;
+    private static float _lastBulletHitTime = -1f;
+    private static float _lastFootstepTime = -1f;
+    private static float _lastPaddleTime = -1f;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     public static void ResetCache()
@@ -42,6 +78,33 @@ public static class GameAudio
         _spiderHurtClip = null;
         _bulletFleshClip = null;
         _bulletGroundClip = null;
+        _footstepClip = _jumpClip = _landClip = _pickupClip = _equipClip = null;
+        _paddleClip = _hitClip = _deathClip = _uiClip = null;
+        _pool = null;
+
+        _lastGunshotTime = -1f;
+        _lastSwordSwingTime = -1f;
+        _lastSwordImpactTime = -1f;
+        _lastSpiderAttackTime = -1f;
+        _lastSpiderHurtTime = -1f;
+        _lastBulletHitTime = -1f;
+        _lastFootstepTime = -1f;
+        _lastPaddleTime = -1f;
+
+        // Force-preload core combat audio on startup
+        PreloadCoreAudio();
+    }
+
+    public static void PreloadCoreAudio()
+    {
+        GetClip(SoundType.Gunshot);
+        GetClip(SoundType.SwordSwing);
+        GetClip(SoundType.SwordClash);
+        GetClip(SoundType.SwordFlesh);
+        GetClip(SoundType.SpiderAttack);
+        GetClip(SoundType.SpiderHurt);
+        GetClip(SoundType.BulletFlesh);
+        GetClip(SoundType.BulletGround);
     }
 
     public static AudioClip GetClip(SoundType type)
@@ -49,47 +112,92 @@ public static class GameAudio
         switch (type)
         {
             case SoundType.Gunshot:
-                if (_gunshotClip == null) _gunshotClip = LoadOrSynthesize("Gunshot", SynthesizeGunshot);
+                if (_gunshotClip == null) _gunshotClip = LoadAudioClip("Gunshot");
                 return _gunshotClip;
 
             case SoundType.SwordSwing:
-                if (_swordSwingClip == null) _swordSwingClip = LoadOrSynthesize("SwordSwing", SynthesizeSwordSwing);
+                if (_swordSwingClip == null) _swordSwingClip = LoadAudioClip("SwordSwing");
                 return _swordSwingClip;
 
             case SoundType.SwordClash:
-                if (_swordClashClip == null) _swordClashClip = LoadOrSynthesize("SwordClash", () => SynthesizeImpact(false));
+                if (_swordClashClip == null) _swordClashClip = LoadAudioClip("SwordClash");
                 return _swordClashClip;
 
             case SoundType.SwordFlesh:
-                if (_swordFleshClip == null) _swordFleshClip = LoadOrSynthesize("SpiderHurt", () => SynthesizeImpact(true));
+                if (_swordFleshClip == null) _swordFleshClip = LoadAudioClip("BulletFlesh");
                 return _swordFleshClip;
 
             case SoundType.SpiderAttack:
-                if (_spiderAttackClip == null) _spiderAttackClip = LoadOrSynthesize("SpiderAttack", SynthesizeSpiderAttack);
+                if (_spiderAttackClip == null) _spiderAttackClip = LoadAudioClip("SpiderAttack");
                 return _spiderAttackClip;
 
             case SoundType.SpiderHurt:
-                if (_spiderHurtClip == null) _spiderHurtClip = LoadOrSynthesize("SpiderHurt", SynthesizeSpiderHurt);
+                if (_spiderHurtClip == null) _spiderHurtClip = LoadAudioClip("SpiderHurt");
                 return _spiderHurtClip;
 
             case SoundType.BulletFlesh:
-                if (_bulletFleshClip == null) _bulletFleshClip = LoadOrSynthesize("BulletFlesh", () => SynthesizeImpact(true));
+                if (_bulletFleshClip == null) _bulletFleshClip = LoadAudioClip("BulletFlesh");
                 return _bulletFleshClip;
 
             case SoundType.BulletGround:
-                if (_bulletGroundClip == null) _bulletGroundClip = LoadOrSynthesize("BulletGround", () => SynthesizeImpact(false));
+                if (_bulletGroundClip == null) _bulletGroundClip = LoadAudioClip("BulletGround");
                 return _bulletGroundClip;
+
+            case SoundType.Footstep:
+                if (_footstepClip == null) _footstepClip = MakeProcedural("Footstep", 0.09f, 90f, 0.35f);
+                return _footstepClip;
+            case SoundType.Jump:
+                if (_jumpClip == null) _jumpClip = MakeProcedural("Jump", 0.12f, 180f, 0.4f);
+                return _jumpClip;
+            case SoundType.Land:
+                if (_landClip == null) _landClip = MakeProcedural("Land", 0.14f, 70f, 0.55f);
+                return _landClip;
+            case SoundType.Pickup:
+                if (_pickupClip == null) _pickupClip = MakeProcedural("Pickup", 0.16f, 420f, 0.35f);
+                return _pickupClip;
+            case SoundType.Equip:
+                if (_equipClip == null) _equipClip = MakeProcedural("Equip", 0.18f, 260f, 0.4f);
+                return _equipClip;
+            case SoundType.Paddle:
+                if (_paddleClip == null) _paddleClip = MakeProcedural("Paddle", 0.22f, 110f, 0.45f);
+                return _paddleClip;
+            case SoundType.Hit:
+                if (_hitClip == null) _hitClip = LoadAudioClip("BulletFlesh") ?? MakeProcedural("Hit", 0.2f, 140f, 0.6f);
+                return _hitClip;
+            case SoundType.Death:
+                if (_deathClip == null) _deathClip = MakeProcedural("Death", 0.45f, 80f, 0.7f);
+                return _deathClip;
+            case SoundType.UI:
+                if (_uiClip == null) _uiClip = MakeProcedural("UI", 0.06f, 880f, 0.25f);
+                return _uiClip;
 
             default:
                 return null;
         }
     }
 
-    private static AudioClip LoadOrSynthesize(string filename, System.Func<AudioClip> synthesizer)
+    private static AudioClip LoadAudioClip(string filename)
     {
-        AudioClip clip = Resources.Load<AudioClip>("Audio/" + filename);
+        AudioClip clip = null;
+
+        // 1. Direct High-Fidelity Disk Loader (Guaranteed to read real 44.1kHz Stereo WAV from disk)
+        string diskPath1 = System.IO.Path.Combine(Application.dataPath, "Audio", filename + ".wav");
+        clip = LoadWavDirectlyFromDisk(diskPath1, filename);
+
+        if (clip == null)
+        {
+            string diskPath2 = System.IO.Path.Combine(Application.dataPath, "Resources", "Audio", filename + ".wav");
+            clip = LoadWavDirectlyFromDisk(diskPath2, filename);
+        }
+
+        // 2. Standard Resources.Load fallback
+        if (clip == null)
+        {
+            clip = Resources.Load<AudioClip>("Audio/" + filename);
+        }
 
 #if UNITY_EDITOR
+        // 3. AssetDatabase fallback (in editor)
         if (clip == null)
         {
             clip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Audio/" + filename + ".wav");
@@ -100,17 +208,68 @@ public static class GameAudio
         }
 #endif
 
-        if (clip == null && synthesizer != null)
-        {
-            clip = synthesizer();
-        }
-
         return clip;
     }
 
+    // ─── Playback Methods with Anti-Phase & Pitch Variation ────────────────
+
     public static void PlayGunshot(Vector3 pos, AudioSource source = null, float volume = 1.0f)
     {
+        if (Time.time - _lastGunshotTime < 0.05f) return; // Prevent duplicate frame trigger
+        _lastGunshotTime = Time.time;
+
         AudioClip clip = GetClip(SoundType.Gunshot);
+        if (clip == null) return;
+
+        if (source != null)
+        {
+            source.pitch = Random.Range(0.97f, 1.03f);
+            source.PlayOneShot(clip, volume);
+        }
+        else
+        {
+            PlayAtPoint(clip, pos, volume, 0.97f, 1.03f, 0.3f);
+        }
+    }
+
+    public static void PlaySwordSwing(Vector3 pos, AudioSource source = null, float volume = 1.0f)
+    {
+        if (Time.time - _lastSwordSwingTime < 0.08f) return; // Prevent double swing trigger
+        _lastSwordSwingTime = Time.time;
+
+        AudioClip clip = GetClip(SoundType.SwordSwing);
+        if (clip == null) return;
+
+        if (source != null)
+        {
+            source.pitch = Random.Range(0.96f, 1.04f);
+            source.PlayOneShot(clip, volume);
+        }
+        else
+        {
+            PlayAtPoint(clip, pos, volume, 0.96f, 1.04f, 0.25f);
+        }
+    }
+
+    public static void PlaySwordImpact(Vector3 pos, bool isEnemy, float volume = 1.2f)
+    {
+        if (Time.time - _lastSwordImpactTime < 0.06f) return; // Prevent double impact trigger
+        _lastSwordImpactTime = Time.time;
+
+        AudioClip clip = isEnemy ? GetClip(SoundType.SwordFlesh) : GetClip(SoundType.SwordClash);
+        if (clip == null) return;
+
+        PlayAtPoint(clip, pos, volume, 0.96f, 1.04f, 0.35f);
+    }
+
+    public static void PlaySpiderAttack(Vector3 pos, AudioSource source = null, float volume = 1.1f)
+    {
+        if (Time.time - _lastSpiderAttackTime < 0.15f) return;
+        _lastSpiderAttackTime = Time.time;
+
+        AudioClip clip = GetClip(SoundType.SpiderAttack);
+        if (clip == null) return;
+
         if (source != null)
         {
             source.pitch = Random.Range(0.95f, 1.05f);
@@ -118,219 +277,197 @@ public static class GameAudio
         }
         else
         {
-            PlayAtPoint(clip, pos, volume, 0.95f, 1.05f);
-        }
-    }
-
-    public static void PlaySwordSwing(Vector3 pos, AudioSource source = null, float volume = 1.0f)
-    {
-        AudioClip clip = GetClip(SoundType.SwordSwing);
-        if (source != null)
-        {
-            source.pitch = Random.Range(0.94f, 1.08f);
-            source.PlayOneShot(clip, volume);
-        }
-        else
-        {
-            PlayAtPoint(clip, pos, volume, 0.94f, 1.08f);
-        }
-    }
-
-    public static void PlaySwordImpact(Vector3 pos, bool isEnemy, float volume = 1.2f)
-    {
-        AudioClip clip = isEnemy ? GetClip(SoundType.SwordFlesh) : GetClip(SoundType.SwordClash);
-        PlayAtPoint(clip, pos, volume, 0.92f, 1.08f);
-    }
-
-    public static void PlaySpiderAttack(Vector3 pos, AudioSource source = null, float volume = 1.1f)
-    {
-        AudioClip clip = GetClip(SoundType.SpiderAttack);
-        if (source != null)
-        {
-            source.pitch = Random.Range(0.88f, 1.12f);
-            source.PlayOneShot(clip, volume);
-        }
-        else
-        {
-            PlayAtPoint(clip, pos, volume, 0.88f, 1.12f);
+            PlayAtPoint(clip, pos, volume, 0.95f, 1.05f, 0.4f);
         }
     }
 
     public static void PlaySpiderHurt(Vector3 pos, AudioSource source = null, float volume = 1.2f)
     {
+        if (Time.time - _lastSpiderHurtTime < 0.10f) return;
+        _lastSpiderHurtTime = Time.time;
+
         AudioClip clip = GetClip(SoundType.SpiderHurt);
+        if (clip == null) return;
+
         if (source != null)
         {
-            source.pitch = Random.Range(0.90f, 1.10f);
+            source.pitch = Random.Range(0.96f, 1.04f);
             source.PlayOneShot(clip, volume);
         }
         else
         {
-            PlayAtPoint(clip, pos, volume, 0.90f, 1.10f);
+            PlayAtPoint(clip, pos, volume, 0.96f, 1.04f, 0.4f);
         }
     }
 
     public static void PlayBulletHit(Vector3 pos, bool isEnemy, float volume = 1.1f)
     {
+        if (Time.time - _lastBulletHitTime < 0.03f) return;
+        _lastBulletHitTime = Time.time;
+
         AudioClip clip = isEnemy ? GetClip(SoundType.BulletFlesh) : GetClip(SoundType.BulletGround);
-        PlayAtPoint(clip, pos, volume, 0.92f, 1.08f);
+        if (clip == null) return;
+
+            PlayAtPoint(clip, pos, volume, 0.95f, 1.05f, 0.35f);
     }
 
-    private static void PlayAtPoint(AudioClip clip, Vector3 pos, float volume, float minPitch, float maxPitch)
+    public static void PlayFootstep(Vector3 pos, float volume = 0.28f)
+    {
+        if (Time.time - _lastFootstepTime < 0.22f) return;
+        _lastFootstepTime = Time.time;
+        AudioClip clip = GetClip(SoundType.Footstep);
+        PlayAtPoint(clip, pos, volume, 0.88f, 1.12f, 0.45f);
+    }
+
+    public static void PlayJump(Vector3 pos) => PlayAtPoint(GetClip(SoundType.Jump), pos, 0.45f, 0.95f, 1.08f, 0.3f);
+    public static void PlayLand(Vector3 pos) => PlayAtPoint(GetClip(SoundType.Land), pos, 0.55f, 0.9f, 1.05f, 0.4f);
+    public static void PlayPickup(Vector3 pos) => PlayAtPoint(GetClip(SoundType.Pickup), pos, 0.5f, 0.96f, 1.06f, 0.25f);
+    public static void PlayEquip(Vector3 pos) => PlayAtPoint(GetClip(SoundType.Equip), pos, 0.45f, 0.94f, 1.06f, 0.25f);
+    public static void PlayHit(Vector3 pos) => PlayAtPoint(GetClip(SoundType.Hit), pos, 0.7f, 0.92f, 1.08f, 0.35f);
+    public static void PlayDeath(Vector3 pos) => PlayAtPoint(GetClip(SoundType.Death), pos, 0.8f, 0.85f, 1.0f, 0.4f);
+    public static void PlayUI() => PlayAtPoint(GetClip(SoundType.UI), Vector3.zero, 0.35f, 0.98f, 1.04f, 0f);
+
+    public static void PlayPaddle(Vector3 pos, float volume = 0.4f)
+    {
+        if (Time.time - _lastPaddleTime < 0.35f) return;
+        _lastPaddleTime = Time.time;
+        PlayAtPoint(GetClip(SoundType.Paddle), pos, volume, 0.9f, 1.1f, 0.55f);
+    }
+
+    private static void EnsurePool()
+    {
+        if (_pool != null) return;
+        _pool = new AudioSource[PoolSize];
+        GameObject root = new GameObject("GameAudioPool");
+        Object.DontDestroyOnLoad(root);
+        for (int i = 0; i < PoolSize; i++)
+        {
+            GameObject go = new GameObject("AudioSlot_" + i);
+            go.transform.SetParent(root.transform);
+            AudioSource s = go.AddComponent<AudioSource>();
+            s.playOnAwake = false;
+            s.spatialBlend = 0.35f;
+            s.minDistance = 3f;
+            s.maxDistance = 80f;
+            s.rolloffMode = AudioRolloffMode.Linear;
+            _pool[i] = s;
+        }
+    }
+
+    private static void PlayAtPoint(AudioClip clip, Vector3 pos, float volume, float minPitch, float maxPitch, float spatialBlend = 0.35f)
     {
         if (clip == null) return;
-        GameObject go = new GameObject("TempAudioSource");
-        go.transform.position = pos;
-        AudioSource s = go.AddComponent<AudioSource>();
-        s.clip = clip;
-        s.volume = volume;
+        EnsurePool();
+        AudioSource s = _pool[_poolIndex];
+        _poolIndex = (_poolIndex + 1) % PoolSize;
+        if (s == null) return;
+        s.transform.position = pos;
+        s.spatialBlend = spatialBlend;
         s.pitch = Random.Range(minPitch, maxPitch);
-        s.spatialBlend = 0.4f; // 40% 3D, 60% 2D so player always hears it loud and clear
-        s.minDistance = 2f;
-        s.maxDistance = 60f;
-        s.rolloffMode = AudioRolloffMode.Linear;
-        s.Play();
-        Object.Destroy(go, clip.length / Mathf.Max(0.1f, s.pitch) + 0.15f);
+        s.volume = volume;
+        s.PlayOneShot(clip, volume);
     }
 
-    // ─── High-Grade Procedural Audio Synthesizers (Studio Saturated Fallback) ─
-
-    private static AudioClip SynthesizeGunshot()
+    private static AudioClip MakeProcedural(string clipName, float duration, float freq, float amplitude)
     {
         int sampleRate = 44100;
-        float duration = 0.55f;
-        int count = Mathf.FloorToInt(sampleRate * duration);
-        float[] samples = new float[count];
-
-        for (int i = 0; i < count; i++)
+        int samples = Mathf.Max(64, Mathf.RoundToInt(duration * sampleRate));
+        float[] data = new float[samples];
+        float phase = 0f;
+        for (int i = 0; i < samples; i++)
         {
-            float t = (float)i / sampleRate;
-            // 1. Initial sharp explosive transient crack (first 8ms)
-            float crack = (t < 0.04f) ? (Random.value * 2f - 1f) * Mathf.Exp(-t * 300f) * 1.8f : 0f;
-            // 2. Chamber & bolt mechanical snap
-            float bolt = (t > 0.01f && t < 0.04f) ? Mathf.Sin(2f * Mathf.PI * 1800f * t) * Mathf.Exp(-Mathf.Pow(t - 0.02f, 2f) * 50000f) * 0.4f : 0f;
-            // 3. Heavy saturated sub-bass boom (65Hz -> 45Hz)
-            float freq = 65f - t * 40f;
-            float bass = Mathf.Sin(2f * Mathf.PI * freq * t) * Mathf.Exp(-t * 18f) * 1.4f;
-            // 4. Punchy mid rumble
-            float punch = Mathf.Sin(2f * Mathf.PI * 140f * t) * Mathf.Exp(-t * 28f) * 0.7f;
-            // 5. Environmental blast tail
-            float tail = (Random.value * 2f - 1f) * Mathf.Exp(-t * 11f) * 0.55f;
-
-            float raw = (crack + bolt + bass + punch + tail) * 1.3f;
-            samples[i] = Mathf.Clamp((float)System.Math.Tanh(raw), -1f, 1f);
+            float t = i / (float)samples;
+            float env = Mathf.Sin(t * Mathf.PI);
+            env *= env;
+            float noise = (Random.value * 2f - 1f);
+            phase += (freq * (1f - t * 0.4f)) / sampleRate;
+            float tone = Mathf.Sin(phase * 2f * Mathf.PI);
+            data[i] = (tone * 0.55f + noise * 0.45f) * env * amplitude;
         }
-
-        AudioClip clip = AudioClip.Create("Proc_Gunshot", count, 1, sampleRate, false);
-        clip.SetData(samples, 0);
+        AudioClip clip = AudioClip.Create(clipName, samples, 1, sampleRate, false);
+        clip.SetData(data, 0);
         return clip;
     }
 
-    private static AudioClip SynthesizeSwordSwing()
+    // ─── Direct Binary WAV Parser (Guaranteed disk loading) ────────────────
+
+    private static AudioClip LoadWavDirectlyFromDisk(string filepath, string clipName)
     {
-        int sampleRate = 44100;
-        float duration = 0.28f;
-        int count = Mathf.FloorToInt(sampleRate * duration);
-        float[] samples = new float[count];
+        if (string.IsNullOrEmpty(filepath) || !System.IO.File.Exists(filepath)) return null;
 
-        float lp = 0f;
-        for (int i = 0; i < count; i++)
+        try
         {
-            float t = (float)i / sampleRate;
-            float p = t / duration;
-            float env = Mathf.Pow(Mathf.Sin(p * Mathf.PI), 1.8f);
-            float noise = Random.value * 2f - 1f;
-            float cutoff = 400f + 2200f * Mathf.Sin(p * Mathf.PI);
-            float alpha = (2f * Mathf.PI * cutoff / sampleRate) / (1f + 2f * Mathf.PI * cutoff / sampleRate);
-            lp += alpha * (noise - lp);
-            float flutter = Mathf.Sin(2f * Mathf.PI * 95f * t) * 0.25f * env;
-            float raw = (lp * 2.5f + flutter) * env;
-            samples[i] = Mathf.Clamp((float)System.Math.Tanh(raw), -1f, 1f);
-        }
+            byte[] bytes = System.IO.File.ReadAllBytes(filepath);
+            if (bytes.Length < 44) return null;
 
-        AudioClip clip = AudioClip.Create("Proc_SwordSwing", count, 1, sampleRate, false);
-        clip.SetData(samples, 0);
-        return clip;
-    }
+            // Check RIFF header
+            if (bytes[0] != 'R' || bytes[1] != 'I' || bytes[2] != 'F' || bytes[3] != 'F') return null;
 
-    private static AudioClip SynthesizeImpact(bool flesh)
-    {
-        int sampleRate = 44100;
-        float duration = flesh ? 0.30f : 0.38f;
-        int count = Mathf.FloorToInt(sampleRate * duration);
-        float[] samples = new float[count];
-
-        for (int i = 0; i < count; i++)
-        {
-            float t = (float)i / sampleRate;
-            if (flesh)
+            // Find "fmt " chunk
+            int fmtIdx = -1;
+            for (int i = 12; i < bytes.Length - 8; i++)
             {
-                // Deep low sub thump + wet bone crunch
-                float thump = Mathf.Sin(2f * Mathf.PI * 75f * t) * Mathf.Exp(-t * 22f) * 1.2f;
-                float crunch = (Random.value * 2f - 1f) * Mathf.Exp(-t * 32f) * 0.85f;
-                float squish = Mathf.Sin(2f * Mathf.PI * 240f * t) * Mathf.Exp(-t * 18f) * 0.4f;
-                samples[i] = Mathf.Clamp((float)System.Math.Tanh(thump + crunch + squish), -1f, 1f);
+                if (bytes[i] == 'f' && bytes[i + 1] == 'm' && bytes[i + 2] == 't' && bytes[i + 3] == ' ')
+                {
+                    fmtIdx = i;
+                    break;
+                }
+            }
+            if (fmtIdx == -1) return null;
+
+            int channels = System.BitConverter.ToInt16(bytes, fmtIdx + 10);
+            int sampleRate = System.BitConverter.ToInt32(bytes, fmtIdx + 12);
+            int bitsPerSample = System.BitConverter.ToInt16(bytes, fmtIdx + 22);
+
+            // Find "data" chunk
+            int dataIdx = -1;
+            for (int i = fmtIdx + 8; i < bytes.Length - 8; i++)
+            {
+                if (bytes[i] == 'd' && bytes[i + 1] == 'a' && bytes[i + 2] == 't' && bytes[i + 3] == 'a')
+                {
+                    dataIdx = i;
+                    break;
+                }
+            }
+            if (dataIdx == -1) return null;
+
+            int dataSize = System.BitConverter.ToInt32(bytes, dataIdx + 4);
+            int dataStart = dataIdx + 8;
+            int dataEnd = Mathf.Min(dataStart + dataSize, bytes.Length);
+            int bytesPerSample = bitsPerSample / 8;
+            int sampleCount = (dataEnd - dataStart) / bytesPerSample;
+            float[] samples = new float[sampleCount];
+
+            if (bitsPerSample == 16)
+            {
+                for (int i = 0; i < sampleCount; i++)
+                {
+                    short val = System.BitConverter.ToInt16(bytes, dataStart + i * 2);
+                    samples[i] = val / 32768.0f;
+                }
+            }
+            else if (bitsPerSample == 8)
+            {
+                for (int i = 0; i < sampleCount; i++)
+                {
+                    samples[i] = (bytes[dataStart + i] - 128) / 128.0f;
+                }
             }
             else
             {
-                // Sharp steel-on-steel impact transient + multi-harmonic metallic ring
-                float snap = (t < 0.02f) ? (Random.value * 2f - 1f) * Mathf.Exp(-t * 400f) * 1.5f : 0f;
-                float h1 = Mathf.Sin(2f * Mathf.PI * 840f * t) * Mathf.Exp(-t * 16f) * 0.6f;
-                float h2 = Mathf.Sin(2f * Mathf.PI * 1420f * t) * Mathf.Exp(-t * 20f) * 0.5f;
-                float h3 = Mathf.Sin(2f * Mathf.PI * 2380f * t) * Mathf.Exp(-t * 26f) * 0.4f;
-                float h4 = Mathf.Sin(2f * Mathf.PI * 4100f * t) * Mathf.Exp(-t * 35f) * 0.3f;
-                float ring = (h1 + h2 + h3 + h4);
-                samples[i] = Mathf.Clamp((float)System.Math.Tanh(snap + ring * 1.2f), -1f, 1f);
+                return null;
             }
+
+            int totalFrames = sampleCount / channels;
+            AudioClip clip = AudioClip.Create(clipName, totalFrames, channels, sampleRate, false);
+            clip.SetData(samples, 0);
+            Debug.Log($"<color=#00FF66><b>[GameAudio]</b></color> Loaded authentic AAA audio '{clipName}' directly from: {filepath} ({channels}ch, {sampleRate}Hz, {totalFrames} frames)");
+            return clip;
         }
-
-        AudioClip clip = AudioClip.Create(flesh ? "Proc_FleshHit" : "Proc_MetalClash", count, 1, sampleRate, false);
-        clip.SetData(samples, 0);
-        return clip;
-    }
-
-    private static AudioClip SynthesizeSpiderAttack()
-    {
-        int sampleRate = 44100;
-        float duration = 0.45f;
-        int count = Mathf.FloorToInt(sampleRate * duration);
-        float[] samples = new float[count];
-
-        for (int i = 0; i < count; i++)
+        catch (System.Exception ex)
         {
-            float t = (float)i / sampleRate;
-            float mandible = ((t > 0.02f && t < 0.04f) || (t > 0.08f && t < 0.10f) || (t > 0.15f && t < 0.17f))
-                ? (Random.value * 2f - 1f) * 1.2f
-                : 0f;
-            float hiss = (Random.value * 2f - 1f) * Mathf.Exp(-t * 6f) * 0.55f;
-            float growl = Mathf.Sin(2f * Mathf.PI * (85f + Mathf.Sin(2f * Mathf.PI * 25f * t) * 30f) * t) * Mathf.Exp(-t * 7f) * 0.7f;
-            samples[i] = Mathf.Clamp((float)System.Math.Tanh(mandible + hiss + growl), -1f, 1f);
+            Debug.LogWarning($"[GameAudio] Direct WAV load failed for {filepath}: {ex.Message}");
+            return null;
         }
-
-        AudioClip clip = AudioClip.Create("Proc_SpiderAttack", count, 1, sampleRate, false);
-        clip.SetData(samples, 0);
-        return clip;
-    }
-
-    private static AudioClip SynthesizeSpiderHurt()
-    {
-        int sampleRate = 44100;
-        float duration = 0.35f;
-        int count = Mathf.FloorToInt(sampleRate * duration);
-        float[] samples = new float[count];
-
-        for (int i = 0; i < count; i++)
-        {
-            float t = (float)i / sampleRate;
-            float crack = (t < 0.02f) ? (Random.value * 2f - 1f) * Mathf.Exp(-t * 220f) * 1.5f : 0f;
-            float mod = 1f + 0.3f * Mathf.Sin(2f * Mathf.PI * 40f * t);
-            float screech = Mathf.Sin(2f * Mathf.PI * (520f - t * 450f) * t) * Mathf.Exp(-t * 12f) * 0.6f * mod;
-            float squelch = (Random.value * 2f - 1f) * Mathf.Exp(-t * 18f) * 0.5f;
-            samples[i] = Mathf.Clamp((float)System.Math.Tanh(crack + screech + squelch), -1f, 1f);
-        }
-
-        AudioClip clip = AudioClip.Create("Proc_SpiderHurt", count, 1, sampleRate, false);
-        clip.SetData(samples, 0);
-        return clip;
     }
 }
