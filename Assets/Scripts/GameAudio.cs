@@ -205,14 +205,36 @@ public static class GameAudio
     {
         AudioClip clip = null;
 
-        // 1. Direct High-Fidelity Disk Loader (Guaranteed to read real 44.1kHz Stereo WAV from disk)
-        string diskPath1 = System.IO.Path.Combine(Application.dataPath, "Audio", filename + ".wav");
-        clip = LoadWavDirectlyFromDisk(diskPath1, filename);
+        // 1. Recursive High-Fidelity Disk Loader (Checks Assets/Audio and all subfolders Gun, Sword, Spider, zombie)
+        try
+        {
+            string audioRoot = System.IO.Path.Combine(Application.dataPath, "Audio");
+            if (System.IO.Directory.Exists(audioRoot))
+            {
+                string[] files = System.IO.Directory.GetFiles(audioRoot, filename + ".wav", System.IO.SearchOption.AllDirectories);
+                if (files.Length > 0)
+                {
+                    clip = LoadWavDirectlyFromDisk(files[0], filename);
+                }
+            }
+        }
+        catch { }
 
         if (clip == null)
         {
-            string diskPath2 = System.IO.Path.Combine(Application.dataPath, "Resources", "Audio", filename + ".wav");
-            clip = LoadWavDirectlyFromDisk(diskPath2, filename);
+            try
+            {
+                string resRoot = System.IO.Path.Combine(Application.dataPath, "Resources", "Audio");
+                if (System.IO.Directory.Exists(resRoot))
+                {
+                    string[] files = System.IO.Directory.GetFiles(resRoot, filename + ".wav", System.IO.SearchOption.AllDirectories);
+                    if (files.Length > 0)
+                    {
+                        clip = LoadWavDirectlyFromDisk(files[0], filename);
+                    }
+                }
+            }
+            catch { }
         }
 
         // 2. Standard Resources.Load fallback
@@ -225,11 +247,12 @@ public static class GameAudio
         // 3. AssetDatabase fallback (in editor)
         if (clip == null)
         {
-            clip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Audio/" + filename + ".wav");
-        }
-        if (clip == null)
-        {
-            clip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Resources/Audio/" + filename + ".wav");
+            string[] guids = UnityEditor.AssetDatabase.FindAssets(filename + " t:AudioClip");
+            if (guids.Length > 0)
+            {
+                string p = UnityEditor.AssetDatabase.GUIDToAssetPath(guids[0]);
+                clip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>(p);
+            }
         }
 #endif
 

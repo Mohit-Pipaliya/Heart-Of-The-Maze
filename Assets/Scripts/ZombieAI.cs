@@ -104,6 +104,27 @@ public class ZombieAI : MonoBehaviour
         _agent = GetComponent<NavMeshAgent>();
         _anim = GetComponent<Animator>();
 
+        // Disable root motion strictly so animations don't float/lift zombie into the air
+        if (_anim != null)
+        {
+            _anim.applyRootMotion = false;
+        }
+
+        if (_agent != null)
+        {
+            _agent.baseOffset = 0f;
+            _agent.updatePosition = true;
+            _agent.updateRotation = true;
+        }
+
+        // Rigidbody safety: on NavMeshAgent, Rigidbody must be kinematic so physics does not fling zombie up
+        Rigidbody rb = GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+            rb.useGravity = false;
+        }
+
         _collider = GetComponent<Collider>();
         if (_collider == null)
         {
@@ -113,6 +134,12 @@ public class ZombieAI : MonoBehaviour
             capsule.height = 1.8f;
             capsule.direction = 1;
             _collider = capsule;
+        }
+        else if (_collider is CapsuleCollider cap)
+        {
+            cap.center = new Vector3(0f, 0.9f, 0f);
+            cap.height = 1.8f;
+            cap.radius = Mathf.Min(cap.radius, 0.45f);
         }
 
         _audioSource = GetComponent<AudioSource>();
@@ -130,6 +157,9 @@ public class ZombieAI : MonoBehaviour
     private void Start()
     {
         _currentHealth = maxHealth;
+
+        // Ensure zombie is firmly grounded on terrain/NavMesh at start
+        SnapToGround();
         _spawnPosition = transform.position;
 
         AutoFindPlayer();
@@ -143,6 +173,57 @@ public class ZombieAI : MonoBehaviour
             _agent.stoppingDistance = 0.5f;
         }
         PlayAnimation("Walk", 0.1f);
+    }
+
+    /// <summary>
+    /// Clamps the zombie's feet firmly to the terrain surface or NavMesh.
+    /// </summary>
+    public void SnapToGround()
+    {
+        if (_anim != null) _anim.applyRootMotion = false;
+        if (_agent != null) _agent.baseOffset = 0f;
+
+        // 1. Try NavMesh sampling
+        if (NavMesh.SamplePosition(transform.position, out NavMeshHit navHit, 30f, NavMesh.AllAreas))
+        {
+            if (_agent != null && _agent.enabled)
+            {
+                _agent.Warp(navHit.position);
+            }
+            else
+            {
+                transform.position = navHit.position;
+            }
+            return;
+        }
+
+        // 2. Fallback: Raycast down to Terrain / Mesh Collider
+        int groundMask = ~LayerMask.GetMask("Player", "Ignore Raycast");
+        if (Physics.Raycast(transform.position + Vector3.up * 10f, Vector3.down, out RaycastHit hit, 50f, groundMask, QueryTriggerInteraction.Ignore))
+        {
+            transform.position = hit.point;
+            if (_agent != null && _agent.enabled && NavMesh.SamplePosition(hit.point, out NavMeshHit snapHit, 10f, NavMesh.AllAreas))
+            {
+                _agent.Warp(snapHit.position);
+            }
+        }
+    }
+
+    private void LateUpdate()
+    {
+        if (_isDead) return;
+
+        // Continuously enforce applyRootMotion = false so no animation clip ever floats the character
+        if (_anim != null && _anim.applyRootMotion)
+        {
+            _anim.applyRootMotion = false;
+        }
+
+        // Ensure baseOffset remains 0f
+        if (_agent != null && _agent.enabled && _agent.baseOffset != 0f)
+        {
+            _agent.baseOffset = 0f;
+        }
     }
 
     private void AutoFindPlayer()

@@ -21,6 +21,7 @@ public static class ZombieAutoSetup
         // 1. Animator & Controller Setup
         Animator anim = go.GetComponent<Animator>();
         if (anim == null) anim = Undo.AddComponent<Animator>(go);
+        anim.applyRootMotion = false; // Never allow root motion to lift zombie into the air!
 
         RuntimeAnimatorController controller = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>("Assets/Animator/Zombie.controller");
         if (controller != null)
@@ -32,7 +33,17 @@ public static class ZombieAutoSetup
             }
         }
 
-        // 2. NavMeshAgent Setup
+        // 2. Snap GameObject to ground/NavMesh
+        if (NavMesh.SamplePosition(go.transform.position, out NavMeshHit navHit, 30f, NavMesh.AllAreas))
+        {
+            go.transform.position = navHit.position;
+        }
+        else if (Physics.Raycast(go.transform.position + Vector3.up * 10f, Vector3.down, out RaycastHit rHit, 50f, ~LayerMask.GetMask("Player", "Ignore Raycast")))
+        {
+            go.transform.position = rHit.point;
+        }
+
+        // 3. NavMeshAgent Setup
         NavMeshAgent agent = go.GetComponent<NavMeshAgent>();
         if (agent == null) agent = Undo.AddComponent<NavMeshAgent>(go);
         agent.speed = 1.6f;
@@ -43,7 +54,15 @@ public static class ZombieAutoSetup
         agent.height = 1.8f;
         agent.baseOffset = 0f;
 
-        // 3. Capsule Collider Setup
+        // 4. Rigidbody safety: must be kinematic if present
+        Rigidbody rb = go.GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+            rb.useGravity = false;
+        }
+
+        // 5. Capsule Collider Setup
         CapsuleCollider col = go.GetComponent<CapsuleCollider>();
         if (col == null) col = Undo.AddComponent<CapsuleCollider>(go);
         col.center = new Vector3(0f, 0.9f, 0f);
@@ -51,7 +70,7 @@ public static class ZombieAutoSetup
         col.height = 1.8f;
         col.direction = 1;
 
-        // 4. AudioSource Setup
+        // 6. AudioSource Setup
         AudioSource audioSource = go.GetComponent<AudioSource>();
         if (audioSource == null) audioSource = Undo.AddComponent<AudioSource>(go);
         audioSource.playOnAwake = false;
@@ -60,7 +79,7 @@ public static class ZombieAutoSetup
         audioSource.maxDistance = 45f;
         audioSource.rolloffMode = AudioRolloffMode.Linear;
 
-        // 5. ZombieAI Script Setup
+        // 7. ZombieAI Script Setup
         ZombieAI zombie = go.GetComponent<ZombieAI>();
         if (zombie == null) zombie = Undo.AddComponent<ZombieAI>(go);
         zombie.maxHealth = 1000f;
@@ -71,6 +90,7 @@ public static class ZombieAutoSetup
         zombie.runSpeed = 4.8f;
         zombie.wanderRadius = 18f;
         zombie.screamDuration = 1.9f;
+        zombie.SnapToGround();
 
         // Find Player
         GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
