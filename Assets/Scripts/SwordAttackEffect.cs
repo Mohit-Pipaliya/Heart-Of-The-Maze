@@ -166,10 +166,23 @@ public class SwordAttackEffect : MonoBehaviour
 
     private void SpawnImpactEffect(Vector3 pos, Vector3 normal, bool isEnemy)
     {
-        SpawnFlashLight(pos);
-        Color spark = isEnemy ? new Color(0.9f, 0.06f, 0.05f, 1f) : new Color(1f, 0.85f, 0.32f, 1f);
-        VFXUtil.Burst(pos, normal, spark, sparkCount, 10f, 26f, 0.06f, 0.22f, 0.12f, 0.32f, true, true, 1.6f, 42f);
-        if (!isEnemy)
-            VFXUtil.Burst(pos, Vector3.up, new Color(0.65f, 0.62f, 0.55f, 0.5f), 12, 1.2f, 3.8f, 0.4f, 1.1f, 0.3f, 0.55f, false, false, -0.08f, 50f);
+        if (isEnemy)
+        {
+            // AAA Flesh Impact: Dynamic red flash + high-speed arterial blood spray + mist
+            VFXUtil.SpawnFadingLight(pos, new Color(0.95f, 0.08f, 0.05f), 6f, 3.2f, 0.09f);
+            VFXUtil.Burst(pos, normal, new Color(0.85f, 0.06f, 0.04f, 1f),
+                sparkCount, 8f, 22f, 0.08f, 0.26f, 0.12f, 0.35f, true, true, 2.0f, 40f);
+            VFXUtil.Burst(pos, Vector3.up, new Color(0.6f, 0.04f, 0.03f, 0.55f),
+                10, 1.2f, 4.0f, 0.25f, 0.6f, 0.3f, 0.7f, false, false, -0.05f, 60f);
+        }
+        else
+        {
+            // AAA World Clash: Bright flash + sparkling ricochet embers + dust
+            SpawnFlashLight(pos);
+            VFXUtil.Burst(pos, normal, new Color(1f, 0.85f, 0.32f, 1f),
+                sparkCount, 10f, 26f, 0.06f, 0.22f, 0.12f, 0.32f, true, true, 1.6f, 42f);
+            VFXUtil.Burst(pos, Vector3.up, new Color(0.65f, 0.62f, 0.55f, 0.5f),
+                12, 1.2f, 3.8f, 0.4f, 1.1f, 0.3f, 0.55f, false, false, -0.08f, 50f);
+        }
     }
 }

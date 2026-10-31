@@ -4,7 +4,8 @@ using UnityEngine;
 public class Bullet : MonoBehaviour
 {
     [Header("── Bullet Settings ──")]
-    public float damage = 10f;
+    [Tooltip("Bullet damage dealt per impact (Default: 50f for punchy, balanced combat against 1000 HP enemies).")]
+    public float damage = 50f;
     public bool disableTrailOnImpact = true;
     public string ignoreLayerName = "Player";
     public LayerMask hitMask = ~0;
@@ -54,9 +55,9 @@ public class Bullet : MonoBehaviour
         if (_trail == null)
             _trail = gameObject.AddComponent<TrailRenderer>();
 
-        _trail.time = 0.08f;
-        _trail.startWidth = 0.09f;
-        _trail.endWidth = 0.015f;
+        _trail.time = 0.07f;
+        _trail.startWidth = 0.075f;
+        _trail.endWidth = 0.012f;
         _trail.minVertexDistance = 0.02f;
         _trail.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         _trail.receiveShadows = false;
@@ -72,9 +73,9 @@ public class Bullet : MonoBehaviour
         Gradient gradient = new Gradient();
         gradient.SetKeys(
             new GradientColorKey[] {
-                new GradientColorKey(new Color(2.0f, 1.8f, 1.2f), 0f),   // White-hot core
-                new GradientColorKey(new Color(1.0f, 0.75f, 0.2f), 0.3f), // Gold flame
-                new GradientColorKey(new Color(0.9f, 0.25f, 0.05f), 1f)  // Fiery ember tail
+                new GradientColorKey(new Color(2.5f, 2.3f, 1.8f), 0f),   // White-hot core
+                new GradientColorKey(new Color(1.6f, 1.1f, 0.3f), 0.3f), // Gold flame
+                new GradientColorKey(new Color(1.0f, 0.35f, 0.05f), 1f)  // Fiery ember tail
             },
             new GradientAlphaKey[] {
                 new GradientAlphaKey(1f,   0f),
@@ -89,9 +90,9 @@ public class Bullet : MonoBehaviour
         lightObj.transform.SetParent(transform, false);
         _bulletLight = lightObj.AddComponent<Light>();
         _bulletLight.type = LightType.Point;
-        _bulletLight.color = new Color(1f, 0.75f, 0.3f);
-        _bulletLight.range = 5.0f;
-        _bulletLight.intensity = 1.4f;
+        _bulletLight.color = new Color(1f, 0.85f, 0.45f);
+        _bulletLight.range = 6.0f;
+        _bulletLight.intensity = 2.2f;
         _bulletLight.shadows = LightShadows.None;
     }
 
@@ -142,8 +143,8 @@ public class Bullet : MonoBehaviour
 
         _hasHit = true;
 
-        SpiderEnemy spider = hitCollider != null ? hitCollider.GetComponentInParent<SpiderEnemy>() : null;
-        ZombieAI zombie = hitCollider != null ? hitCollider.GetComponentInParent<ZombieAI>() : null;
+        SpiderEnemy spider = hitCollider != null ? (hitCollider.GetComponentInParent<SpiderEnemy>() ?? hitCollider.GetComponentInChildren<SpiderEnemy>() ?? hitCollider.transform.root.GetComponentInChildren<SpiderEnemy>()) : null;
+        ZombieAI zombie = hitCollider != null ? (hitCollider.GetComponentInParent<ZombieAI>() ?? hitCollider.GetComponentInChildren<ZombieAI>() ?? hitCollider.transform.root.GetComponentInChildren<ZombieAI>()) : null;
         bool isEnemy = (spider != null) || (zombie != null);
 
         if (isEnemy)
@@ -166,7 +167,7 @@ public class Bullet : MonoBehaviour
             GameAudio.PlayBulletHit(point, true);
 
             SpawnFleshImpactEffect(point, normal);
-            GameFeel.HitStop(0.03f);
+            GameFeel.HitStop(0.035f);
         }
         else
         {
@@ -186,14 +187,17 @@ public class Bullet : MonoBehaviour
 
     private void SpawnFleshImpactEffect(Vector3 pos, Vector3 normal)
     {
-        VFXUtil.SpawnFadingLight(pos, new Color(0.9f, 0.15f, 0.05f), 5f, 2.2f, 0.08f);
-        VFXUtil.Burst(pos, normal, new Color(0.85f, 0.1f, 0.05f, 1f), 28, 6f, 18f, 0.08f, 0.28f, 0.18f, 0.42f, true, true, 2.2f, 35f);
+        // AAA Flesh Impact: Dynamic red flash + high-velocity arterial blood spray + mist
+        VFXUtil.SpawnFadingLight(pos, new Color(0.95f, 0.08f, 0.05f), 5.5f, 2.8f, 0.09f);
+        VFXUtil.Burst(pos, normal, new Color(0.85f, 0.08f, 0.05f, 1f), 26, 8f, 20f, 0.08f, 0.28f, 0.14f, 0.38f, true, true, 2.0f, 38f);
+        VFXUtil.Burst(pos, Vector3.up, new Color(0.6f, 0.05f, 0.04f, 0.5f), 8, 1.2f, 3.8f, 0.2f, 0.5f, 0.25f, 0.6f, false, false, -0.05f, 55f);
     }
 
     private void SpawnRicochetImpactEffect(Vector3 pos, Vector3 normal)
     {
-        VFXUtil.SpawnFadingLight(pos, new Color(1f, 0.8f, 0.3f), 6f, 2.4f, 0.07f);
-        VFXUtil.Burst(pos, normal, new Color(1f, 0.75f, 0.2f, 1f), 22, 10f, 24f, 0.05f, 0.16f, 0.1f, 0.3f, true, true, 1.1f, 48f);
-        VFXUtil.Burst(pos, Vector3.up, new Color(0.6f, 0.58f, 0.55f, 0.4f), 10, 1.5f, 4.5f, 0.35f, 0.9f, 0.28f, 0.5f, false, false, -0.08f, 50f);
+        // AAA Ricochet Impact: Luminous golden flash + bouncing embers + dirt dust puff
+        VFXUtil.SpawnFadingLight(pos, new Color(1f, 0.82f, 0.35f), 6.5f, 3.0f, 0.07f);
+        VFXUtil.Burst(pos, normal, new Color(1f, 0.82f, 0.28f, 1f), 24, 12f, 26f, 0.05f, 0.16f, 0.1f, 0.28f, true, true, 1.4f, 48f);
+        VFXUtil.Burst(pos, Vector3.up, new Color(0.65f, 0.62f, 0.55f, 0.45f), 10, 1.5f, 4.5f, 0.3f, 0.8f, 0.3f, 0.8f, false, false, -0.08f, 50f);
     }
 }

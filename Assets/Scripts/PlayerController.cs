@@ -97,6 +97,10 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private Vector3 swordBackOffsetPos = Vector3.zero; 
     [SerializeField] private Vector3 swordBackOffsetRot = Vector3.zero; 
 
+    [Header("Sword Combat & Damage")]
+    [Tooltip("Melee damage dealt per sword strike (Default: 180f for visceral combat against 1000 HP enemies).")]
+    [SerializeField] private float swordDamage = 180f; 
+
     // Ye dono script apne aap player ki haddiyon (bones) me dhundh legi, tumhe banane ki zarurat nahi!
     private Transform swordHandTransform;  
     private Transform swordBackTransform;  
@@ -907,6 +911,14 @@ public class PlayerController : MonoBehaviour
             if (Input.GetMouseButtonDown(0) && Time.time >= _swordReadyTime)
             {
                 _swordReadyTime = Time.time + 0.48f;
+
+                // Auto-orient player towards camera aim direction so swing strikes where player is looking
+                GetCameraPlanarAxes(out Vector3 camFwd, out _);
+                if (camFwd.sqrMagnitude > 0.001f)
+                {
+                    transform.rotation = Quaternion.LookRotation(camFwd, Vector3.up);
+                }
+
                 _swordCombo = (_swordCombo + 1) % 2;
                 _anim.SetInteger(HashAttackIndex, _swordCombo);
                 _anim.ResetTrigger(HashAttack);
@@ -916,7 +928,7 @@ public class PlayerController : MonoBehaviour
                 if (cameraRig != null) cameraRig.AddRecoil(0.08f, Random.Range(-0.06f, 0.06f), 0.012f);
                 GameFeel.FovPunch(1.1f);
 
-                StartCoroutine(PerformSwordAttackSequence(15f));
+                StartCoroutine(PerformSwordAttackSequence(swordDamage));
             }
         }
         else if (_currentWeapon == WeaponState.Gun)
@@ -936,63 +948,129 @@ public class PlayerController : MonoBehaviour
 
     private IEnumerator PerformSwordAttackSequence(float damage)
     {
-        // ── Phase 1: Windup Anticipation (0.12s) ───────────────────────────
-        // Character pulls blade back into strike position
-        yield return new WaitForSeconds(0.12f);
+        // ── Phase 1: Windup Anticipation (0.08s) ───────────────────────────
+        yield return new WaitForSeconds(0.08f);
 
-        // ── Phase 2: Swing Apex (Blade whips forward through the air!) ──────
-        // Frame-accurate sword slice whoosh & glowing trail
+        // ── Phase 2: Swing Start (Whoosh SFX & Glowing Trail Activation) ────
         GameAudio.PlaySwordSwing(transform.position);
         if (SwordAttackEffect.Instance != null)
             SwordAttackEffect.Instance.TriggerAttack();
 
-        // ── Phase 3: Contact Apex (0.11s later = total 0.23s from click) ──
-        // Blade reaches strike zone in front of character
-        yield return new WaitForSeconds(0.11f);
+        // ── Phase 3: Continuous Active Hit Window (0.08s to 0.36s) ─────────
+        // Sweeps across frames during the full blade arc so enemies cannot slip through
+        float swingDuration = 0.28f;
+        float elapsed = 0f;
+        HashSet<GameObject> hitEnemies = new HashSet<GameObject>();
+        bool connectedAnyHit = false;
 
-        Vector3 attackCenter = transform.position + transform.forward * 2.3f + Vector3.up * 1.0f;
-        Collider[] hits = Physics.OverlapSphere(attackCenter, 3.0f);
-
-        bool hitSomething = false;
-        foreach (Collider col in hits)
+        while (elapsed < swingDuration)
         {
-            if (col == null) continue;
-            if (col.transform == transform || col.transform.IsChildOf(transform)) continue;
+            elapsed += Time.deltaTime;
 
-            SpiderEnemy spider = col.GetComponentInParent<SpiderEnemy>();
-            ZombieAI zombie = col.GetComponentInParent<ZombieAI>();
-            if ((spider != null && !spider.IsDead) || (zombie != null && !zombie.IsDead))
+            // Sweeping volume: Capsule from player chest to forward arc reach
+            // Covers point-blank 0.0m up to 3.8m distance, from ground level (0.1m) to tall height (2.3m)
+            Vector3 capsuleBottom = transform.position + Vector3.up * 0.35f;
+            Vector3 capsuleTop = transform.position + transform.forward * 2.4f + Vector3.up * 1.15f;
+            float capsuleRadius = 1.8f;
+
+            Collider[] hits = Physics.OverlapCapsule(capsuleBottom, capsuleTop, capsuleRadius, ~0, QueryTriggerInteraction.Collide);
+
+            for (int i = 0; i < hits.Length; i++)
             {
-                bool isKill = false;
-                if (spider != null && !spider.IsDead)
-                {
-                    spider.TakeDamage(damage);
-                    isKill = spider.IsDead;
-                }
-                else if (zombie != null && !zombie.IsDead)
-                {
-                    zombie.TakeDamage(damage);
-                    isKill = zombie.IsDead;
-                }
+                Collider col = hits[i];
+                if (col == null) continue;
+                if (col.transform == transform || col.transform.IsChildOf(transform)) continue;
 
-                Vector3 contactPoint = col.ClosestPoint(attackCenter);
-                GameAudio.PlaySwordImpact(contactPoint, true);
-                if (SwordAttackEffect.Instance != null)
-                    SwordAttackEffect.Instance.TriggerImpact(contactPoint, -transform.forward, true);
-                if (GunShooter.Instance != null)
-                    GunShooter.Instance.RegisterHitMarker(isKill);
-                if (cameraRig != null) cameraRig.AddRecoil(0.35f, 0f, 0.04f);
-                GameFeel.HitStop(0.04f);
-                GameFeel.FovPunch(2.0f);
-                hitSomething = true;
-                break;
+                // Deep search in parent, children, and root to guarantee finding enemy script
+                SpiderEnemy spider = col.GetComponentInParent<SpiderEnemy>() ?? col.GetComponentInChildren<SpiderEnemy>() ?? col.transform.root.GetComponentInChildren<SpiderEnemy>();
+                ZombieAI zombie = col.GetComponentInParent<ZombieAI>() ?? col.GetComponentInChildren<ZombieAI>() ?? col.transform.root.GetComponentInChildren<ZombieAI>();
+
+                if (spider != null && !spider.IsDead && !hitEnemies.Contains(spider.gameObject))
+                {
+                    hitEnemies.Add(spider.gameObject);
+                    connectedAnyHit = true;
+
+                    spider.TakeDamage(damage);
+                    bool isKill = spider.IsDead;
+
+                    Vector3 contactPoint = col.ClosestPoint(transform.position + transform.forward * 1.5f + Vector3.up * 0.8f);
+                    GameAudio.PlaySwordImpact(contactPoint, true);
+                    if (SwordAttackEffect.Instance != null)
+                        SwordAttackEffect.Instance.TriggerImpact(contactPoint, -transform.forward, true);
+                    if (GunShooter.Instance != null)
+                        GunShooter.Instance.RegisterHitMarker(isKill);
+                    if (cameraRig != null) cameraRig.AddRecoil(0.38f, Random.Range(-0.1f, 0.1f), 0.04f);
+                    GameFeel.HitStop(0.045f);
+                    GameFeel.FovPunch(2.2f);
+                }
+                else if (zombie != null && !zombie.IsDead && !hitEnemies.Contains(zombie.gameObject))
+                {
+                    hitEnemies.Add(zombie.gameObject);
+                    connectedAnyHit = true;
+
+                    zombie.TakeDamage(damage);
+                    bool isKill = zombie.IsDead;
+
+                    Vector3 contactPoint = col.ClosestPoint(transform.position + transform.forward * 1.5f + Vector3.up * 1.1f);
+                    GameAudio.PlaySwordImpact(contactPoint, true);
+                    if (SwordAttackEffect.Instance != null)
+                        SwordAttackEffect.Instance.TriggerImpact(contactPoint, -transform.forward, true);
+                    if (GunShooter.Instance != null)
+                        GunShooter.Instance.RegisterHitMarker(isKill);
+                    if (cameraRig != null) cameraRig.AddRecoil(0.42f, Random.Range(-0.12f, 0.12f), 0.05f);
+                    GameFeel.HitStop(0.05f);
+                    GameFeel.FovPunch(2.5f);
+                }
+            }
+
+            yield return null;
+        }
+
+        // Secondary forward SphereCast check as an absolute guarantee for point-blank or forward lunge
+        if (!connectedAnyHit)
+        {
+            Vector3 chestOrigin = transform.position + Vector3.up * 1.0f;
+            if (Physics.SphereCast(chestOrigin, 0.75f, transform.forward, out RaycastHit directHit, 3.0f, ~0, QueryTriggerInteraction.Collide))
+            {
+                Collider col = directHit.collider;
+                if (col != null && !col.transform.IsChildOf(transform))
+                {
+                    SpiderEnemy spider = col.GetComponentInParent<SpiderEnemy>() ?? col.GetComponentInChildren<SpiderEnemy>() ?? col.transform.root.GetComponentInChildren<SpiderEnemy>();
+                    ZombieAI zombie = col.GetComponentInParent<ZombieAI>() ?? col.GetComponentInChildren<ZombieAI>() ?? col.transform.root.GetComponentInChildren<ZombieAI>();
+
+                    if (spider != null && !spider.IsDead && !hitEnemies.Contains(spider.gameObject))
+                    {
+                        hitEnemies.Add(spider.gameObject);
+                        connectedAnyHit = true;
+                        spider.TakeDamage(damage);
+                        GameAudio.PlaySwordImpact(directHit.point, true);
+                        if (SwordAttackEffect.Instance != null)
+                            SwordAttackEffect.Instance.TriggerImpact(directHit.point, directHit.normal, true);
+                        if (GunShooter.Instance != null)
+                            GunShooter.Instance.RegisterHitMarker(spider.IsDead);
+                        GameFeel.HitStop(0.045f);
+                    }
+                    else if (zombie != null && !zombie.IsDead && !hitEnemies.Contains(zombie.gameObject))
+                    {
+                        hitEnemies.Add(zombie.gameObject);
+                        connectedAnyHit = true;
+                        zombie.TakeDamage(damage);
+                        GameAudio.PlaySwordImpact(directHit.point, true);
+                        if (SwordAttackEffect.Instance != null)
+                            SwordAttackEffect.Instance.TriggerImpact(directHit.point, directHit.normal, true);
+                        if (GunShooter.Instance != null)
+                            GunShooter.Instance.RegisterHitMarker(zombie.IsDead);
+                        GameFeel.HitStop(0.05f);
+                    }
+                }
             }
         }
 
-        if (!hitSomething)
+        // ── Phase 4: Environment / World Hit Fallback (Clash against walls / terrain) ──
+        if (!connectedAnyHit)
         {
-            Vector3 origin = transform.position + Vector3.up * 1.1f + transform.forward * 0.5f;
-            if (Physics.SphereCast(origin, 0.25f, transform.forward, out RaycastHit worldHit, 2.2f, ~0, QueryTriggerInteraction.Ignore))
+            Vector3 origin = transform.position + Vector3.up * 1.0f + transform.forward * 0.4f;
+            if (Physics.SphereCast(origin, 0.35f, transform.forward, out RaycastHit worldHit, 2.4f, ~0, QueryTriggerInteraction.Ignore))
             {
                 if (!worldHit.collider.transform.IsChildOf(transform))
                 {

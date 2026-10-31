@@ -72,7 +72,7 @@ public class ZombieAI : MonoBehaviour
 
     [Header("── UI Feedback ──")]
     [Tooltip("Zombie ke sir ke upar health bar show karein jab damage ho ya player pass ho.")]
-    public bool showFloatingHealthBar = true;
+    public bool showFloatingHealthBar = false;
 
     // Component References
     private NavMeshAgent _agent;
@@ -700,47 +700,11 @@ public class ZombieAI : MonoBehaviour
         }
     }
 
-    // ─── Floating AAA Health Bar & Gizmos ────────────────────────────────────
+    // ─── Floating Health Bar (Disabled / Removed per user request) ───────────
 
     private void OnGUI()
     {
-        if (!showFloatingHealthBar || _isDead) return;
-        if (Camera.main == null || player == null) return;
-
-        float dist = Vector3.Distance(transform.position, player.position);
-        if (dist > 30f) return;
-
-        // Position health bar 2.1m above zombie head
-        Vector3 headWorldPos = transform.position + Vector3.up * 2.1f;
-        Vector3 screenPos = Camera.main.WorldToScreenPoint(headWorldPos);
-
-        if (screenPos.z < 0) return; // Behind camera
-
-        float bw = 120f;
-        float bh = 10f;
-        float bx = screenPos.x - bw * 0.5f;
-        float by = Screen.height - screenPos.y;
-
-        float healthRatio = Mathf.Clamp01(_currentHealth / maxHealth);
-
-        // Background
-        GUI.color = new Color(0f, 0f, 0f, 0.75f);
-        GUI.DrawTexture(new Rect(bx - 2, by - 2, bw + 4, bh + 4), Texture2D.whiteTexture);
-
-        // Foreground fill (green -> red based on HP)
-        Color fillColor = Color.Lerp(new Color(0.9f, 0.15f, 0.15f), new Color(0.2f, 0.85f, 0.3f), healthRatio);
-        GUI.color = fillColor;
-        GUI.DrawTexture(new Rect(bx, by, bw * healthRatio, bh), Texture2D.whiteTexture);
-
-        // Text display
-        GUI.color = Color.white;
-        GUIStyle style = new GUIStyle(GUI.skin.label)
-        {
-            alignment = TextAnchor.MiddleCenter,
-            fontSize = 11,
-            fontStyle = FontStyle.Bold
-        };
-        GUI.Label(new Rect(bx - 30, by - 16, bw + 60, 16), $"ZOMBIE: {Mathf.RoundToInt(_currentHealth)} / {Mathf.RoundToInt(maxHealth)}", style);
+        // Health bar removed completely
     }
 
     private void OnDrawGizmosSelected()
