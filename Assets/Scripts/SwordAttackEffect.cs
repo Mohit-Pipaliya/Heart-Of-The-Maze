@@ -130,21 +130,10 @@ public class SwordAttackEffect : MonoBehaviour
 
         Shader s = Shader.Find("Universal Render Pipeline/Particles/Unlit");
         if (s == null) s = Shader.Find("Universal Render Pipeline/Unlit");
-        if (s == null) s = Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default");
-        if (s == null) s = Shader.Find("Universal Render Pipeline/Lit");
+        if (s == null) s = Shader.Find("Sprites/Default");
 
-        Material m = new Material(s);
-        m.SetFloat("_Surface", 1);
-        m.SetFloat("_Blend", additive ? 2 : 0);
-        m.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
-        m.SetFloat("_DstBlend", additive ? (float)UnityEngine.Rendering.BlendMode.One : (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-        m.SetFloat("_ZWrite", 0);
-        m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-        if (additive) m.EnableKeyword("_BLENDMODE_ADD");
-        else m.EnableKeyword("_BLENDMODE_ALPHA");
-        m.renderQueue = 3000;
-        m.SetOverrideTag("RenderType", "Transparent");
-
+        Material m = new Material(s != null ? s : Shader.Find("Sprites/Default"));
+        m.color = Color.white;
         if (additive) _sharedAdditiveMat = m;
         else _sharedAlphaMat = m;
         return m;
@@ -253,6 +242,7 @@ public class SwordAttackEffect : MonoBehaviour
     private void SpawnImpactEffect(Vector3 pos, Vector3 normal, bool isEnemy)
     {
         GameObject impactRoot = new GameObject("SwordImpact");
+        impactRoot.SetActive(false); // Stop particles during setup
         impactRoot.transform.position = pos;
         impactRoot.transform.rotation = Quaternion.LookRotation(normal);
 
@@ -264,7 +254,6 @@ public class SwordAttackEffect : MonoBehaviour
 
         // 2. Sparks / blood burst
         ParticleSystem ps = impactRoot.AddComponent<ParticleSystem>();
-        ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         var main = ps.main;
         main.loop            = false;
         main.startLifetime   = new ParticleSystem.MinMaxCurve(0.12f, 0.32f);
@@ -297,7 +286,6 @@ public class SwordAttackEffect : MonoBehaviour
             GameObject dustObj = new GameObject("DustPuff");
             dustObj.transform.SetParent(impactRoot.transform, false);
             ParticleSystem psDust = dustObj.AddComponent<ParticleSystem>();
-            psDust.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
             var dm = psDust.main;
             dm.loop            = false;
             dm.startLifetime   = new ParticleSystem.MinMaxCurve(0.3f, 0.55f);
@@ -310,9 +298,9 @@ public class SwordAttackEffect : MonoBehaviour
             de.rateOverTime = 0;
             de.SetBursts(new ParticleSystem.Burst[] { new ParticleSystem.Burst(0f, 8, 14) });
             dustObj.GetComponent<ParticleSystemRenderer>().material = GetVFXMaterial(false);
-            psDust.Play();
         }
 
+        impactRoot.SetActive(true);
         ps.Play();
         Destroy(impactRoot, 1.5f);
     }

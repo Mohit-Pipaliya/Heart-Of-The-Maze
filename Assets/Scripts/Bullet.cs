@@ -101,21 +101,10 @@ public class Bullet : MonoBehaviour
 
         Shader s = Shader.Find("Universal Render Pipeline/Particles/Unlit");
         if (s == null) s = Shader.Find("Universal Render Pipeline/Unlit");
-        if (s == null) s = Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default");
-        if (s == null) s = Shader.Find("Universal Render Pipeline/Lit");
+        if (s == null) s = Shader.Find("Sprites/Default");
 
-        Material m = new Material(s);
-        m.SetFloat("_Surface", 1);
-        m.SetFloat("_Blend", additive ? 2 : 0);
-        m.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
-        m.SetFloat("_DstBlend", additive ? (float)UnityEngine.Rendering.BlendMode.One : (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-        m.SetFloat("_ZWrite", 0);
-        m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-        if (additive) m.EnableKeyword("_BLENDMODE_ADD");
-        else m.EnableKeyword("_BLENDMODE_ALPHA");
-        m.renderQueue = 3000;
-        m.SetOverrideTag("RenderType", "Transparent");
-
+        Material m = new Material(s != null ? s : Shader.Find("Sprites/Default"));
+        m.color = Color.white;
         if (additive) _sharedAdditiveMat = m;
         else _sharedAlphaMat = m;
         return m;
@@ -238,6 +227,7 @@ public class Bullet : MonoBehaviour
     private void SpawnFleshImpactEffect(Vector3 pos, Vector3 normal)
     {
         GameObject impactObj = new GameObject("AAA_FleshImpact");
+        impactObj.SetActive(false); // Configure stopped to avoid duration warnings
         impactObj.transform.position = pos;
         impactObj.transform.rotation = Quaternion.LookRotation(normal);
 
@@ -253,7 +243,6 @@ public class Bullet : MonoBehaviour
 
         // Visceral blood / flesh splatter particles
         ParticleSystem ps = impactObj.AddComponent<ParticleSystem>();
-        ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         var main = ps.main;
         main.loop = false;
         main.startLifetime = new ParticleSystem.MinMaxCurve(0.2f, 0.5f);
@@ -275,6 +264,7 @@ public class Bullet : MonoBehaviour
         ParticleSystemRenderer psRenderer = impactObj.GetComponent<ParticleSystemRenderer>();
         psRenderer.material = GetVFXMaterial(true);
 
+        impactObj.SetActive(true);
         ps.Play();
         Destroy(impactObj, 2f);
     }
@@ -282,6 +272,7 @@ public class Bullet : MonoBehaviour
     private void SpawnRicochetImpactEffect(Vector3 pos, Vector3 normal)
     {
         GameObject impactObj = new GameObject("AAA_RicochetImpact");
+        impactObj.SetActive(false); // Configure stopped to avoid duration warnings
         impactObj.transform.position = pos;
         impactObj.transform.rotation = Quaternion.LookRotation(normal);
 
@@ -297,7 +288,6 @@ public class Bullet : MonoBehaviour
 
         // 1. Hot Bouncing Ricochet Sparks
         ParticleSystem ps = impactObj.AddComponent<ParticleSystem>();
-        ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         var main = ps.main;
         main.loop = false;
         main.startLifetime = new ParticleSystem.MinMaxCurve(0.1f, 0.35f);
@@ -325,7 +315,6 @@ public class Bullet : MonoBehaviour
         GameObject smokeObj = new GameObject("DustPuff");
         smokeObj.transform.SetParent(impactObj.transform, false);
         ParticleSystem psSmoke = smokeObj.AddComponent<ParticleSystem>();
-        psSmoke.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         var mainSmoke = psSmoke.main;
         mainSmoke.loop = false;
         mainSmoke.startLifetime = new ParticleSystem.MinMaxCurve(0.3f, 0.6f);
@@ -342,6 +331,7 @@ public class Bullet : MonoBehaviour
         var rendSmoke = smokeObj.GetComponent<ParticleSystemRenderer>();
         rendSmoke.material = GetVFXMaterial(false);
 
+        impactObj.SetActive(true);
         ps.Play();
         psSmoke.Play();
         Destroy(impactObj, 2f);

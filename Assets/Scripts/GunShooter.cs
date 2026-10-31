@@ -384,21 +384,10 @@ public class GunShooter : MonoBehaviour
 
         Shader s = Shader.Find("Universal Render Pipeline/Particles/Unlit");
         if (s == null) s = Shader.Find("Universal Render Pipeline/Unlit");
-        if (s == null) s = Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default");
-        if (s == null) s = Shader.Find("Universal Render Pipeline/Lit");
+        if (s == null) s = Shader.Find("Sprites/Default");
 
-        Material m = new Material(s);
-        m.SetFloat("_Surface", 1);
-        m.SetFloat("_Blend", additive ? 2 : 0);
-        m.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
-        m.SetFloat("_DstBlend", additive ? (float)UnityEngine.Rendering.BlendMode.One : (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-        m.SetFloat("_ZWrite", 0);
-        m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-        if (additive) m.EnableKeyword("_BLENDMODE_ADD");
-        else m.EnableKeyword("_BLENDMODE_ALPHA");
-        m.renderQueue = 3000;
-        m.SetOverrideTag("RenderType", "Transparent");
-
+        Material m = new Material(s != null ? s : Shader.Find("Sprites/Default"));
+        m.color = Color.white;
         if (additive) _sharedAdditiveMat = m;
         else _sharedAlphaMat = m;
         return m;
@@ -407,6 +396,7 @@ public class GunShooter : MonoBehaviour
     private void SpawnRealisticMuzzleFlash()
     {
         GameObject flashObj = new GameObject("AAA_MuzzleFlash");
+        flashObj.SetActive(false); // Keeps particles stopped during configuration
         flashObj.transform.position = barrelPoint.position;
         flashObj.transform.rotation = barrelPoint.rotation;
 
@@ -425,7 +415,6 @@ public class GunShooter : MonoBehaviour
         GameObject coreObj = new GameObject("FlashCore");
         coreObj.transform.SetParent(flashObj.transform, false);
         ParticleSystem psCore = coreObj.AddComponent<ParticleSystem>();
-        psCore.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         var main1 = psCore.main;
         main1.loop = false;
         main1.startLifetime = 0.04f;
@@ -445,7 +434,6 @@ public class GunShooter : MonoBehaviour
         GameObject sparksObj = new GameObject("Sparks");
         sparksObj.transform.SetParent(flashObj.transform, false);
         ParticleSystem psSparks = sparksObj.AddComponent<ParticleSystem>();
-        psSparks.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         var main2 = psSparks.main;
         main2.loop = false;
         main2.startLifetime = new ParticleSystem.MinMaxCurve(0.04f, 0.09f);
@@ -470,7 +458,6 @@ public class GunShooter : MonoBehaviour
         GameObject smokeObj = new GameObject("SmokePuff");
         smokeObj.transform.SetParent(flashObj.transform, false);
         ParticleSystem psSmoke = smokeObj.AddComponent<ParticleSystem>();
-        psSmoke.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         var main3 = psSmoke.main;
         main3.loop = false;
         main3.startLifetime = new ParticleSystem.MinMaxCurve(0.25f, 0.5f);
@@ -496,6 +483,7 @@ public class GunShooter : MonoBehaviour
         var rend3 = smokeObj.GetComponent<ParticleSystemRenderer>();
         rend3.material = GetParticleMat(additive: false); // Alpha-blend for semi-transparent smoke
 
+        flashObj.SetActive(true);
         psCore.Play();
         psSparks.Play();
         psSmoke.Play();
@@ -503,38 +491,59 @@ public class GunShooter : MonoBehaviour
         Destroy(flashObj, 0.6f);
     }
 
+    private static Material _sharedBrassMat;
+
+    private Material GetBrassMaterial()
+    {
+        if (_sharedBrassMat != null) return _sharedBrassMat;
+
+        _sharedBrassMat = Resources.Load<Material>("Materials/M_BrassCasing");
+        if (_sharedBrassMat == null)
+            _sharedBrassMat = Resources.Load<Material>("VFX/M_BrassCasing");
+
+        if (_sharedBrassMat != null)
+            return _sharedBrassMat;
+
+        // Fallback to URP Lit shader
+        Shader s = Shader.Find("Universal Render Pipeline/Lit");
+        if (s == null) s = Shader.Find("Universal Render Pipeline/Simple Lit");
+        if (s == null) s = Shader.Find("Universal Render Pipeline/Unlit");
+
+        Material m = new Material(s != null ? s : Shader.Find("Sprites/Default"));
+        m.color = new Color(0.95f, 0.78f, 0.28f);
+        if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", new Color(0.95f, 0.78f, 0.28f));
+        if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", 0.95f);
+        if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0.85f);
+
+        _sharedBrassMat = m;
+        return _sharedBrassMat;
+    }
+
     private void EjectShellCasing()
     {
         if (!ejectShellCasings || barrelPoint == null) return;
 
-        Vector3 spawnPos = barrelPoint.position - barrelPoint.forward * 0.4f + barrelPoint.up * 0.1f;
+        Vector3 spawnPos = barrelPoint.position - barrelPoint.forward * 0.35f + barrelPoint.up * 0.08f;
         GameObject casing = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         casing.name = "ShellCasing";
         casing.transform.position = spawnPos;
         casing.transform.rotation = barrelPoint.rotation * Quaternion.Euler(0, 90f, 0);
-        casing.transform.localScale = new Vector3(0.06f, 0.14f, 0.06f);
+        casing.transform.localScale = new Vector3(0.015f, 0.04f, 0.015f); // Realistic 5.56mm casing scale
 
         Collider col = casing.GetComponent<Collider>();
         if (_playerCollider != null && col != null)
             Physics.IgnoreCollision(col, _playerCollider, true);
 
-        Shader shader = Shader.Find("Standard");
-        if (shader == null) shader = Shader.Find("Diffuse");
-        if (shader != null)
-        {
-            Material brassMat = new Material(shader);
-            brassMat.color = new Color(0.92f, 0.72f, 0.25f);
-            if (brassMat.HasProperty("_Metallic")) brassMat.SetFloat("_Metallic", 0.9f);
-            if (brassMat.HasProperty("_Smoothness")) brassMat.SetFloat("_Smoothness", 0.8f);
-            casing.GetComponent<Renderer>().material = brassMat;
-        }
+        Renderer rend = casing.GetComponent<Renderer>();
+        if (rend != null)
+            rend.sharedMaterial = GetBrassMaterial();
 
         Rigidbody rb = casing.AddComponent<Rigidbody>();
-        rb.mass = 0.02f;
+        rb.mass = 0.01f;
 
-        Vector3 ejectDir = (barrelPoint.right * 1.5f + barrelPoint.up * 1.2f - barrelPoint.forward * 0.4f).normalized;
-        ejectDir += Random.insideUnitSphere * 0.15f;
-        rb.linearVelocity = ejectDir * Random.Range(4.5f, 7.0f);
+        Vector3 ejectDir = (barrelPoint.right * 1.6f + barrelPoint.up * 1.1f - barrelPoint.forward * 0.3f).normalized;
+        ejectDir += Random.insideUnitSphere * 0.12f;
+        rb.linearVelocity = ejectDir * Random.Range(3.8f, 6.2f);
         rb.angularVelocity = Random.insideUnitSphere * Random.Range(30f, 60f);
 
         Destroy(casing, 2.5f);

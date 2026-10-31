@@ -24,8 +24,8 @@ public class SpiderEnemy : MonoBehaviour
     public AudioClip biteHitSound;
     
     [Header("Movement Settings")]
-    public float walkSpeed = 1.8f;           // Natural, calm spider patrol speed
-    public float runSpeed = 4.2f;            // Natural chase speed (no supersonic rushing)
+    public float walkSpeed = 1.4f;           // Natural, calm spider patrol speed
+    public float runSpeed = 3.0f;            // Natural chase speed (no supersonic rushing)
     public float rotationSpeed = 6f;         // Smooth look-at speed during attack
 
     [Header("References")]
@@ -68,6 +68,7 @@ public class SpiderEnemy : MonoBehaviour
     {
         agent = GetComponent<NavMeshAgent>();
         anim = GetComponent<Animator>();
+        if (anim != null) anim.speed = 0.85f; // Realistic weighted animation speed (no frantic cartoon twitching)
         audioSource = GetComponent<AudioSource>();
         if (audioSource == null)
         {

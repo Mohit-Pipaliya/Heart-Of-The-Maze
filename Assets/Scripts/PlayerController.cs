@@ -218,6 +218,16 @@ public class PlayerController : MonoBehaviour
         if (gunObject) gunObject.SetActive(false);
         _anim.SetInteger(HashWeaponState, (int)WeaponState.Unarmed);
 
+        // Calibrate responsive AAA speeds (perfect stride matching, zero foot sliding)
+        walkSpeed = 2.5f;
+        runSpeed = 6.0f;
+        gunWalkSpeed = 2.3f;
+        gunRunSpeed = 5.5f;
+
+        // Ensure NavMeshAgent on player is disabled by default so it doesn't fight CharacterController
+        var nma = GetComponent<UnityEngine.AI.NavMeshAgent>();
+        if (nma != null) nma.enabled = false;
+
         if (cameraRig == null && Camera.main != null)
             cameraRig = Camera.main.GetComponent<CameraController>();
 
@@ -239,6 +249,19 @@ public class PlayerController : MonoBehaviour
     private void Update()
     {
         if (_isDead) return;
+
+        // Safety: If weapon is equipped and no cutscene/interaction sequence is running, ensure isFrozen is false
+        if (isFrozen && !_isSequenceRunning && !_isEquipping)
+        {
+            if (_gunSystem != null && _gunSystem.IsGunEquipped)
+            {
+                SetFrozen(false);
+            }
+            else if (_swordSystem != null && _swordSystem.IsSwordEquipped)
+            {
+                SetFrozen(false);
+            }
+        }
 
         if (isFrozen)
         {

@@ -2395,8 +2395,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 60be44d48c58d4d19a6ce3370d13b3db, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
-  walkSpeed: 4.8
-  runSpeed: 9.5
+  walkSpeed: 2.5
+  runSpeed: 6
   rotationSpeed: 720
   mouseSensitivity: 2
   acceleration: 60
@@ -2404,8 +2404,8 @@ MonoBehaviour:
   airControl: 0.4
   moveDeadZone: 0.05
   cameraRig: {fileID: 0}
-  gunWalkSpeed: 4.2
-  gunRunSpeed: 8.5
+  gunWalkSpeed: 2.3
+  gunRunSpeed: 5.5
   jumpForce: 1.8
   gravity: -55
   fallMultiplier: 2.2

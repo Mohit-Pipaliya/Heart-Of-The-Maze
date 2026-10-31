@@ -193,29 +193,32 @@ public static class GameAudio
         Object.Destroy(go, clip.length / Mathf.Max(0.1f, s.pitch) + 0.15f);
     }
 
-    // ─── High-Grade Procedural Audio Synthesizers ──────────────────────────
+    // ─── High-Grade Procedural Audio Synthesizers (Studio Saturated Fallback) ─
 
     private static AudioClip SynthesizeGunshot()
     {
         int sampleRate = 44100;
-        float duration = 0.35f;
+        float duration = 0.55f;
         int count = Mathf.FloorToInt(sampleRate * duration);
         float[] samples = new float[count];
 
         for (int i = 0; i < count; i++)
         {
             float t = (float)i / sampleRate;
-            // 1. Initial sharp supersonic transient crack (first 15ms)
-            float crack = (Random.value * 2f - 1f) * Mathf.Exp(-t * 120f);
+            // 1. Initial sharp explosive transient crack (first 8ms)
+            float crack = (t < 0.04f) ? (Random.value * 2f - 1f) * Mathf.Exp(-t * 300f) * 1.8f : 0f;
+            // 2. Chamber & bolt mechanical snap
+            float bolt = (t > 0.01f && t < 0.04f) ? Mathf.Sin(2f * Mathf.PI * 1800f * t) * Mathf.Exp(-Mathf.Pow(t - 0.02f, 2f) * 50000f) * 0.4f : 0f;
+            // 3. Heavy saturated sub-bass boom (65Hz -> 45Hz)
+            float freq = 65f - t * 40f;
+            float bass = Mathf.Sin(2f * Mathf.PI * freq * t) * Mathf.Exp(-t * 18f) * 1.4f;
+            // 4. Punchy mid rumble
+            float punch = Mathf.Sin(2f * Mathf.PI * 140f * t) * Mathf.Exp(-t * 28f) * 0.7f;
+            // 5. Environmental blast tail
+            float tail = (Random.value * 2f - 1f) * Mathf.Exp(-t * 11f) * 0.55f;
 
-            // 2. Heavy bass punch: sine sweeping 160Hz -> 45Hz
-            float freq = Mathf.Lerp(160f, 45f, Mathf.Clamp01(t * 8f));
-            float bass = Mathf.Sin(2f * Mathf.PI * freq * t) * Mathf.Exp(-t * 22f);
-
-            // 3. Trailing body rumble
-            float body = (Random.value * 2f - 1f) * Mathf.Exp(-t * 14f) * 0.4f;
-
-            samples[i] = Mathf.Clamp(crack * 0.9f + bass * 0.7f + body, -1f, 1f);
+            float raw = (crack + bolt + bass + punch + tail) * 1.3f;
+            samples[i] = Mathf.Clamp((float)System.Math.Tanh(raw), -1f, 1f);
         }
 
         AudioClip clip = AudioClip.Create("Proc_Gunshot", count, 1, sampleRate, false);
@@ -226,29 +229,23 @@ public static class GameAudio
     private static AudioClip SynthesizeSwordSwing()
     {
         int sampleRate = 44100;
-        float duration = 0.22f;
+        float duration = 0.28f;
         int count = Mathf.FloorToInt(sampleRate * duration);
         float[] samples = new float[count];
 
-        float filterState = 0f;
+        float lp = 0f;
         for (int i = 0; i < count; i++)
         {
             float t = (float)i / sampleRate;
-            float progress = t / duration;
-
-            // Bell envelope (peaks at 40% duration)
-            float env = Mathf.Sin(progress * Mathf.PI);
-            env = env * env;
-
-            // Lowpass swept noise to simulate swift air whoosh
+            float p = t / duration;
+            float env = Mathf.Pow(Mathf.Sin(p * Mathf.PI), 1.8f);
             float noise = Random.value * 2f - 1f;
-            float cutoff = Mathf.Lerp(400f, 1800f, Mathf.Sin(progress * Mathf.PI));
-            float rc = 1f / (2f * Mathf.PI * cutoff);
-            float dt = 1f / sampleRate;
-            float alpha = dt / (rc + dt);
-            filterState += alpha * (noise - filterState);
-
-            samples[i] = Mathf.Clamp(filterState * env * 2.2f, -1f, 1f);
+            float cutoff = 400f + 2200f * Mathf.Sin(p * Mathf.PI);
+            float alpha = (2f * Mathf.PI * cutoff / sampleRate) / (1f + 2f * Mathf.PI * cutoff / sampleRate);
+            lp += alpha * (noise - lp);
+            float flutter = Mathf.Sin(2f * Mathf.PI * 95f * t) * 0.25f * env;
+            float raw = (lp * 2.5f + flutter) * env;
+            samples[i] = Mathf.Clamp((float)System.Math.Tanh(raw), -1f, 1f);
         }
 
         AudioClip clip = AudioClip.Create("Proc_SwordSwing", count, 1, sampleRate, false);
@@ -259,7 +256,7 @@ public static class GameAudio
     private static AudioClip SynthesizeImpact(bool flesh)
     {
         int sampleRate = 44100;
-        float duration = flesh ? 0.25f : 0.32f;
+        float duration = flesh ? 0.30f : 0.38f;
         int count = Mathf.FloorToInt(sampleRate * duration);
         float[] samples = new float[count];
 
@@ -268,18 +265,22 @@ public static class GameAudio
             float t = (float)i / sampleRate;
             if (flesh)
             {
-                // Crunchy, squelchy visceral flesh impact
-                float thud = Mathf.Sin(2f * Mathf.PI * 90f * t) * Mathf.Exp(-t * 28f);
-                float crunch = (Random.value * 2f - 1f) * Mathf.Exp(-t * 35f);
-                samples[i] = Mathf.Clamp(thud * 0.8f + crunch * 0.6f, -1f, 1f);
+                // Deep low sub thump + wet bone crunch
+                float thump = Mathf.Sin(2f * Mathf.PI * 75f * t) * Mathf.Exp(-t * 22f) * 1.2f;
+                float crunch = (Random.value * 2f - 1f) * Mathf.Exp(-t * 32f) * 0.85f;
+                float squish = Mathf.Sin(2f * Mathf.PI * 240f * t) * Mathf.Exp(-t * 18f) * 0.4f;
+                samples[i] = Mathf.Clamp((float)System.Math.Tanh(thump + crunch + squish), -1f, 1f);
             }
             else
             {
-                // Sharp metallic chime / clink
-                float chime1 = Mathf.Sin(2f * Mathf.PI * 1420f * t) * Mathf.Exp(-t * 18f);
-                float chime2 = Mathf.Sin(2f * Mathf.PI * 2280f * t) * Mathf.Exp(-t * 24f);
-                float snap = (Random.value * 2f - 1f) * Mathf.Exp(-t * 80f) * 0.5f;
-                samples[i] = Mathf.Clamp((chime1 * 0.5f + chime2 * 0.4f + snap), -1f, 1f);
+                // Sharp steel-on-steel impact transient + multi-harmonic metallic ring
+                float snap = (t < 0.02f) ? (Random.value * 2f - 1f) * Mathf.Exp(-t * 400f) * 1.5f : 0f;
+                float h1 = Mathf.Sin(2f * Mathf.PI * 840f * t) * Mathf.Exp(-t * 16f) * 0.6f;
+                float h2 = Mathf.Sin(2f * Mathf.PI * 1420f * t) * Mathf.Exp(-t * 20f) * 0.5f;
+                float h3 = Mathf.Sin(2f * Mathf.PI * 2380f * t) * Mathf.Exp(-t * 26f) * 0.4f;
+                float h4 = Mathf.Sin(2f * Mathf.PI * 4100f * t) * Mathf.Exp(-t * 35f) * 0.3f;
+                float ring = (h1 + h2 + h3 + h4);
+                samples[i] = Mathf.Clamp((float)System.Math.Tanh(snap + ring * 1.2f), -1f, 1f);
             }
         }
 
@@ -291,18 +292,19 @@ public static class GameAudio
     private static AudioClip SynthesizeSpiderAttack()
     {
         int sampleRate = 44100;
-        float duration = 0.38f;
+        float duration = 0.45f;
         int count = Mathf.FloorToInt(sampleRate * duration);
         float[] samples = new float[count];
 
         for (int i = 0; i < count; i++)
         {
             float t = (float)i / sampleRate;
-            // Menacing rasp / chitter
-            float hiss = (Random.value * 2f - 1f) * Mathf.Exp(-t * 8f);
-            float flutter = Mathf.Sin(2f * Mathf.PI * 35f * t) * 0.5f + 0.5f;
-            float snap = (t < 0.05f) ? (Random.value * 2f - 1f) * 0.9f : 0f;
-            samples[i] = Mathf.Clamp((hiss * flutter * 0.7f) + snap, -1f, 1f);
+            float mandible = ((t > 0.02f && t < 0.04f) || (t > 0.08f && t < 0.10f) || (t > 0.15f && t < 0.17f))
+                ? (Random.value * 2f - 1f) * 1.2f
+                : 0f;
+            float hiss = (Random.value * 2f - 1f) * Mathf.Exp(-t * 6f) * 0.55f;
+            float growl = Mathf.Sin(2f * Mathf.PI * (85f + Mathf.Sin(2f * Mathf.PI * 25f * t) * 30f) * t) * Mathf.Exp(-t * 7f) * 0.7f;
+            samples[i] = Mathf.Clamp((float)System.Math.Tanh(mandible + hiss + growl), -1f, 1f);
         }
 
         AudioClip clip = AudioClip.Create("Proc_SpiderAttack", count, 1, sampleRate, false);
@@ -313,17 +315,18 @@ public static class GameAudio
     private static AudioClip SynthesizeSpiderHurt()
     {
         int sampleRate = 44100;
-        float duration = 0.3f;
+        float duration = 0.35f;
         int count = Mathf.FloorToInt(sampleRate * duration);
         float[] samples = new float[count];
 
         for (int i = 0; i < count; i++)
         {
             float t = (float)i / sampleRate;
-            float screech = Mathf.Sin(2f * Mathf.PI * Mathf.Lerp(900f, 320f, t / duration) * t);
-            float squish = (Random.value * 2f - 1f) * Mathf.Exp(-t * 20f);
-            float env = Mathf.Exp(-t * 12f);
-            samples[i] = Mathf.Clamp((screech * 0.6f + squish * 0.6f) * env, -1f, 1f);
+            float crack = (t < 0.02f) ? (Random.value * 2f - 1f) * Mathf.Exp(-t * 220f) * 1.5f : 0f;
+            float mod = 1f + 0.3f * Mathf.Sin(2f * Mathf.PI * 40f * t);
+            float screech = Mathf.Sin(2f * Mathf.PI * (520f - t * 450f) * t) * Mathf.Exp(-t * 12f) * 0.6f * mod;
+            float squelch = (Random.value * 2f - 1f) * Mathf.Exp(-t * 18f) * 0.5f;
+            samples[i] = Mathf.Clamp((float)System.Math.Tanh(crack + screech + squelch), -1f, 1f);
         }
 
         AudioClip clip = AudioClip.Create("Proc_SpiderHurt", count, 1, sampleRate, false);
