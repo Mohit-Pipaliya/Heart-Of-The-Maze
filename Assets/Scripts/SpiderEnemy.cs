@@ -6,7 +6,7 @@ using UnityEngine.AI;
 public class SpiderEnemy : MonoBehaviour
 {
     [Header("Health Settings")]
-    public float maxHealth = 100f;
+    public float maxHealth = 1500f;
     private float currentHealth;
 
     [Header("AI Ranges & Territory")]

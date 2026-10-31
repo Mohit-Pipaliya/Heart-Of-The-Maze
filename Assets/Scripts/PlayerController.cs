@@ -1247,5 +1247,5 @@ public class PlayerController : MonoBehaviour
     public bool IsHoldingWeapon => _currentWeapon != WeaponState.Unarmed;
 
     /// <summary>Returns true if an unequip or equip sequence is currently active.</summary>
-    public bool IsSequenceRunning => _isSequenceRunning;
+    public bool IsSequenceRunning { get => _isSequenceRunning; set => _isSequenceRunning = value; }
 }

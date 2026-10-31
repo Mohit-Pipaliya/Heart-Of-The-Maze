@@ -4,7 +4,7 @@ using UnityEngine;
 public class Bullet : MonoBehaviour
 {
     [Header("── Bullet Settings ──")]
-    public float damage = 10f;
+    public float damage = 15f;
     public bool disableTrailOnImpact = true;
     public string ignoreLayerName = "Player";
     public LayerMask hitMask = ~0;
