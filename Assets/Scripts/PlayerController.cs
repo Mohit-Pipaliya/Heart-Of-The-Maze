@@ -190,6 +190,7 @@ public class PlayerController : MonoBehaviour
     private void Awake()
     {
         Instance = this;
+        if (swordDamage < 50f) swordDamage = 250f;
         _anim   = GetComponent<Animator>();
         _cc     = GetComponent<CharacterController>();
         _health = maxHealth;
@@ -949,6 +950,8 @@ public class PlayerController : MonoBehaviour
 
     private IEnumerator PerformSwordAttackSequence(float damage)
     {
+        if (damage < 50f) damage = 250f;
+
         // ── Phase 1: Windup Anticipation (0.08s) ───────────────────────────
         yield return new WaitForSeconds(0.08f);
 
@@ -968,8 +971,72 @@ public class PlayerController : MonoBehaviour
         {
             elapsed += Time.deltaTime;
 
-            // Sweeping volume: Capsule from player chest to forward arc reach
-            // Covers point-blank 0.0m up to 3.8m distance, from ground level (0.1m) to tall height (2.3m)
+            // 1. Direct Scene Proximity & Arc Scan (100% fail-safe against missing colliders or layer mismatches)
+            ZombieAI[] sceneZombies = FindObjectsByType<ZombieAI>(FindObjectsSortMode.None);
+            for (int zIdx = 0; zIdx < sceneZombies.Length; zIdx++)
+            {
+                ZombieAI z = sceneZombies[zIdx];
+                if (z == null || z.IsDead || hitEnemies.Contains(z.gameObject)) continue;
+                Vector3 toZ = z.transform.position - transform.position;
+                toZ.y = 0f;
+                float d = toZ.magnitude;
+                if (d <= 3.5f)
+                {
+                    float angle = Vector3.Angle(transform.forward, toZ.normalized);
+                    if (angle <= 85f || d <= 1.4f)
+                    {
+                        hitEnemies.Add(z.gameObject);
+                        connectedAnyHit = true;
+
+                        z.TakeDamage(damage);
+                        bool isKill = z.IsDead;
+
+                        Vector3 contactPoint = z.transform.position + Vector3.up * 1.1f;
+                        GameAudio.PlaySwordImpact(contactPoint, true);
+                        if (SwordAttackEffect.Instance != null)
+                            SwordAttackEffect.Instance.TriggerImpact(contactPoint, -transform.forward, true);
+                        if (GunShooter.Instance != null)
+                            GunShooter.Instance.RegisterHitMarker(isKill);
+                        if (cameraRig != null) cameraRig.AddRecoil(0.42f, Random.Range(-0.12f, 0.12f), 0.05f);
+                        GameFeel.HitStop(0.05f);
+                        GameFeel.FovPunch(2.5f);
+                    }
+                }
+            }
+
+            SpiderEnemy[] sceneSpiders = FindObjectsByType<SpiderEnemy>(FindObjectsSortMode.None);
+            for (int sIdx = 0; sIdx < sceneSpiders.Length; sIdx++)
+            {
+                SpiderEnemy s = sceneSpiders[sIdx];
+                if (s == null || s.IsDead || hitEnemies.Contains(s.gameObject)) continue;
+                Vector3 toS = s.transform.position - transform.position;
+                toS.y = 0f;
+                float d = toS.magnitude;
+                if (d <= 3.5f)
+                {
+                    float angle = Vector3.Angle(transform.forward, toS.normalized);
+                    if (angle <= 85f || d <= 1.4f)
+                    {
+                        hitEnemies.Add(s.gameObject);
+                        connectedAnyHit = true;
+
+                        s.TakeDamage(damage);
+                        bool isKill = s.IsDead;
+
+                        Vector3 contactPoint = s.transform.position + Vector3.up * 0.8f;
+                        GameAudio.PlaySwordImpact(contactPoint, true);
+                        if (SwordAttackEffect.Instance != null)
+                            SwordAttackEffect.Instance.TriggerImpact(contactPoint, -transform.forward, true);
+                        if (GunShooter.Instance != null)
+                            GunShooter.Instance.RegisterHitMarker(isKill);
+                        if (cameraRig != null) cameraRig.AddRecoil(0.38f, Random.Range(-0.1f, 0.1f), 0.04f);
+                        GameFeel.HitStop(0.045f);
+                        GameFeel.FovPunch(2.2f);
+                    }
+                }
+            }
+
+            // 2. Sweeping PhysX volume: Capsule from player chest to forward arc reach
             Vector3 capsuleBottom = transform.position + Vector3.up * 0.35f;
             Vector3 capsuleTop = transform.position + transform.forward * 2.4f + Vector3.up * 1.15f;
             float capsuleRadius = 1.8f;

@@ -163,6 +163,7 @@ public class ZombieAI : MonoBehaviour
         _spawnPosition = transform.position;
 
         AutoFindPlayer();
+        IgnorePlayerBodyCollision();
         _nextGroanTime = Time.time + Random.Range(4f, 9f);
 
         // Start wandering immediately
@@ -170,9 +171,29 @@ public class ZombieAI : MonoBehaviour
         if (_agent != null && _agent.enabled)
         {
             _agent.speed = walkSpeed;
-            _agent.stoppingDistance = 0.5f;
+            _agent.stoppingDistance = 1.8f;
         }
         PlayAnimation("Walk", 0.1f);
+    }
+
+    /// <summary>
+    /// Prevents zombie collider from physically sliding or repelling the player on contact.
+    /// </summary>
+    private void IgnorePlayerBodyCollision()
+    {
+        if (player == null) AutoFindPlayer();
+        if (player == null) return;
+
+        Collider myCol = GetComponent<Collider>();
+        if (myCol != null)
+        {
+            Collider[] playerCols = player.GetComponentsInChildren<Collider>();
+            for (int i = 0; i < playerCols.Length; i++)
+            {
+                if (playerCols[i] != null && playerCols[i] != myCol)
+                    Physics.IgnoreCollision(myCol, playerCols[i], true);
+            }
+        }
     }
 
     /// <summary>
@@ -394,6 +415,7 @@ public class ZombieAI : MonoBehaviour
         {
             _agent.isStopped = false;
             _agent.speed = runSpeed;
+            _agent.stoppingDistance = Mathf.Max(1.8f, attackRange * 0.8f);
             if (player != null) _agent.SetDestination(player.position);
         }
         PlayAnimation("Run", 0.15f);
@@ -520,6 +542,21 @@ public class ZombieAI : MonoBehaviour
         VFXUtil.SpawnFadingLight(hitPoint, new Color(0.9f, 0.1f, 0.05f), 4f, 2.0f, 0.08f);
         VFXUtil.Burst(hitPoint, Vector3.up, new Color(0.85f, 0.08f, 0.05f, 1f),
             20, 4f, 12f, 0.07f, 0.22f, 0.14f, 0.38f, true, true, 2.0f, 40f);
+
+        // Visceral Hit Knockback (push zombie back away from player on impact so it visibly flinches)
+        if (player != null)
+        {
+            Vector3 pushDir = (transform.position - player.position).normalized;
+            pushDir.y = 0f;
+            if (_agent != null && _agent.enabled)
+            {
+                _agent.Move(pushDir * 0.4f);
+            }
+            else
+            {
+                transform.position += pushDir * 0.4f;
+            }
+        }
 
         // Check for Death
         if (_currentHealth <= 0f)

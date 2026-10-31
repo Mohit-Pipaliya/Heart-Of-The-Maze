@@ -99,11 +99,43 @@ public class SpiderEnemy : MonoBehaviour
             if (pObj != null) player = pObj.transform;
         }
 
+        if (agent != null)
+        {
+            agent.stoppingDistance = Mathf.Max(1.8f, attackRange * 0.7f);
+        }
+
+        IgnorePlayerBodyCollision();
+
         hashSpeed = Animator.StringToHash("Speed");
         hashAttack = Animator.StringToHash("Attack");
         hashHit = Animator.StringToHash("Hit");
         hashDie = Animator.StringToHash("Die");
         hashJump = Animator.StringToHash("Jump");
+    }
+
+    /// <summary>
+    /// Prevents the spider's physical collider from repelling or sliding the player away on proximity.
+    /// </summary>
+    private void IgnorePlayerBodyCollision()
+    {
+        if (player == null)
+        {
+            GameObject pObj = GameObject.FindGameObjectWithTag("Player");
+            if (pObj != null) player = pObj.transform;
+        }
+
+        if (player == null) return;
+
+        Collider myCol = GetComponent<Collider>();
+        if (myCol != null)
+        {
+            Collider[] playerCols = player.GetComponentsInChildren<Collider>();
+            for (int i = 0; i < playerCols.Length; i++)
+            {
+                if (playerCols[i] != null && playerCols[i] != myCol)
+                    Physics.IgnoreCollision(myCol, playerCols[i], true);
+            }
+        }
     }
 
     void Update()
@@ -201,12 +233,14 @@ public class SpiderEnemy : MonoBehaviour
         if (player == null) return;
         agent.isStopped = false;
         agent.speed = runSpeed;
+        agent.stoppingDistance = Mathf.Max(1.8f, attackRange * 0.7f);
         agent.SetDestination(player.position);
     }
 
     private void AttackPlayer()
     {
         agent.isStopped = true; // Attack ke time ruk jao
+        agent.velocity = Vector3.zero; // Completely arrest momentum so player is not pushed
         
         // Player ki taraf smooth rotation (natural head tracking)
         if (player != null)

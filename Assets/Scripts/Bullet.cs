@@ -40,6 +40,19 @@ public class Bullet : MonoBehaviour
             }
         }
 
+        // Strictly ignore physical collisions with player CharacterController & model
+        Collider myCol = GetComponent<Collider>();
+        GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
+        if (playerObj != null && myCol != null)
+        {
+            Collider[] playerCols = playerObj.GetComponentsInChildren<Collider>();
+            for (int i = 0; i < playerCols.Length; i++)
+            {
+                if (playerCols[i] != null)
+                    Physics.IgnoreCollision(myCol, playerCols[i], true);
+            }
+        }
+
         SetupTracerVisuals();
     }
 
@@ -112,12 +125,21 @@ public class Bullet : MonoBehaviour
         Vector3 moveStep = _velocity * Time.deltaTime;
         float distance = moveStep.magnitude;
 
-        // High-precision raycast sweep (prevents high-speed tunneling)
-        if (Physics.Raycast(_prevPos, moveStep.normalized, out RaycastHit hit, distance, hitMask, QueryTriggerInteraction.Ignore))
+        // High-precision raycast sweep (skips player colliders, prevents high-speed tunneling)
+        RaycastHit[] hits = Physics.RaycastAll(_prevPos, moveStep.normalized, distance, hitMask, QueryTriggerInteraction.Ignore);
+        if (hits != null && hits.Length > 0)
         {
-            transform.position = hit.point;
-            OnImpact(hit.point, hit.normal, hit.collider);
-            return;
+            System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+            for (int i = 0; i < hits.Length; i++)
+            {
+                Collider hitCol = hits[i].collider;
+                if (hitCol == null) continue;
+                if (hitCol.GetComponentInParent<PlayerController>() != null) continue;
+
+                transform.position = hits[i].point;
+                OnImpact(hits[i].point, hits[i].normal, hitCol);
+                return;
+            }
         }
 
         transform.position += moveStep;
