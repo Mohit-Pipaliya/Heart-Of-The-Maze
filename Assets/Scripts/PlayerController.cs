@@ -191,6 +191,15 @@ public class PlayerController : MonoBehaviour
         _swordSystem = GetComponentInChildren<SwordEquipSystem>();
         _gunSystem = GetComponentInChildren<GunEquipSystem>();
 
+        // Disable NavMeshAgent during normal gameplay so it does not fight CharacterController,
+        // cause sliding/floating, or block the player at NavMesh borders when walking to enemies.
+        // (MeetingSeatSystem will selectively enable it only during its seated meeting cutscene).
+        UnityEngine.AI.NavMeshAgent nma = GetComponent<UnityEngine.AI.NavMeshAgent>();
+        if (nma != null)
+        {
+            nma.enabled = false;
+        }
+
         // NAYA JADOO: Tumhe empty object banane ki zarurat nahi! 
         // Unity automatically player ka sidha hath (Right Hand) aur Pith (Spine) dhundh lega.
         if (_anim.isHuman)

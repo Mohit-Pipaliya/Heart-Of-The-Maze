@@ -54,9 +54,20 @@ public class OarPickup : MonoBehaviour
     private Vector3 _originalScale;
 
     // ─── Public Property ───────────────────────────────────────────────────────
+    public static OarPickup Instance { get; private set; }
     public bool IsPickedUp => _isPickedUp;
 
     // ─── Unity Lifecycle ───────────────────────────────────────────────────────
+    private void Awake()
+    {
+        Instance = this;
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
+    }
+
     private void Start()
     {
         _originalScale = transform.localScale;

@@ -41,7 +41,7 @@ public class BoatSystem : MonoBehaviour
     public OarPickup oarPickup;
 
     [Tooltip("Agar true ho to oar pickup zaroori hoga, false hone par direct boat chala sakta hai")]
-    public bool requireOar = false;
+    public bool requireOar = true;
 
     [Tooltip("Optional Canvas UI: 'Press B to Drive Boat'")]
     public GameObject driveBoatUI;
@@ -154,7 +154,7 @@ public class BoatSystem : MonoBehaviour
     private void Start()
     {
         if (oarPickup == null)
-            oarPickup = FindFirstObjectByType<OarPickup>();
+            oarPickup = OarPickup.Instance ?? FindFirstObjectByType<OarPickup>();
 
         HideUI();
     }
@@ -164,7 +164,10 @@ public class BoatSystem : MonoBehaviour
         if (_isOccupied && _runtimeMount != null && boatSeatPoint != null)
         {
             _runtimeMount.position = boatSeatPoint.position;
-            _runtimeMount.rotation = boatSeatPoint.rotation;
+            Vector3 bFwd = GetBoatForward();
+            bFwd.y = 0f;
+            if (bFwd.sqrMagnitude > 0.001f)
+                _runtimeMount.rotation = Quaternion.LookRotation(bFwd.normalized, Vector3.up);
 
             if (_playerTransform != null && _playerTransform.parent == _runtimeMount)
             {
@@ -190,6 +193,18 @@ public class BoatSystem : MonoBehaviour
     }
 
     // ─── Proximity Detection & UI ──────────────────────────────────────────────
+    private float _oarWarningTimer = 0f;
+
+    private IEnumerator FlashOarWarning()
+    {
+        _oarWarningTimer = 2.5f;
+        while (_oarWarningTimer > 0f)
+        {
+            _oarWarningTimer -= Time.deltaTime;
+            yield return null;
+        }
+    }
+
     private void HandleProximityCheck()
     {
         if (_cachedPlayer == null)
@@ -204,24 +219,32 @@ public class BoatSystem : MonoBehaviour
 
         if (_cachedPlayer == null) return;
 
+        // Auto-find oarPickup if missing
+        if (oarPickup == null)
+            oarPickup = OarPickup.Instance ?? FindFirstObjectByType<OarPickup>();
+
         Transform nearPoint = boatNearPoint != null ? boatNearPoint : transform;
         float dist = Vector3.Distance(_cachedPlayer.transform.position, nearPoint.position);
         bool inRange = dist <= enterDistance;
 
-        bool hasOar = oarPickup == null || oarPickup.IsPickedUp || !requireOar;
+        // Only allow boarding if oar has been collected
+        bool hasOar = !requireOar || (oarPickup != null && oarPickup.IsPickedUp);
 
         if (inRange && !_cachedPlayer.IsDead && !_cachedPlayer.isFrozen && !_cachedPlayer.IsSequenceRunning)
         {
             _playerNear = true;
 
+            // Show canvas UI if assigned
             if (driveBoatUI != null)  driveBoatUI.SetActive(hasOar);
             if (collectOarUI != null) collectOarUI.SetActive(!hasOar);
 
             if (Input.GetKeyDown(KeyCode.B))
             {
-                if (!hasOar && requireOar)
+                if (!hasOar)
                 {
-                    Debug.Log("[BoatSystem] Please collect the oar first!");
+                    Debug.Log("<color=#FFAA00><b>[BoatSystem]</b></color> Please collect the oar first!");
+                    StopCoroutine(nameof(FlashOarWarning));
+                    StartCoroutine(nameof(FlashOarWarning));
                     return;
                 }
 
@@ -249,10 +272,28 @@ public class BoatSystem : MonoBehaviour
     private void OnGUI()
     {
         if (!_playerNear || _isOccupied || _isEntering || _isExiting) return;
-        if (driveBoatUI != null && driveBoatUI.activeSelf) return;
 
-        bool hasOar = oarPickup == null || oarPickup.IsPickedUp || !requireOar;
-        string prompt = hasOar ? "Press B to Board Boat" : "Collect The Oar First";
+        bool hasOar = !requireOar || (oarPickup != null && oarPickup.IsPickedUp);
+
+        // Don't duplicate if canvas UI is active unless flashing warning
+        if (driveBoatUI != null && driveBoatUI.activeSelf && hasOar) return;
+        if (collectOarUI != null && collectOarUI.activeSelf && !hasOar && _oarWarningTimer <= 0f) return;
+
+        string prompt;
+        Color promptColor;
+
+        if (!hasOar)
+        {
+            prompt = _oarWarningTimer > 0f 
+                ? "⚠️ OAR REQUIRED! Please Collect The Oar First" 
+                : "Collect The Oar First";
+            promptColor = _oarWarningTimer > 0f ? new Color(1f, 0.3f, 0.2f) : new Color(1f, 0.8f, 0.25f);
+        }
+        else
+        {
+            prompt = "Press B to Board Boat";
+            promptColor = Color.white;
+        }
 
         GUIStyle style = new GUIStyle();
         style.fontSize = 24;
@@ -264,11 +305,11 @@ public class BoatSystem : MonoBehaviour
         Rect r = new Rect(0, sh * 0.82f, sw, 50);
 
         // Shadow
-        style.normal.textColor = new Color(0, 0, 0, 0.85f);
+        style.normal.textColor = new Color(0, 0, 0, 0.9f);
         GUI.Label(new Rect(r.x + 2, r.y + 2, r.width, r.height), prompt, style);
 
         // Foreground
-        style.normal.textColor = hasOar ? Color.white : new Color(1f, 0.75f, 0.3f);
+        style.normal.textColor = promptColor;
         GUI.Label(r, prompt, style);
     }
 
@@ -383,14 +424,25 @@ public class BoatSystem : MonoBehaviour
         if (_playerCC != null) _playerCC.enabled = false;
 
         Transform mountSource = boatNearPoint != null ? boatNearPoint : transform;
+        Transform seatTarget = boatSeatPoint != null ? boatSeatPoint : transform;
 
-        // 2. Smoothly orient & align to boatNearPoint in 0.15s (no slow walk!)
+        // Guaranteed upright rotation for the boat seat (strictly zero pitch/roll from rotated FBX bone nodes)
+        Vector3 boatFwd = GetBoatForward();
+        boatFwd.y = 0f;
+        if (boatFwd.sqrMagnitude < 0.001f) boatFwd = transform.forward;
+        boatFwd.Normalize();
+        Quaternion uprightSeatRot = Quaternion.LookRotation(boatFwd, Vector3.up);
+
+        // 2. Smoothly orient & align to boatNearPoint in 0.15s, facing towards the boat seat
         Vector3 startP = _playerTransform.position;
         Quaternion startR = _playerTransform.rotation;
         Vector3 targetP = mountSource.position;
-        Vector3 fwd = mountSource.forward;
-        fwd.y = 0f;
-        Quaternion targetR = fwd.sqrMagnitude > 0.001f ? Quaternion.LookRotation(fwd) : mountSource.rotation;
+
+        Vector3 dirToSeat = (seatTarget.position - targetP);
+        dirToSeat.y = 0f;
+        Quaternion targetR = dirToSeat.sqrMagnitude > 0.001f 
+            ? Quaternion.LookRotation(dirToSeat.normalized, Vector3.up) 
+            : uprightSeatRot;
 
         float snapElapsed = 0f;
         while (snapElapsed < 0.15f)
@@ -409,18 +461,17 @@ public class BoatSystem : MonoBehaviour
         {
             _playerAnimator.ResetTrigger(_hashClimb);
             _playerAnimator.SetTrigger(_hashClimb);
-            _playerAnimator.CrossFadeInFixedTime(climbStateName, 0.12f, 0, 0f);
+            _playerAnimator.CrossFadeInFixedTime(climbStateName, 0.15f, 0, 0f);
         }
 
         yield return null;
 
-        // 4. Smooth arc motion from boatNearPoint into boatSeatPoint
-        Transform seatTarget = boatSeatPoint != null ? boatSeatPoint : transform;
-        yield return StartCoroutine(SyncClimbMotion(_playerAnimator, _playerTransform, seatTarget, 1.4f, 0.45f));
+        // 4. Smooth motion from boatNearPoint into boatSeatPoint with natural stepping arc
+        yield return StartCoroutine(SyncClimbMotion(_playerAnimator, _playerTransform, seatTarget, 0.85f, 0.35f, uprightSeatRot));
 
         // 5. Parent player to unscaled mount
         _runtimeMount.position = seatTarget.position;
-        _runtimeMount.rotation = seatTarget.rotation;
+        _runtimeMount.rotation = uprightSeatRot;
         _playerTransform.SetParent(_runtimeMount);
         _playerTransform.localPosition = Vector3.zero;
         _playerTransform.localRotation = Quaternion.identity;
@@ -439,7 +490,7 @@ public class BoatSystem : MonoBehaviour
             _playerAnimator.CrossFadeInFixedTime(sitDownStateName, 0.15f, 0, 0f);
         }
 
-        yield return new WaitForSeconds(1.0f);
+        yield return new WaitForSeconds(0.9f);
 
         // 8. Ready to drive!
         if (_playerAnimator != null)
@@ -504,7 +555,13 @@ public class BoatSystem : MonoBehaviour
         Transform unclimbTarget = boatNearDownPoint != null ? boatNearDownPoint : (boatNearPoint != null ? boatNearPoint : transform);
         _playerTransform.SetParent(null);
 
-        yield return StartCoroutine(SyncClimbMotion(_playerAnimator, _playerTransform, unclimbTarget, 1.4f, 0.35f));
+        Vector3 exitDir = (unclimbTarget.position - _playerTransform.position);
+        exitDir.y = 0f;
+        Quaternion exitRot = exitDir.sqrMagnitude > 0.001f 
+            ? Quaternion.LookRotation(exitDir.normalized, Vector3.up) 
+            : _playerTransform.rotation;
+
+        yield return StartCoroutine(SyncClimbMotion(_playerAnimator, _playerTransform, unclimbTarget, 0.85f, 0.35f, exitRot));
 
         // 4. Restore player controls
         if (_playerCC != null) _playerCC.enabled = true;
@@ -517,29 +574,38 @@ public class BoatSystem : MonoBehaviour
     }
 
     // ─── Motion Helpers ────────────────────────────────────────────────────────
-    private IEnumerator SyncClimbMotion(Animator anim, Transform player, Transform targetPoint, float duration, float arcHeight)
+    private IEnumerator SyncClimbMotion(Animator anim, Transform player, Transform targetPoint, float duration, float arcHeight, Quaternion targetRotation)
     {
         Vector3 startPos = player.position;
         Quaternion startRot = player.rotation;
+        Vector3 targetPos = targetPoint.position;
 
         float timer = 0f;
         while (timer < duration)
         {
             timer += Time.deltaTime;
             float t = Mathf.Clamp01(timer / duration);
-            t = Mathf.SmoothStep(0f, 1f, t);
+            float smoothT = Mathf.SmoothStep(0f, 1f, t);
 
-            Vector3 currentPos = Vector3.Lerp(startPos, targetPoint.position, t);
-            float arc = Mathf.Sin(t * Mathf.PI) * arcHeight;
+            Vector3 currentPos = Vector3.Lerp(startPos, targetPos, smoothT);
+            float arc = Mathf.Sin(smoothT * Mathf.PI) * arcHeight;
             currentPos.y += arc;
-
             player.position = currentPos;
-            player.rotation = Quaternion.Slerp(startRot, targetPoint.rotation, t);
+
+            // Upright smooth rotation — guaranteed zero pitch or roll
+            Quaternion slerpRot = Quaternion.Slerp(startRot, targetRotation, smoothT);
+            Vector3 fwd = slerpRot * Vector3.forward;
+            fwd.y = 0f;
+            if (fwd.sqrMagnitude > 0.001f)
+            {
+                player.rotation = Quaternion.LookRotation(fwd.normalized, Vector3.up);
+            }
+
             yield return null;
         }
 
-        player.position = targetPoint.position;
-        player.rotation = targetPoint.rotation;
+        player.position = targetPos;
+        player.rotation = targetRotation;
     }
 
     private IEnumerator SmoothShiftBoat(Vector3 localOffset, float duration)

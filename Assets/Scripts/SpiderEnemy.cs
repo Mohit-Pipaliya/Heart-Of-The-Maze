@@ -14,6 +14,7 @@ public class SpiderEnemy : MonoBehaviour
     public Collider territoryTrigger;
     
     public float attackRange = 3.5f;         // Slightly larger attack zone for natural feel
+    public float aggroDistance = 45f;        // Player approaching within this radius triggers chase
     
     [Header("Combat Settings")]
     public float attackCooldown = 2.2f;      // Natural attack cycle
@@ -60,10 +61,14 @@ public class SpiderEnemy : MonoBehaviour
         if (col == null)
         {
             CapsuleCollider cap = gameObject.AddComponent<CapsuleCollider>();
-            cap.center = new Vector3(0f, 1.0f, 0f);
-            cap.radius = 2.2f;
-            cap.height = 2.5f;
+            cap.center = new Vector3(0f, 0.75f, 0f);
+            cap.radius = 1.0f;
+            cap.height = 1.8f;
             cap.direction = 1; // Y-axis
+        }
+        else if (col is CapsuleCollider capCol)
+        {
+            capCol.radius = Mathf.Min(capCol.radius, 1.1f);
         }
     }
 
@@ -125,12 +130,13 @@ public class SpiderEnemy : MonoBehaviour
         // Distance aur territory check
         float distanceToPlayer = player != null ? Vector3.Distance(transform.position, player.position) : Mathf.Infinity;
         bool isPlayerInTerritory = territoryTrigger != null && player != null && territoryTrigger.bounds.Contains(player.position);
+        bool shouldChase = isPlayerInTerritory || (distanceToPlayer <= aggroDistance);
 
         if (distanceToPlayer <= attackRange)
         {
             AttackPlayer();
         }
-        else if (isPlayerInTerritory)
+        else if (shouldChase)
         {
             ChasePlayer();
         }
@@ -250,6 +256,13 @@ public class SpiderEnemy : MonoBehaviour
 
         currentHealth -= amount;
         Debug.Log($"<color=#FF2222><b>[Spider Hit!]</b></color> Damage: {amount} | HP: {Mathf.Max(0f, currentHealth)}/{maxHealth}");
+
+        // Instantly aggro and chase player if shot or struck
+        if (player != null && agent != null && agent.enabled)
+        {
+            agent.isStopped = false;
+            agent.SetDestination(player.position);
+        }
 
         GameAudio.PlaySpiderHurt(transform.position, audioSource, 1.2f);
         VFXUtil.Burst(transform.position + Vector3.up * 0.8f, Vector3.up,
