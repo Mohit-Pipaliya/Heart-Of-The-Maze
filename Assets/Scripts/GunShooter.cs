@@ -374,38 +374,38 @@ public class GunShooter : MonoBehaviour
 
         // 2. Core Flash (Bright Center Burst)
         GameObject coreObj = new GameObject("FlashCore");
+        coreObj.SetActive(false);
         coreObj.transform.SetParent(flashObj.transform, false);
         ParticleSystem psCore = coreObj.AddComponent<ParticleSystem>();
-        psCore.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         var main1 = psCore.main;
         main1.loop = false;
+        main1.playOnAwake = false;
         main1.startLifetime = 0.04f;
         main1.startSpeed = 0f;
         main1.startSize = new ParticleSystem.MinMaxCurve(0.35f, 0.7f);
         main1.startColor = new Color(1.8f, 1.4f, 0.8f, 1f);
         main1.simulationSpace = ParticleSystemSimulationSpace.World;
-        main1.playOnAwake = false;
         var em1 = psCore.emission;
         em1.rateOverTime = 0;
         em1.SetBursts(new ParticleSystem.Burst[] { new ParticleSystem.Burst(0, 1) });
         var rend1 = coreObj.GetComponent<ParticleSystemRenderer>();
         rend1.material = mat;
-        VFXUtil.ApplyTexture(mat);
         rend1.renderMode = ParticleSystemRenderMode.Billboard;
+        coreObj.SetActive(true);
 
         // 3. Sparks Shower (Stretched high-speed fire sparks)
         GameObject sparksObj = new GameObject("Sparks");
+        sparksObj.SetActive(false);
         sparksObj.transform.SetParent(flashObj.transform, false);
         ParticleSystem psSparks = sparksObj.AddComponent<ParticleSystem>();
-        psSparks.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         var main2 = psSparks.main;
         main2.loop = false;
+        main2.playOnAwake = false;
         main2.startLifetime = new ParticleSystem.MinMaxCurve(0.04f, 0.09f);
         main2.startSpeed = new ParticleSystem.MinMaxCurve(12f, 22f);
         main2.startSize = new ParticleSystem.MinMaxCurve(0.04f, 0.1f);
         main2.startColor = new Color(1f, 0.82f, 0.25f, 1f);
         main2.simulationSpace = ParticleSystemSimulationSpace.World;
-        main2.playOnAwake = false;
         var em2 = psSparks.emission;
         em2.rateOverTime = 0;
         em2.SetBursts(new ParticleSystem.Burst[] { new ParticleSystem.Burst(0, 10, 16) });
@@ -417,20 +417,21 @@ public class GunShooter : MonoBehaviour
         rend2.material = mat;
         rend2.renderMode = ParticleSystemRenderMode.Stretch;
         rend2.lengthScale = 2.8f;
+        sparksObj.SetActive(true);
 
         // 4. Volumetric Gun Smoke Puff
         GameObject smokeObj = new GameObject("SmokePuff");
+        smokeObj.SetActive(false);
         smokeObj.transform.SetParent(flashObj.transform, false);
         ParticleSystem psSmoke = smokeObj.AddComponent<ParticleSystem>();
-        psSmoke.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         var main3 = psSmoke.main;
         main3.loop = false;
+        main3.playOnAwake = false;
         main3.startLifetime = new ParticleSystem.MinMaxCurve(0.25f, 0.5f);
         main3.startSpeed = new ParticleSystem.MinMaxCurve(3f, 8f);
         main3.startSize = new ParticleSystem.MinMaxCurve(0.25f, 0.55f);
         main3.startColor = new Color(0.6f, 0.6f, 0.6f, 0.35f);
         main3.simulationSpace = ParticleSystemSimulationSpace.World;
-        main3.playOnAwake = false;
         var em3 = psSmoke.emission;
         em3.rateOverTime = 0;
         em3.SetBursts(new ParticleSystem.Burst[] { new ParticleSystem.Burst(0, 6, 10) });
@@ -447,6 +448,7 @@ public class GunShooter : MonoBehaviour
         colOverLife.color = grad;
         var rend3 = smokeObj.GetComponent<ParticleSystemRenderer>();
         rend3.material = GetParticleMat(additive: false); // Alpha-blend for semi-transparent smoke
+        smokeObj.SetActive(true);
 
         psCore.Play();
         psSparks.Play();

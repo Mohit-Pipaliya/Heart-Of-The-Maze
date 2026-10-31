@@ -17,6 +17,18 @@ public static class VFXUtil
         get
         {
             if (_softTex != null) return _softTex;
+
+            // 1. Try loading dedicated asset
+            _softTex = Resources.Load<Texture2D>("VFX/T_SoftParticle");
+#if UNITY_EDITOR
+            if (_softTex == null)
+            {
+                _softTex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Materials/VFX/T_SoftParticle.png");
+            }
+#endif
+            if (_softTex != null) return _softTex;
+
+            // 2. Procedural fallback
             _softTex = new Texture2D(64, 64, TextureFormat.RGBA32, false);
             _softTex.wrapMode = TextureWrapMode.Clamp;
             for (int y = 0; y < 64; y++)
@@ -65,18 +77,18 @@ public static class VFXUtil
     /// </summary>
     public static Shader FindValidShader(bool transparent)
     {
-        // 1. Try standard URP particle / unlit shaders
-        Shader s = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        // 1. Prioritize URP Unlit (universally supported on ParticleSystem, TrailRenderer, and MeshRenderer)
+        Shader s = Shader.Find("Universal Render Pipeline/Unlit");
         if (s != null && (!s.isSupported || s.name.Contains("Error"))) s = null;
-        if (s == null) s = Shader.Find("Universal Render Pipeline/Unlit");
+        if (s == null) s = Shader.Find("Universal Render Pipeline/Particles/Unlit");
         if (s != null && (!s.isSupported || s.name.Contains("Error"))) s = null;
         if (s == null) s = Shader.Find("Universal Render Pipeline/Lit");
         if (s != null && (!s.isSupported || s.name.Contains("Error"))) s = null;
 
-        // 2. Try URP 2D / Sprites fallback
-        if (s == null) s = Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default");
-        if (s != null && (!s.isSupported || s.name.Contains("Error"))) s = null;
+        // 2. Try Sprites / 2D fallback
         if (s == null) s = Shader.Find("Sprites/Default");
+        if (s != null && (!s.isSupported || s.name.Contains("Error"))) s = null;
+        if (s == null) s = Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default");
         if (s != null && (!s.isSupported || s.name.Contains("Error"))) s = null;
 
         // 3. Fallback: Borrow a verified working URP shader from any active renderer in the scene
@@ -254,11 +266,11 @@ public static class VFXUtil
         float lifetime = 1.6f)
     {
         GameObject go = new GameObject("VFX_Burst");
+        go.SetActive(false); // Inactive prevents any internal autoplay or duration warnings during setup
         go.transform.position = pos;
         go.transform.rotation = Quaternion.LookRotation(normal.sqrMagnitude > 0.001f ? normal : Vector3.up);
 
         ParticleSystem ps = go.AddComponent<ParticleSystem>();
-        ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         var main = ps.main;
         main.loop = false;
         main.playOnAwake = false;
@@ -288,9 +300,7 @@ public static class VFXUtil
         col.color = g;
 
         ParticleSystemRenderer rend = go.GetComponent<ParticleSystemRenderer>();
-        Material mat = new Material(Get(additive));
-        ApplyTexture(mat);
-        rend.material = mat;
+        rend.material = Get(additive);
         rend.shadowCastingMode = ShadowCastingMode.Off;
         rend.receiveShadows = false;
         if (stretch)
@@ -300,6 +310,7 @@ public static class VFXUtil
             rend.velocityScale = 0.08f;
         }
 
+        go.SetActive(true);
         ps.Play();
         Object.Destroy(go, lifetime);
         return ps;
