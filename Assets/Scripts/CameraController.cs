@@ -30,9 +30,11 @@ public class CameraController : MonoBehaviour
     public float editorPreviewPitch = 15f;
 
     [Header("AAA Gun Recoil & Shake")]
-    public float recoilRecoverySpeed = 14f;
+    public float recoilRecoverySpeed = 10f;
     private Vector2 _recoilOffset = Vector2.zero;
     private Vector3 _shakeOffset = Vector3.zero;
+    private float _recoilRoll = 0f;
+    private float _kickbackDistance = 0f;
 
     public static CameraController Instance { get; private set; }
 
@@ -45,8 +47,10 @@ public class CameraController : MonoBehaviour
     {
         _recoilOffset.x -= pitchKick;
         _recoilOffset.y += yawKick;
-        _shakeOffset += Random.insideUnitSphere * shakeAmount;
-        GameFeel.FovPunch(Mathf.Abs(pitchKick) * 1.4f);
+        _recoilRoll += Random.Range(-0.85f, 0.85f) * Mathf.Max(0.5f, pitchKick * 0.4f);
+        _kickbackDistance += Mathf.Clamp(shakeAmount * 1.6f, 0.06f, 0.22f);
+        _shakeOffset += (Vector3)(Random.insideUnitCircle * shakeAmount);
+        GameFeel.FovPunch(Mathf.Clamp(Mathf.Abs(pitchKick) * 1.8f, 2.5f, 5.0f));
     }
 
     private float mouseY = 0.0f;
@@ -136,7 +140,9 @@ public class CameraController : MonoBehaviour
 
             // Procedural recoil & screen shake recovery
             _recoilOffset = Vector2.Lerp(_recoilOffset, Vector2.zero, Time.deltaTime * recoilRecoverySpeed);
-            _shakeOffset = Vector3.Lerp(_shakeOffset, Vector3.zero, Time.deltaTime * 20f);
+            _shakeOffset = Vector3.Lerp(_shakeOffset, Vector3.zero, Time.deltaTime * 16f);
+            _recoilRoll = Mathf.Lerp(_recoilRoll, 0f, Time.deltaTime * recoilRecoverySpeed);
+            _kickbackDistance = Mathf.Lerp(_kickbackDistance, 0f, Time.deltaTime * 10f);
 
             if (_gunSystem != null && _gunSystem.IsGunEquipped &&
                 (Input.GetMouseButton(1) || Input.GetMouseButton(0)))
@@ -178,8 +184,8 @@ public class CameraController : MonoBehaviour
             _currentOffset = Vector3.Lerp(_currentOffset, _cinematicOffset, _cinematicBlend);
         }
 
-        // Camera ka rotation
-        Quaternion rotation = Quaternion.Euler(finalPitch, finalYaw, 0);
+        // Camera ka rotation (with recoil roll)
+        Quaternion rotation = Quaternion.Euler(finalPitch, finalYaw, _recoilRoll);
         
         float scale = target.lossyScale.y;
 
@@ -189,7 +195,7 @@ public class CameraController : MonoBehaviour
                                      + (rotation * new Vector3(_currentOffset.x * scale, 0, _currentOffset.z * scale));
         
         float scaledDistance = _currentDistance * scale;
-        Vector3 desiredPosition = actualTargetOffset - (rotation * Vector3.forward * scaledDistance);
+        Vector3 desiredPosition = actualTargetOffset - (rotation * Vector3.forward * (scaledDistance + _kickbackDistance));
 
         if (Application.isPlaying)
         {

@@ -25,6 +25,13 @@ public class Bullet : MonoBehaviour
     {
         if (damage < 50f) damage = 75f;
 
+        // Hide bulky 3D unfired bullet cartridge mesh so only the optical laser-sharp supersonic tracer streak is visible
+        MeshRenderer[] mrs = GetComponentsInChildren<MeshRenderer>();
+        for (int i = 0; i < mrs.Length; i++)
+        {
+            if (mrs[i] != null) mrs[i].enabled = false;
+        }
+
         _rb = GetComponent<Rigidbody>();
         if (_rb != null)
         {
@@ -65,37 +72,39 @@ public class Bullet : MonoBehaviour
 
     private void SetupTracerVisuals()
     {
-        // High-velocity realistic military tracer beam (needle-sharp, blazing luminous glow)
+        // High-velocity razor-sharp supersonic tracer streak (optical needle beam)
         _trail = GetComponent<TrailRenderer>();
         if (_trail == null)
             _trail = gameObject.AddComponent<TrailRenderer>();
 
-        _trail.time = 0.12f;
-        _trail.startWidth = 0.18f;
-        _trail.endWidth = 0.03f;
-        _trail.minVertexDistance = 0.02f;
+        _trail.time = 0.05f;
+        _trail.startWidth = 0.055f;
+        _trail.endWidth = 0.008f;
+        _trail.minVertexDistance = 0.015f;
         _trail.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         _trail.receiveShadows = false;
         _trail.numCapVertices = 4;
         _trail.numCornerVertices = 4;
 
-        // Guaranteed fail-safe URP Additive Material
+        // Guaranteed fail-safe URP Additive Material with whiteTexture for pure gradient evaluation
         Material trailMat = new Material(GetVFXMaterial(true));
-        VFXUtil.ApplyTexture(trailMat);
+        if (trailMat.HasProperty("_BaseMap")) trailMat.SetTexture("_BaseMap", Texture2D.whiteTexture);
+        if (trailMat.HasProperty("_MainTex")) trailMat.SetTexture("_MainTex", Texture2D.whiteTexture);
         _trail.material = trailMat;
 
-        // Gradient: HDR white-hot tip → luminous gold → fiery orange-red tail
+        // Gradient: Ultra-bright white-hot core → blazing gold → amber tracer tip
         Gradient gradient = new Gradient();
         gradient.SetKeys(
             new GradientColorKey[] {
-                new GradientColorKey(new Color(2.8f, 2.6f, 2.0f), 0f),   // White-hot core
-                new GradientColorKey(new Color(1.8f, 1.2f, 0.35f), 0.3f), // Gold flame
-                new GradientColorKey(new Color(1.2f, 0.4f, 0.08f), 1f)  // Fiery ember tail
+                new GradientColorKey(new Color(5.0f, 4.8f, 3.8f), 0f),    // Incandescent white-hot core
+                new GradientColorKey(new Color(3.2f, 2.4f, 0.8f), 0.25f), // Blazing gold
+                new GradientColorKey(new Color(2.2f, 1.1f, 0.2f), 0.65f), // Amber streak
+                new GradientColorKey(new Color(1.2f, 0.3f, 0.05f), 1f)    // Fading red tail
             },
             new GradientAlphaKey[] {
-                new GradientAlphaKey(1f,   0f),
-                new GradientAlphaKey(0.85f, 0.5f),
-                new GradientAlphaKey(0f,   1f)
+                new GradientAlphaKey(1f,    0f),
+                new GradientAlphaKey(0.9f, 0.45f),
+                new GradientAlphaKey(0f,    1f)
             }
         );
         _trail.colorGradient = gradient;
@@ -105,8 +114,8 @@ public class Bullet : MonoBehaviour
         lightObj.transform.SetParent(transform, false);
         _bulletLight = lightObj.AddComponent<Light>();
         _bulletLight.type = LightType.Point;
-        _bulletLight.color = new Color(1f, 0.85f, 0.45f);
-        _bulletLight.range = 8.0f;
+        _bulletLight.color = new Color(1f, 0.88f, 0.5f);
+        _bulletLight.range = 6.0f;
         _bulletLight.intensity = 3.5f;
         _bulletLight.shadows = LightShadows.None;
     }
@@ -229,17 +238,17 @@ public class Bullet : MonoBehaviour
 
     private void SpawnFleshImpactEffect(Vector3 pos, Vector3 normal)
     {
-        // AAA Flesh Impact: Dynamic red flash + high-velocity arterial blood spray + mist
-        VFXUtil.SpawnFadingLight(pos, new Color(1f, 0.05f, 0.02f), 7.0f, 6.0f, 0.12f);
-        VFXUtil.Burst(pos, normal, new Color(0.85f, 0.05f, 0.02f, 1f), 32, 9f, 22f, 0.12f, 0.35f, 0.18f, 0.45f, true, true, 2.0f, 40f);
-        VFXUtil.Burst(pos, Vector3.up, new Color(0.65f, 0.04f, 0.03f, 0.6f), 12, 1.5f, 4.5f, 0.3f, 0.7f, 0.35f, 0.8f, false, false, -0.05f, 55f);
+        // AAA Flesh Impact: Dynamic crimson flash + arterial blood spray + lingering blood mist
+        VFXUtil.SpawnFadingLight(pos, new Color(1f, 0.04f, 0.02f), 8.0f, 8.0f, 0.12f);
+        VFXUtil.Burst(pos, normal, new Color(0.85f, 0.02f, 0.02f, 1f), 32, 10f, 24f, 0.12f, 0.35f, 0.15f, 0.4f, true, true, 2.5f, 42f);
+        VFXUtil.DustPuff(pos, normal, new Color(0.6f, 0.03f, 0.02f, 0.55f), 8, 0.75f);
     }
 
     private void SpawnRicochetImpactEffect(Vector3 pos, Vector3 normal)
     {
-        // AAA Ricochet Impact: Luminous golden flash + bouncing embers + dirt dust puff
-        VFXUtil.SpawnFadingLight(pos, new Color(1f, 0.85f, 0.35f), 8.0f, 7.0f, 0.10f);
-        VFXUtil.Burst(pos, normal, new Color(1f, 0.85f, 0.28f, 1f), 28, 14f, 28f, 0.08f, 0.22f, 0.12f, 0.35f, true, true, 1.5f, 50f);
-        VFXUtil.Burst(pos, Vector3.up, new Color(0.7f, 0.68f, 0.6f, 0.5f), 14, 2.0f, 5.5f, 0.4f, 0.9f, 0.4f, 1.0f, false, false, -0.08f, 50f);
+        // AAA Ricochet Impact: Incandescent golden flash + needle sparks + concrete/dirt dust puff
+        VFXUtil.SpawnFadingLight(pos, new Color(1f, 0.88f, 0.45f), 9.0f, 9.0f, 0.10f);
+        VFXUtil.Sparks(pos, normal, new Color(4.0f, 2.8f, 1.0f, 1f), 28, 28f);
+        VFXUtil.DustPuff(pos, normal, new Color(0.85f, 0.82f, 0.75f, 0.38f), 8, 1.0f);
     }
 }

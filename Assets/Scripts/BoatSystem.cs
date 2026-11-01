@@ -124,6 +124,7 @@ public class BoatSystem : MonoBehaviour
     private float _waterRestY;
     private bool  _hasWaterRest = false;
     private float _nextSplashTime;
+    private float _nextWaterLapTime;
 
     private int _hashClimb;
     private int _hashSitDown;
@@ -368,9 +369,9 @@ public class BoatSystem : MonoBehaviour
         float h = Input.GetAxis("Horizontal"); // A/D
         float mouseX = Input.GetAxis("Mouse X");
 
-        bool pressing = Mathf.Abs(v) > 0.05f;
+        bool pressing = Mathf.Abs(v) > 0.05f || Mathf.Abs(h) > 0.05f;
 
-        // Paddling animation toggle
+        // Paddling animation toggle on WASD input
         if (pressing && !_isPaddling)
         {
             _isPaddling = true;
@@ -425,6 +426,13 @@ public class BoatSystem : MonoBehaviour
             GameAudio.PlayPaddle(transform.position);
         }
 
+        // Ambient boat hull water wave & lap sound while moving across the river
+        if (Mathf.Abs(_currentSpeed) > 0.8f && Time.time >= _nextWaterLapTime)
+        {
+            _nextWaterLapTime = Time.time + 0.95f;
+            GameAudio.PlayBoatWaterLap(transform.position, null, 0.35f);
+        }
+
         if (boatRigidbody != null)
             boatRigidbody.position = transform.position;
 
@@ -467,62 +475,37 @@ public class BoatSystem : MonoBehaviour
         _playerCC        = player.GetComponent<CharacterController>();
         _playerAnimator  = player.GetComponentInChildren<Animator>();
 
-        // 1. Unequip any weapon before climbing
+        // 1. Unequip any weapon before boarding
         if (player.WeaponIndex != 0)
         {
             yield return StartCoroutine(player.UnequipCurrentWeaponForPickup());
         }
 
-        // 2. Freeze player and disable CC
+        // 2. Freeze player locomotion and disable CC
         player.SetFrozen(true, lockWorldPosition: false);
         if (_playerCC != null) _playerCC.enabled = false;
 
         Transform seatTarget = boatSeatPoint != null ? boatSeatPoint : transform;
 
-        // Guaranteed upright rotation for the boat seat (strictly zero pitch/roll from rotated FBX bone nodes)
+        // Guaranteed upright rotation for the boat seat (strictly zero pitch/roll)
         Vector3 boatFwd = GetBoatForward();
         boatFwd.y = 0f;
         if (boatFwd.sqrMagnitude < 0.001f) boatFwd = transform.forward;
         boatFwd.Normalize();
         Quaternion uprightSeatRot = Quaternion.LookRotation(boatFwd, Vector3.up);
 
-        // 3. Turn player to face the boat seat from current standing position (no teleporting!)
-        Vector3 startP = _playerTransform.position;
-        Vector3 dirToSeat = (seatTarget.position - startP);
-        dirToSeat.y = 0f;
-        Quaternion targetR = dirToSeat.sqrMagnitude > 0.001f 
-            ? Quaternion.LookRotation(dirToSeat.normalized, Vector3.up) 
-            : uprightSeatRot;
+        // 3. Direct snap to boat seat standing up (No climb animation!)
+        _playerTransform.position = seatTarget.position;
+        _playerTransform.rotation = uprightSeatRot;
 
-        _playerTransform.rotation = targetR;
-
-        // 4. Immediately trigger BoatClimb animation
-        if (_playerAnimator != null)
-        {
-            _playerAnimator.ResetTrigger(_hashClimb);
-            _playerAnimator.SetTrigger(_hashClimb);
-            _playerAnimator.CrossFadeInFixedTime(climbStateName, 0.12f, 0, 0f);
-        }
-
-        yield return null;
-
-        // 5. Smooth natural climb motion directly from ground over boat side into the seat
-        yield return StartCoroutine(SyncClimbMotion(_playerAnimator, _playerTransform, seatTarget, 0.85f, 0.45f, uprightSeatRot));
-
-        // 5. Parent player to unscaled mount
+        // 4. Parent player to unscaled mount at seat
         _runtimeMount.position = seatTarget.position;
         _runtimeMount.rotation = uprightSeatRot;
         _playerTransform.SetParent(_runtimeMount);
         _playerTransform.localPosition = Vector3.zero;
         _playerTransform.localRotation = Quaternion.identity;
 
-        // 6. Optional boat shift
-        if (boatEnterShiftOffset != Vector3.zero)
-        {
-            yield return StartCoroutine(SmoothShiftBoat(boatEnterShiftOffset, 0.4f));
-        }
-
-        // 7. Play SitDown animation
+        // 5. Play SitDown / Seat animation
         if (_playerAnimator != null)
         {
             _playerAnimator.ResetTrigger(_hashSitDown);
@@ -530,9 +513,9 @@ public class BoatSystem : MonoBehaviour
             _playerAnimator.CrossFadeInFixedTime(sitDownStateName, 0.15f, 0, 0f);
         }
 
-        yield return new WaitForSeconds(0.9f);
+        yield return new WaitForSeconds(0.6f);
 
-        // 8. Ready to drive!
+        // 6. Ready to paddle!
         if (_playerAnimator != null)
         {
             _playerAnimator.SetBool(_hashSeatIdle, true);
@@ -547,7 +530,7 @@ public class BoatSystem : MonoBehaviour
             if (cam != null) cam.StartCinematic(camDistance, camOffset, camYaw, camPitch);
         }
 
-        Debug.Log("<color=#00FF88><b>[BoatSystem]</b></color> Player boarded boat successfully!");
+        Debug.Log("<color=#00FF88><b>[BoatSystem]</b></color> Player boarded boat and seated directly!");
     }
 
     // ─── Exit Boat Sequence ────────────────────────────────────────────────────
@@ -581,27 +564,25 @@ public class BoatSystem : MonoBehaviour
             _playerAnimator.CrossFadeInFixedTime(sitUpStateName, 0.15f, 0, 0f);
         }
 
-        yield return new WaitForSeconds(Mathf.Max(0.6f, idleAfterSitUpDuration));
+        yield return new WaitForSeconds(Mathf.Max(0.5f, idleAfterSitUpDuration));
 
-        // 2. Play BoatUnclimb animation
-        if (_playerAnimator != null)
-        {
-            _playerAnimator.ResetTrigger(_hashUnclimb);
-            _playerAnimator.SetTrigger(_hashUnclimb);
-            _playerAnimator.CrossFadeInFixedTime(unclimbStateName, 0.15f, 0, 0f);
-        }
-
-        // 3. Move player from seat down to unclimb target
-        Transform unclimbTarget = boatNearDownPoint != null ? boatNearDownPoint : (boatNearPoint != null ? boatNearPoint : transform);
+        // 2. Unparent and direct snap player outside to exit point (No unclimb animation!)
+        Transform exitTarget = boatNearDownPoint != null ? boatNearDownPoint : (boatNearPoint != null ? boatNearPoint : transform);
         _playerTransform.SetParent(null);
+        _playerTransform.position = exitTarget.position;
+        Vector3 exitFwd = exitTarget.forward;
+        exitFwd.y = 0f;
+        if (exitFwd.sqrMagnitude > 0.001f)
+            _playerTransform.rotation = Quaternion.LookRotation(exitFwd.normalized, Vector3.up);
 
-        Vector3 exitDir = (unclimbTarget.position - _playerTransform.position);
-        exitDir.y = 0f;
-        Quaternion exitRot = exitDir.sqrMagnitude > 0.001f 
-            ? Quaternion.LookRotation(exitDir.normalized, Vector3.up) 
-            : _playerTransform.rotation;
-
-        yield return StartCoroutine(SyncClimbMotion(_playerAnimator, _playerTransform, unclimbTarget, 0.85f, 0.35f, exitRot));
+        // 3. Drop Oar immediately as player stands outside
+        if (oarPickup == null)
+            oarPickup = OarPickup.Instance ?? FindFirstObjectByType<OarPickup>();
+        if (oarPickup != null && oarPickup.IsPickedUp)
+        {
+            Vector3 dropPos = exitTarget.position + exitTarget.right * 0.45f;
+            oarPickup.DropOar(dropPos);
+        }
 
         // 4. Restore player controls
         if (_playerCC != null) _playerCC.enabled = true;
@@ -610,7 +591,7 @@ public class BoatSystem : MonoBehaviour
         _isOccupied = false;
         _isExiting  = false;
 
-        Debug.Log("<color=#00FF88><b>[BoatSystem]</b></color> Player exited boat successfully!");
+        Debug.Log("<color=#00FF88><b>[BoatSystem]</b></color> Player stood up, exited boat, and dropped oar!");
     }
 
     // ─── Motion Helpers ────────────────────────────────────────────────────────

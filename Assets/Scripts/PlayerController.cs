@@ -99,8 +99,8 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private Vector3 swordBackOffsetRot = Vector3.zero; 
 
     [Header("Sword Combat & Damage")]
-    [Tooltip("Melee damage dealt per sword strike (Default: 180f for visceral combat against 1000 HP enemies).")]
-    [SerializeField] private float swordDamage = 180f; 
+    [Tooltip("Melee damage dealt per sword strike (Set to 100f for zombie combat).")]
+    [SerializeField] private float swordDamage = 100f; 
 
     // Ye dono script apne aap player ki haddiyon (bones) me dhundh legi, tumhe banane ki zarurat nahi!
     private Transform swordHandTransform;  
@@ -1027,17 +1027,21 @@ public class PlayerController : MonoBehaviour
 
     private IEnumerator PerformSwordAttackSequence(float damage)
     {
-        if (damage < 50f) damage = 250f;
+        if (damage <= 0f) damage = 100f;
 
-        // ── Phase 1: Windup Anticipation (0.08s) ───────────────────────────
-        yield return new WaitForSeconds(0.08f);
+        // ── Phase 1: Windup Anticipation (0.07s) ───────────────────────────
+        yield return new WaitForSeconds(0.07f);
 
         // ── Phase 2: Swing Start (Whoosh SFX & Glowing Trail Activation) ────
         GameAudio.PlaySwordSwing(transform.position);
         if (SwordAttackEffect.Instance != null)
             SwordAttackEffect.Instance.TriggerAttack();
 
-        // ── Phase 3: Continuous Active Hit Window (0.08s to 0.36s) ─────────
+        // Directional swing camera impulse for visceral kinetic feedback
+        if (cameraRig != null)
+            cameraRig.AddRecoil(0.18f, _swordCombo == 0 ? -0.12f : 0.12f, 0.02f);
+
+        // ── Phase 3: Continuous Active Hit Window (0.07s to 0.35s) ─────────
         // Sweeps across frames during the full blade arc so enemies cannot slip through
         float swingDuration = 0.28f;
         float elapsed = 0f;
@@ -1047,6 +1051,13 @@ public class PlayerController : MonoBehaviour
         while (elapsed < swingDuration)
         {
             elapsed += Time.deltaTime;
+
+            // Realistic forward combat step / lunge into the swing
+            if (_cc != null && _cc.enabled)
+            {
+                float stepSpeed = Mathf.Lerp(3.4f, 0.4f, elapsed / swingDuration);
+                _cc.Move(transform.forward * (stepSpeed * Time.deltaTime));
+            }
 
             // 1. Direct Scene Proximity & Arc Scan (100% fail-safe against missing colliders or layer mismatches)
             ZombieAI[] sceneZombies = FindObjectsByType<ZombieAI>(FindObjectsSortMode.None);
@@ -1065,6 +1076,7 @@ public class PlayerController : MonoBehaviour
                         hitEnemies.Add(z.gameObject);
                         connectedAnyHit = true;
 
+                        // Deal exactly 100 damage to zombie per hit
                         z.TakeDamage(damage);
                         bool isKill = z.IsDead;
 
@@ -1074,9 +1086,9 @@ public class PlayerController : MonoBehaviour
                             SwordAttackEffect.Instance.TriggerImpact(contactPoint, -transform.forward, true);
                         if (GunShooter.Instance != null)
                             GunShooter.Instance.RegisterHitMarker(isKill);
-                        if (cameraRig != null) cameraRig.AddRecoil(0.42f, Random.Range(-0.12f, 0.12f), 0.05f);
-                        GameFeel.HitStop(0.05f);
-                        GameFeel.FovPunch(2.5f);
+                        if (cameraRig != null) cameraRig.AddRecoil(0.48f, _swordCombo == 0 ? -0.18f : 0.18f, 0.06f);
+                        GameFeel.HitStop(0.06f);
+                        GameFeel.FovPunch(2.8f);
                     }
                 }
             }

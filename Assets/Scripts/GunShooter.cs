@@ -19,18 +19,18 @@ public class GunShooter : MonoBehaviour
     [Range(0.8f, 1.2f)] public float maxPitch = 1.06f;
 
     [Header("── Camera Recoil & Shake ──")]
-    public float recoilPitchKick = 0.6f;      // Camera pitch up (was 1.15 — too strong)
-    public float recoilYawKick = 0.15f;       // Camera sway (was 0.35)
-    public float recoilShakeAmount = 0.03f;   // Screen shake (was 0.08)
+    public float recoilPitchKick = 2.2f;      // Snappy vertical camera impulse
+    public float recoilYawKick = 0.65f;       // Subtle horizontal sway
+    public float recoilShakeAmount = 0.10f;   // High-frequency kinetic screen shake
 
     [Header("── Procedural Weapon Kickback ──")]
-    [Tooltip("Completely disable ALL weapon position/rotation kick on fire. Gun stays locked to hand socket.")]
-    public bool disableWeaponKick = true;    // Gun haath mein fixed rahegi — koi jhatka nahi
-    public float weaponKickZ = 0f;           // No push back
-    public float weaponKickUp = 0f;          // No vertical shift
-    public float weaponPitchKick = 0f;       // No rotation kick
-    public float weaponYawKick = 0f;         // No yaw sway
-    public float weaponKickRecoverSpeed = 30f;
+    [Tooltip("Enable realistic weapon kickback and recovery on fire.")]
+    public bool disableWeaponKick = false;   // Snappy weapon kick enabled for visceral AAA combat feel
+    public float weaponKickZ = 0.038f;       // Punchy backward kick into shoulder
+    public float weaponKickUp = 0.008f;      // Subtle vertical kick
+    public float weaponPitchKick = 1.6f;     // Snappy muzzle climb
+    public float weaponYawKick = 0.35f;      // Realistic horizontal weapon wobble
+    public float weaponKickRecoverSpeed = 28f;
 
     [Header("── Shell Casing Ejection ──")]
     public bool ejectShellCasings = true;
@@ -84,6 +84,18 @@ public class GunShooter : MonoBehaviour
     private bool _hasRecordedBaseTransform = false;
     private Transform _recordedParent = null;
 
+    // Pooled AAA Muzzle Flash Rig
+    private GameObject _muzzleFlashRig;
+    private ParticleSystem _flashCorePS;
+    private ParticleSystem _flashPlumePS;
+    private ParticleSystem _flashCrossPS;
+    private ParticleSystem _flashSparksPS;
+    private ParticleSystem _flashSmokePS;
+    private ParticleSystem _flashFirePS;
+    private ParticleSystem _flashFireTonguePS;
+    private Light _flashLight;
+    private Coroutine _flashLightRoutine;
+
     // Textures & Rendering
     private Texture2D _crosshairTex;
     private Texture2D _particleTex;
@@ -126,6 +138,7 @@ public class GunShooter : MonoBehaviour
         _currentSize = crosshairBaseSize;
         GenerateCrosshairTexture();
         GenerateParticleTexture();
+        InitMuzzleFlashRig();
     }
 
     private void AutoLoadAudioClips()
@@ -267,30 +280,61 @@ public class GunShooter : MonoBehaviour
         }
     }
 
-    public Vector3 GetEffectiveBarrelPosition()
+    public Transform GetBarrelTransform()
     {
-        Vector3 playerChest = transform.position + Vector3.up * 1.25f;
-        Vector3 naturalMuzzlePos = playerChest + transform.forward * 0.95f + transform.right * 0.26f - Vector3.up * 0.12f;
-
+        // 1. Inspector assigned barrelPoint
         if (barrelPoint != null)
-        {
-            Vector3 p = barrelPoint.position;
-            float dist = Vector3.Distance(p, playerChest);
-            // If barrelPoint is floating too far away (e.g. 3.5m - 4m due to unscaled coords in prefab),
-            // clamp it to the realistic rifle muzzle position!
-            if (dist > 1.8f || dist < 0.2f)
-            {
-                return naturalMuzzlePos;
-            }
-            return p;
-        }
+            return barrelPoint;
 
+        // 2. Gun hierarchy in GunEquipSystem
         if (_gunSystem != null && _gunSystem.gun != null)
         {
-            return _gunSystem.gun.transform.position + transform.forward * 0.75f;
+            Transform b = _gunSystem.gun.transform.Find("BarrelPoint") ?? _gunSystem.gun.transform.Find("Muzzle");
+            if (b == null)
+            {
+                foreach (Transform t in _gunSystem.gun.GetComponentsInChildren<Transform>(true))
+                {
+                    if (t.name.ToLower().Contains("barrel") || t.name.ToLower().Contains("muzzle"))
+                    {
+                        b = t;
+                        break;
+                    }
+                }
+            }
+            if (b != null)
+            {
+                barrelPoint = b;
+                return b;
+            }
         }
 
-        return naturalMuzzlePos;
+        return null;
+    }
+
+    public Vector3 GetEffectiveBarrelPosition()
+    {
+        // 1. If an actual barrel transform exists on the weapon, use its EXACT world position!
+        Transform b = GetBarrelTransform();
+        if (b != null)
+        {
+            return b.position;
+        }
+
+        // 2. Base position fallback if weapon model has no barrel point
+        Vector3 handPos = transform.position + Vector3.up * 1.25f + transform.right * 0.22f;
+        if (_gunSystem != null && _gunSystem.gunHandSocket != null)
+        {
+            handPos = _gunSystem.gunHandSocket.position;
+        }
+
+        Vector3 aimDir = transform.forward;
+        if (_mainCam != null)
+        {
+            Ray ray = _mainCam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+            aimDir = ray.direction;
+        }
+
+        return handPos + aimDir * 0.85f;
     }
 
     private void Fire()
@@ -311,16 +355,15 @@ public class GunShooter : MonoBehaviour
 
         // 2. Play Punchy Gunshot SFX with pitch variation
         GameAudio.PlayGunshot(muzzlePos, _audioSource, 1.0f);
-        GameFeel.FovPunch(1.8f);
+        GameFeel.FovPunch(2.2f);
 
-        // 3. Scale-Adjusted 3-Stage Muzzle Flash & Dynamic Light
-        SpawnRealisticMuzzleFlash(muzzlePos, fireDir);
+        // 3. Pooled AAA Muzzle Flash (Core, Plume, Cross Vents, Sparks, Smoke, Light)
+        TriggerMuzzleFlash(muzzlePos, fireDir);
 
-        // 4. Brass Shell Casing Ejection
+        // 4. Authentic 5.56mm Brass Shell Casing Ejection from receiver
         EjectShellCasing();
 
-        // 5. Procedural Weapon Kickback Impulse (only when kick is enabled)
-        //    disableWeaponKick = true hone par gun strictly haath mein fixed rahegi
+        // 5. Procedural Weapon Kickback Impulse
         if (!disableWeaponKick)
         {
             _weaponKickPos += new Vector3(0f, 0f, -weaponKickZ);
@@ -366,145 +409,318 @@ public class GunShooter : MonoBehaviour
         return (targetPoint - muzzlePos).normalized;
     }
 
-    private static Material _sharedAdditiveMat;
-    private static Material _sharedAlphaMat;
-
-    private Material GetParticleMat(bool additive = true)
+    private void InitMuzzleFlashRig()
     {
-        return VFXUtil.Get(additive);
-    }
+        if (_muzzleFlashRig != null) return;
 
-    private void SpawnRealisticMuzzleFlash(Vector3 muzzlePos, Vector3 fireDir)
-    {
-        GameObject flashObj = new GameObject("AAA_MuzzleFlash");
-        flashObj.transform.position = muzzlePos;
-        flashObj.transform.rotation = fireDir.sqrMagnitude > 0.001f ? Quaternion.LookRotation(fireDir) : transform.rotation;
+        _muzzleFlashRig = new GameObject("AAA_MuzzleFlashRig");
+        _muzzleFlashRig.transform.SetParent(transform, false);
 
-        // 1. Dynamic Point Light (Casts dramatic room/ground illumination on gunshot)
-        GameObject lightObj = new GameObject("MuzzleLight");
-        lightObj.transform.SetParent(flashObj.transform, false);
-        Light light = lightObj.AddComponent<Light>();
-        light.type = LightType.Point;
-        light.color = new Color(1f, 0.88f, 0.5f);
-        light.range = 16f;
-        light.intensity = 10.0f;
-        lightObj.AddComponent<VFXLightFade>().Init(light, 10.0f, 0.12f);
+        // 1. Dynamic Point Light
+        GameObject lightObj = new GameObject("FlashLight");
+        lightObj.transform.SetParent(_muzzleFlashRig.transform, false);
+        _flashLight = lightObj.AddComponent<Light>();
+        _flashLight.type = LightType.Point;
+        _flashLight.color = new Color(1f, 0.92f, 0.65f);
+        _flashLight.range = 18f;
+        _flashLight.intensity = 0f;
+        _flashLight.shadows = LightShadows.None;
 
-        Material mat = GetParticleMat(additive: true);
+        Material muzzleMat = VFXUtil.MuzzleFlashMat;
+        Material sparkMat = VFXUtil.SparkMat;
+        Material smokeMat = VFXUtil.SmokeMat;
 
-        // 2. Core Flash (Bright Center Burst with randomized rotation)
+        // 2. Core Flash (White-hot 4-point star billboard)
         GameObject coreObj = new GameObject("FlashCore");
-        coreObj.SetActive(false);
-        coreObj.transform.SetParent(flashObj.transform, false);
-        ParticleSystem psCore = coreObj.AddComponent<ParticleSystem>();
-        var main1 = psCore.main;
+        coreObj.transform.SetParent(_muzzleFlashRig.transform, false);
+        _flashCorePS = coreObj.AddComponent<ParticleSystem>();
+        var main1 = _flashCorePS.main;
         main1.loop = false;
         main1.playOnAwake = false;
-        main1.startLifetime = new ParticleSystem.MinMaxCurve(0.09f, 0.14f);
+        main1.startLifetime = new ParticleSystem.MinMaxCurve(0.035f, 0.05f);
         main1.startSpeed = 0f;
-        main1.startSize = new ParticleSystem.MinMaxCurve(1.2f, 1.8f);
-        main1.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
-        main1.startColor = new Color(3.5f, 3.0f, 2.0f, 1f);
+        main1.startSize = new ParticleSystem.MinMaxCurve(0.75f, 0.95f);
+        main1.startColor = new Color(5.0f, 4.5f, 3.2f, 1f);
         main1.simulationSpace = ParticleSystemSimulationSpace.World;
-        var em1 = psCore.emission;
+        main1.maxParticles = 8;
+        var em1 = _flashCorePS.emission;
         em1.rateOverTime = 0;
-        em1.SetBursts(new ParticleSystem.Burst[] { new ParticleSystem.Burst(0, 1) });
         var rend1 = coreObj.GetComponent<ParticleSystemRenderer>();
-        rend1.material = mat;
+        rend1.material = muzzleMat;
         rend1.renderMode = ParticleSystemRenderMode.Billboard;
-        coreObj.SetActive(true);
+        rend1.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        rend1.receiveShadows = false;
 
-        // 3. Stretched Directional Flash Hider Plume (M4 Cross Plume)
+        // 3. Bore Plume (Supersonic Flame Jet along barrel axis)
         GameObject plumeObj = new GameObject("FlashPlume");
-        plumeObj.SetActive(false);
-        plumeObj.transform.SetParent(flashObj.transform, false);
-        ParticleSystem psPlume = plumeObj.AddComponent<ParticleSystem>();
-        var mainPlume = psPlume.main;
+        plumeObj.transform.SetParent(_muzzleFlashRig.transform, false);
+        _flashPlumePS = plumeObj.AddComponent<ParticleSystem>();
+        var mainPlume = _flashPlumePS.main;
         mainPlume.loop = false;
         mainPlume.playOnAwake = false;
-        mainPlume.startLifetime = new ParticleSystem.MinMaxCurve(0.08f, 0.12f);
-        mainPlume.startSpeed = new ParticleSystem.MinMaxCurve(10f, 20f);
-        mainPlume.startSize = new ParticleSystem.MinMaxCurve(0.5f, 0.9f);
-        mainPlume.startColor = new Color(3.0f, 2.4f, 1.3f, 1f);
-        mainPlume.simulationSpace = ParticleSystemSimulationSpace.World;
-        var emPlume = psPlume.emission;
+        mainPlume.startLifetime = new ParticleSystem.MinMaxCurve(0.04f, 0.055f);
+        mainPlume.startSpeed = new ParticleSystem.MinMaxCurve(28f, 38f);
+        mainPlume.startSize = new ParticleSystem.MinMaxCurve(0.28f, 0.42f);
+        mainPlume.startColor = new Color(3.8f, 2.4f, 0.8f, 1f);
+        mainPlume.simulationSpace = ParticleSystemSimulationSpace.Local;
+        mainPlume.maxParticles = 16;
+        var emPlume = _flashPlumePS.emission;
         emPlume.rateOverTime = 0;
-        emPlume.SetBursts(new ParticleSystem.Burst[] { new ParticleSystem.Burst(0, 5) });
-        var shapePlume = psPlume.shape;
+        var shapePlume = _flashPlumePS.shape;
         shapePlume.shapeType = ParticleSystemShapeType.Cone;
-        shapePlume.angle = 12f;
-        shapePlume.radius = 0.02f;
+        shapePlume.angle = 8f;
+        shapePlume.radius = 0.01f;
         var rendPlume = plumeObj.GetComponent<ParticleSystemRenderer>();
-        rendPlume.material = mat;
+        rendPlume.material = muzzleMat;
         rendPlume.renderMode = ParticleSystemRenderMode.Stretch;
         rendPlume.lengthScale = 3.2f;
         rendPlume.velocityScale = 0.08f;
-        plumeObj.SetActive(true);
+        rendPlume.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        rendPlume.receiveShadows = false;
 
-        // 4. Sparks Shower (Stretched high-speed incandescent fire embers)
-        GameObject sparksObj = new GameObject("Sparks");
-        sparksObj.SetActive(false);
-        sparksObj.transform.SetParent(flashObj.transform, false);
-        ParticleSystem psSparks = sparksObj.AddComponent<ParticleSystem>();
-        var main2 = psSparks.main;
+        // 4. M4 Flash Hider Cross Vents (4-prong radial gas jets)
+        GameObject crossObj = new GameObject("FlashCrossVents");
+        crossObj.transform.SetParent(_muzzleFlashRig.transform, false);
+        _flashCrossPS = crossObj.AddComponent<ParticleSystem>();
+        var mainCross = _flashCrossPS.main;
+        mainCross.loop = false;
+        mainCross.playOnAwake = false;
+        mainCross.startLifetime = new ParticleSystem.MinMaxCurve(0.03f, 0.045f);
+        mainCross.startSpeed = new ParticleSystem.MinMaxCurve(18f, 28f);
+        mainCross.startSize = new ParticleSystem.MinMaxCurve(0.22f, 0.35f);
+        mainCross.startColor = new Color(3.2f, 1.8f, 0.5f, 1f);
+        mainCross.simulationSpace = ParticleSystemSimulationSpace.Local;
+        mainCross.maxParticles = 16;
+        var emCross = _flashCrossPS.emission;
+        emCross.rateOverTime = 0;
+        var shapeCross = _flashCrossPS.shape;
+        shapeCross.shapeType = ParticleSystemShapeType.Circle;
+        shapeCross.radius = 0.02f;
+        shapeCross.arc = 360f;
+        var rendCross = crossObj.GetComponent<ParticleSystemRenderer>();
+        rendCross.material = muzzleMat;
+        rendCross.renderMode = ParticleSystemRenderMode.Stretch;
+        rendCross.lengthScale = 2.4f;
+        rendCross.velocityScale = 0.06f;
+        rendCross.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        rendCross.receiveShadows = false;
+
+        // 5. Sparks Shower (Incandescent needle embers using T_Spark)
+        GameObject sparksObj = new GameObject("FlashSparks");
+        sparksObj.transform.SetParent(_muzzleFlashRig.transform, false);
+        _flashSparksPS = sparksObj.AddComponent<ParticleSystem>();
+        var main2 = _flashSparksPS.main;
         main2.loop = false;
         main2.playOnAwake = false;
-        main2.startLifetime = new ParticleSystem.MinMaxCurve(0.08f, 0.18f);
-        main2.startSpeed = new ParticleSystem.MinMaxCurve(22f, 38f);
-        main2.startSize = new ParticleSystem.MinMaxCurve(0.06f, 0.18f);
-        main2.startColor = new Color(2.8f, 2.0f, 0.6f, 1f);
+        main2.startLifetime = new ParticleSystem.MinMaxCurve(0.08f, 0.16f);
+        main2.startSpeed = new ParticleSystem.MinMaxCurve(35f, 60f);
+        main2.startSize = new ParticleSystem.MinMaxCurve(0.035f, 0.09f);
+        main2.startColor = new Color(4.0f, 2.8f, 1.0f, 1f);
+        main2.gravityModifier = 1.8f;
         main2.simulationSpace = ParticleSystemSimulationSpace.World;
-        var em2 = psSparks.emission;
+        main2.maxParticles = 64;
+        var em2 = _flashSparksPS.emission;
         em2.rateOverTime = 0;
-        em2.SetBursts(new ParticleSystem.Burst[] { new ParticleSystem.Burst(0, 25, 35) });
-        var shape2 = psSparks.shape;
+        var shape2 = _flashSparksPS.shape;
         shape2.shapeType = ParticleSystemShapeType.Cone;
-        shape2.angle = 24f;
-        shape2.radius = 0.04f;
+        shape2.angle = 20f;
+        shape2.radius = 0.02f;
         var rend2 = sparksObj.GetComponent<ParticleSystemRenderer>();
-        rend2.material = mat;
+        rend2.material = sparkMat;
         rend2.renderMode = ParticleSystemRenderMode.Stretch;
-        rend2.lengthScale = 4.5f;
-        rend2.velocityScale = 0.08f;
-        sparksObj.SetActive(true);
+        rend2.lengthScale = 4.2f;
+        rend2.velocityScale = 0.06f;
+        rend2.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        rend2.receiveShadows = false;
 
-        // 5. Volumetric Gun Smoke Puff
-        GameObject smokeObj = new GameObject("SmokePuff");
-        smokeObj.SetActive(false);
-        smokeObj.transform.SetParent(flashObj.transform, false);
-        ParticleSystem psSmoke = smokeObj.AddComponent<ParticleSystem>();
-        var main3 = psSmoke.main;
+        // 6. Volumetric Gun Smoke (Soft propellant puff using T_Smoke)
+        GameObject smokeObj = new GameObject("FlashSmoke");
+        smokeObj.transform.SetParent(_muzzleFlashRig.transform, false);
+        _flashSmokePS = smokeObj.AddComponent<ParticleSystem>();
+        var main3 = _flashSmokePS.main;
         main3.loop = false;
         main3.playOnAwake = false;
-        main3.startLifetime = new ParticleSystem.MinMaxCurve(0.45f, 0.95f);
-        main3.startSpeed = new ParticleSystem.MinMaxCurve(3f, 8f);
-        main3.startSize = new ParticleSystem.MinMaxCurve(0.45f, 0.95f);
-        main3.startColor = new Color(0.75f, 0.75f, 0.75f, 0.38f);
+        main3.startLifetime = new ParticleSystem.MinMaxCurve(0.5f, 0.85f);
+        main3.startSpeed = new ParticleSystem.MinMaxCurve(2.0f, 5.0f);
+        main3.startSize = new ParticleSystem.MinMaxCurve(0.35f, 0.75f);
+        main3.startColor = new Color(0.85f, 0.85f, 0.85f, 0.22f);
+        main3.gravityModifier = -0.06f;
         main3.simulationSpace = ParticleSystemSimulationSpace.World;
-        var em3 = psSmoke.emission;
+        main3.maxParticles = 32;
+        var em3 = _flashSmokePS.emission;
         em3.rateOverTime = 0;
-        em3.SetBursts(new ParticleSystem.Burst[] { new ParticleSystem.Burst(0, 10, 16) });
-        var shape3 = psSmoke.shape;
+        var shape3 = _flashSmokePS.shape;
         shape3.shapeType = ParticleSystemShapeType.Cone;
-        shape3.angle = 20f;
-        var colOverLife = psSmoke.colorOverLifetime;
+        shape3.angle = 22f;
+        shape3.radius = 0.03f;
+        var colOverLife = _flashSmokePS.colorOverLifetime;
         colOverLife.enabled = true;
         Gradient grad = new Gradient();
         grad.SetKeys(
-            new GradientColorKey[] { new GradientColorKey(new Color(0.9f, 0.9f, 0.9f), 0f) },
-            new GradientAlphaKey[] { new GradientAlphaKey(0.45f, 0f), new GradientAlphaKey(0f, 1f) }
+            new GradientColorKey[] { new GradientColorKey(new Color(0.88f, 0.88f, 0.88f), 0f) },
+            new GradientAlphaKey[] { new GradientAlphaKey(0.24f, 0f), new GradientAlphaKey(0f, 1f) }
         );
         colOverLife.color = grad;
         var rend3 = smokeObj.GetComponent<ParticleSystemRenderer>();
-        rend3.material = GetParticleMat(additive: false); // Alpha-blend for semi-transparent smoke
-        smokeObj.SetActive(true);
+        rend3.material = smokeMat;
+        rend3.renderMode = ParticleSystemRenderMode.Billboard;
+        rend3.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        rend3.receiveShadows = false;
 
-        psCore.Play();
-        psPlume.Play();
-        psSparks.Play();
-        psSmoke.Play();
+        // 7. Volumetric Fiery Flame Burst (Expanding bright fire tongues)
+        GameObject fireObj = new GameObject("FlashFireBurst");
+        fireObj.transform.SetParent(_muzzleFlashRig.transform, false);
+        _flashFirePS = fireObj.AddComponent<ParticleSystem>();
+        var mainFire = _flashFirePS.main;
+        mainFire.loop = false;
+        mainFire.playOnAwake = false;
+        mainFire.startLifetime = new ParticleSystem.MinMaxCurve(0.12f, 0.22f);
+        mainFire.startSpeed = new ParticleSystem.MinMaxCurve(16f, 30f);
+        mainFire.startSize = new ParticleSystem.MinMaxCurve(0.40f, 0.75f);
+        mainFire.startColor = new Color(5.5f, 2.2f, 0.2f, 1f);
+        mainFire.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+        mainFire.gravityModifier = -0.15f;
+        mainFire.simulationSpace = ParticleSystemSimulationSpace.World;
+        mainFire.maxParticles = 64;
+        var emFire = _flashFirePS.emission;
+        emFire.rateOverTime = 0;
+        var shapeFire = _flashFirePS.shape;
+        shapeFire.shapeType = ParticleSystemShapeType.Cone;
+        shapeFire.angle = 16f;
+        shapeFire.radius = 0.02f;
 
-        Destroy(flashObj, 1.0f);
+        var colFire = _flashFirePS.colorOverLifetime;
+        colFire.enabled = true;
+        Gradient fireGrad = new Gradient();
+        fireGrad.SetKeys(
+            new GradientColorKey[] {
+                new GradientColorKey(new Color(6.0f, 4.5f, 1.2f), 0.0f),
+                new GradientColorKey(new Color(5.2f, 2.0f, 0.15f), 0.28f),
+                new GradientColorKey(new Color(3.8f, 0.5f, 0.04f), 0.65f),
+                new GradientColorKey(new Color(0.2f, 0.04f, 0.01f), 1.0f)
+            },
+            new GradientAlphaKey[] {
+                new GradientAlphaKey(1.0f, 0.0f),
+                new GradientAlphaKey(0.95f, 0.35f),
+                new GradientAlphaKey(0.6f, 0.75f),
+                new GradientAlphaKey(0.0f, 1.0f)
+            }
+        );
+        colFire.color = fireGrad;
+
+        var sizeFire = _flashFirePS.sizeOverLifetime;
+        sizeFire.enabled = true;
+        AnimationCurve fireSizeCurve = new AnimationCurve();
+        fireSizeCurve.AddKey(0.0f, 0.45f);
+        fireSizeCurve.AddKey(0.35f, 1.25f);
+        fireSizeCurve.AddKey(1.0f, 0.85f);
+        sizeFire.size = new ParticleSystem.MinMaxCurve(1.0f, fireSizeCurve);
+
+        var rotFire = _flashFirePS.rotationOverLifetime;
+        rotFire.enabled = true;
+        rotFire.z = new ParticleSystem.MinMaxCurve(-360f * Mathf.Deg2Rad, 360f * Mathf.Deg2Rad);
+
+        var rendFire = fireObj.GetComponent<ParticleSystemRenderer>();
+        rendFire.material = muzzleMat;
+        rendFire.renderMode = ParticleSystemRenderMode.Billboard;
+        rendFire.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        rendFire.receiveShadows = false;
+
+        // 8. Bore Fire Tongue (Stretched supersonic flame jet along barrel axis)
+        GameObject tongueObj = new GameObject("FlashFireTongue");
+        tongueObj.transform.SetParent(_muzzleFlashRig.transform, false);
+        _flashFireTonguePS = tongueObj.AddComponent<ParticleSystem>();
+        var mainTongue = _flashFireTonguePS.main;
+        mainTongue.loop = false;
+        mainTongue.playOnAwake = false;
+        mainTongue.startLifetime = new ParticleSystem.MinMaxCurve(0.06f, 0.10f);
+        mainTongue.startSpeed = new ParticleSystem.MinMaxCurve(28f, 42f);
+        mainTongue.startSize = new ParticleSystem.MinMaxCurve(0.35f, 0.55f);
+        mainTongue.startColor = new Color(5.2f, 2.6f, 0.3f, 1f);
+        mainTongue.simulationSpace = ParticleSystemSimulationSpace.Local;
+        mainTongue.maxParticles = 16;
+        var emTongue = _flashFireTonguePS.emission;
+        emTongue.rateOverTime = 0;
+        var shapeTongue = _flashFireTonguePS.shape;
+        shapeTongue.shapeType = ParticleSystemShapeType.Cone;
+        shapeTongue.angle = 6f;
+        shapeTongue.radius = 0.01f;
+        var rendTongue = tongueObj.GetComponent<ParticleSystemRenderer>();
+        rendTongue.material = muzzleMat;
+        rendTongue.renderMode = ParticleSystemRenderMode.Stretch;
+        rendTongue.lengthScale = 3.6f;
+        rendTongue.velocityScale = 0.08f;
+        rendTongue.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        rendTongue.receiveShadows = false;
+    }
+
+    private void TriggerMuzzleFlash(Vector3 muzzlePos, Vector3 fireDir)
+    {
+        if (_muzzleFlashRig == null)
+            InitMuzzleFlashRig();
+
+        if (_muzzleFlashRig == null) return;
+
+        _muzzleFlashRig.transform.position = muzzlePos;
+        _muzzleFlashRig.transform.rotation = fireDir.sqrMagnitude > 0.001f ? Quaternion.LookRotation(fireDir) : transform.rotation;
+
+        // 1. Core billboard with randomized angle
+        if (_flashCorePS != null)
+        {
+            var m = _flashCorePS.main;
+            m.startRotation = Random.Range(0f, Mathf.PI * 2f);
+            _flashCorePS.Emit(1);
+        }
+
+        // 2. Forward flame tongue
+        if (_flashPlumePS != null)
+            _flashPlumePS.Emit(4);
+
+        // 3. Compensator radial cross vents
+        if (_flashCrossPS != null)
+            _flashCrossPS.Emit(6);
+
+        // 4. Stretched incandescent needle sparks
+        if (_flashSparksPS != null)
+            _flashSparksPS.Emit(Random.Range(26, 36));
+
+        // 5. Billowing soft smoke puff
+        if (_flashSmokePS != null)
+            _flashSmokePS.Emit(Random.Range(4, 7));
+
+        // 6. Volumetric Fiery Flame Burst (Visible fire particles)
+        if (_flashFirePS != null)
+            _flashFirePS.Emit(Random.Range(12, 18));
+
+        // 7. Supersonic Bore Flame Jet
+        if (_flashFireTonguePS != null)
+            _flashFireTonguePS.Emit(6);
+
+        // 8. Fiery light & ember flash at muzzle
+        VFXUtil.Burst(muzzlePos, fireDir, new Color(5.5f, 2.2f, 0.2f, 1f), 8, 8f, 20f, 0.08f, 0.2f, 0.12f, 0.25f, true, true, 0.6f, 30f);
+
+        // 9. Rapid exponential light flash
+        if (_flashLight != null)
+        {
+            if (_flashLightRoutine != null) StopCoroutine(_flashLightRoutine);
+            _flashLightRoutine = StartCoroutine(FadeLightRoutine(15.0f, 0.05f));
+        }
+    }
+
+    private System.Collections.IEnumerator FadeLightRoutine(float startIntensity, float duration)
+    {
+        if (_flashLight == null) yield break;
+        _flashLight.intensity = startIntensity;
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float n = Mathf.Clamp01(elapsed / duration);
+            if (_flashLight != null)
+                _flashLight.intensity = startIntensity * (1f - n * n);
+            yield return null;
+        }
+        if (_flashLight != null) _flashLight.intensity = 0f;
     }
 
     private static Material _casingMat;
@@ -540,14 +756,20 @@ public class GunShooter : MonoBehaviour
 
     private void EjectShellCasing()
     {
-        if (!ejectShellCasings || barrelPoint == null) return;
+        if (!ejectShellCasings) return;
 
-        Vector3 spawnPos = barrelPoint.position - barrelPoint.forward * 0.4f + barrelPoint.up * 0.1f;
+        Vector3 handPos = transform.position + Vector3.up * 1.25f + transform.right * 0.22f;
+        if (_gunSystem != null && _gunSystem.gunHandSocket != null)
+            handPos = _gunSystem.gunHandSocket.position;
+
+        Transform camTrans = _mainCam != null ? _mainCam.transform : transform;
+        Vector3 spawnPos = handPos + camTrans.forward * 0.15f + camTrans.right * 0.08f + camTrans.up * 0.06f;
+
         GameObject casing = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         casing.name = "ShellCasing";
         casing.transform.position = spawnPos;
-        casing.transform.rotation = barrelPoint.rotation * Quaternion.Euler(0, 90f, 0);
-        casing.transform.localScale = new Vector3(0.06f, 0.14f, 0.06f);
+        casing.transform.rotation = camTrans.rotation * Quaternion.Euler(Random.Range(-20f, 20f), Random.Range(70f, 110f), Random.Range(30f, 60f));
+        casing.transform.localScale = new Vector3(0.014f, 0.038f, 0.014f); // Authentic 5.56mm NATO scale
 
         Collider col = casing.GetComponent<Collider>();
         if (_playerCollider != null && col != null)
@@ -560,12 +782,13 @@ public class GunShooter : MonoBehaviour
         }
 
         Rigidbody rb = casing.AddComponent<Rigidbody>();
-        rb.mass = 0.02f;
+        rb.mass = 0.012f;
+        rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
 
-        Vector3 ejectDir = (barrelPoint.right * 1.5f + barrelPoint.up * 1.2f - barrelPoint.forward * 0.4f).normalized;
-        ejectDir += Random.insideUnitSphere * 0.15f;
-        rb.linearVelocity = ejectDir * Random.Range(4.5f, 7.0f);
-        rb.angularVelocity = Random.insideUnitSphere * Random.Range(30f, 60f);
+        Vector3 ejectDir = (camTrans.right * 2.2f + camTrans.up * 1.4f - camTrans.forward * 0.5f).normalized;
+        ejectDir += Random.insideUnitSphere * 0.25f;
+        rb.linearVelocity = ejectDir * Random.Range(3.5f, 5.5f);
+        rb.angularVelocity = new Vector3(Random.Range(20f, 40f), Random.Range(40f, 80f), Random.Range(20f, 40f));
 
         Destroy(casing, 2.5f);
     }
@@ -593,7 +816,10 @@ public class GunShooter : MonoBehaviour
         }
         else
         {
-            Vector3 worldPoint = barrelPoint.position + barrelPoint.forward * crosshairDistance;
+            Transform b = GetBarrelTransform();
+            Vector3 bPos = b != null ? b.position : transform.position + Vector3.up * 1.3f;
+            Vector3 bFwd = b != null ? b.forward : transform.forward;
+            Vector3 worldPoint = bPos + bFwd * crosshairDistance;
             Vector3 screenPos = _mainCam.WorldToScreenPoint(worldPoint);
 
             if (screenPos.z < 0) return;

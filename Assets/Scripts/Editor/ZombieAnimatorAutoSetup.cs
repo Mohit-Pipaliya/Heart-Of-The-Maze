@@ -77,18 +77,36 @@ public class ZombieAnimatorAutoSetup : EditorWindow
         AddParameter(ac, "Speed", AnimatorControllerParameterType.Float);
         AddParameter(ac, "IsMoving", AnimatorControllerParameterType.Bool);
         AddParameter(ac, "IsRunning", AnimatorControllerParameterType.Bool);
+        AddParameter(ac, "IsSliding", AnimatorControllerParameterType.Bool);
+        AddParameter(ac, "Slide", AnimatorControllerParameterType.Trigger);
         AddParameter(ac, "Raad", AnimatorControllerParameterType.Trigger);
         AddParameter(ac, "Attack", AnimatorControllerParameterType.Trigger);
         AddParameter(ac, "Hit", AnimatorControllerParameterType.Trigger);
         AddParameter(ac, "Die", AnimatorControllerParameterType.Trigger);
         AddParameter(ac, "IsDead", AnimatorControllerParameterType.Bool);
+        AddParameter(ac, "Turn", AnimatorControllerParameterType.Float);
+
+        // Enable IK Pass on Base Layer for procedural Foot IK and LookAt
+        if (ac.layers.Length > 0)
+        {
+            var layers = ac.layers;
+            layers[0].iKPass = true;
+            ac.layers = layers;
+        }
 
         AnimatorStateMachine root = ac.layers[0].stateMachine;
+
+        // Enable IK On Feet across all states
+        foreach (var cs in root.states)
+        {
+            cs.state.iKOnFeet = true;
+        }
 
         // ── 2. Find States ───────────────────────────────────────────────────
         AnimatorState walkState   = FindState(root, "walk");
         AnimatorState raadState   = FindState(root, "raad") ?? FindState(root, "scream");
         AnimatorState runState    = FindState(root, "run");
+        AnimatorState slideState  = FindState(root, "slide") ?? FindState(root, "crawl");
         AnimatorState attackState = FindState(root, "attack");
         AnimatorState hitState    = FindState(root, "hit");
         AnimatorState dieState    = FindState(root, "die") ?? FindState(root, "death");
@@ -103,19 +121,44 @@ public class ZombieAnimatorAutoSetup : EditorWindow
         root.defaultState = walkState;
 
         // ── 3. Reset Old Transitions ────────────────────────────────────────
+        while (root.anyStateTransitions.Length > 0)
+        {
+            root.RemoveAnyStateTransition(root.anyStateTransitions[0]);
+        }
         foreach (var childState in root.states)
         {
-            childState.state.transitions = new AnimatorStateTransition[0];
+            while (childState.state.transitions.Length > 0)
+            {
+                childState.state.RemoveTransition(childState.state.transitions[0]);
+            }
         }
-        root.anyStateTransitions = new AnimatorStateTransition[0];
 
         // ── 4. Build Transitions & Conditions ───────────────────────────────
+
+        // ── TOP PRIORITY: AnyState -> Die (Death animation can NEVER be interrupted!) ──
+        if (dieState != null)
+        {
+            dieState.tag = "Dead";
+            
+            var t1 = root.AddAnyStateTransition(dieState);
+            t1.AddCondition(AnimatorConditionMode.If, 0, "Die");
+            t1.hasExitTime = false;
+            t1.duration = 0.08f;
+            t1.canTransitionToSelf = false;
+
+            var t2 = root.AddAnyStateTransition(dieState);
+            t2.AddCondition(AnimatorConditionMode.If, 0, "IsDead");
+            t2.hasExitTime = false;
+            t2.duration = 0.08f;
+            t2.canTransitionToSelf = false;
+        }
 
         // A) Walk -> Raad (Player alert scream)
         if (walkState != null && raadState != null)
         {
             var t = walkState.AddTransition(raadState);
             t.AddCondition(AnimatorConditionMode.If, 0, "Raad");
+            t.AddCondition(AnimatorConditionMode.IfNot, 0, "IsDead");
             t.hasExitTime = false;
             t.duration = 0.15f;
             t.canTransitionToSelf = false;
@@ -125,6 +168,7 @@ public class ZombieAnimatorAutoSetup : EditorWindow
         if (raadState != null && runState != null)
         {
             var t = raadState.AddTransition(runState);
+            t.AddCondition(AnimatorConditionMode.IfNot, 0, "IsDead");
             t.hasExitTime = true;
             t.exitTime = 0.88f;
             t.duration = 0.2f;
@@ -137,6 +181,7 @@ public class ZombieAnimatorAutoSetup : EditorWindow
             // Walk -> Run
             var t1 = walkState.AddTransition(runState);
             t1.AddCondition(AnimatorConditionMode.If, 0, "IsRunning");
+            t1.AddCondition(AnimatorConditionMode.IfNot, 0, "IsDead");
             t1.hasExitTime = false;
             t1.duration = 0.2f;
             t1.canTransitionToSelf = false;
@@ -144,6 +189,7 @@ public class ZombieAnimatorAutoSetup : EditorWindow
             // Run -> Walk
             var t2 = runState.AddTransition(walkState);
             t2.AddCondition(AnimatorConditionMode.IfNot, 0, "IsRunning");
+            t2.AddCondition(AnimatorConditionMode.IfNot, 0, "IsDead");
             t2.hasExitTime = false;
             t2.duration = 0.25f;
             t2.canTransitionToSelf = false;
@@ -154,6 +200,7 @@ public class ZombieAnimatorAutoSetup : EditorWindow
         {
             var t = runState.AddTransition(attackState);
             t.AddCondition(AnimatorConditionMode.If, 0, "Attack");
+            t.AddCondition(AnimatorConditionMode.IfNot, 0, "IsDead");
             t.hasExitTime = false;
             t.duration = 0.1f;
             t.canTransitionToSelf = false;
@@ -164,6 +211,7 @@ public class ZombieAnimatorAutoSetup : EditorWindow
         {
             var t = walkState.AddTransition(attackState);
             t.AddCondition(AnimatorConditionMode.If, 0, "Attack");
+            t.AddCondition(AnimatorConditionMode.IfNot, 0, "IsDead");
             t.hasExitTime = false;
             t.duration = 0.1f;
             t.canTransitionToSelf = false;
@@ -174,6 +222,7 @@ public class ZombieAnimatorAutoSetup : EditorWindow
         {
             var t = attackState.AddTransition(runState);
             t.AddCondition(AnimatorConditionMode.If, 0, "IsRunning");
+            t.AddCondition(AnimatorConditionMode.IfNot, 0, "IsDead");
             t.hasExitTime = true;
             t.exitTime = 0.85f;
             t.duration = 0.2f;
@@ -185,18 +234,21 @@ public class ZombieAnimatorAutoSetup : EditorWindow
         {
             var t = attackState.AddTransition(walkState);
             t.AddCondition(AnimatorConditionMode.IfNot, 0, "IsRunning");
+            t.AddCondition(AnimatorConditionMode.IfNot, 0, "IsDead");
             t.hasExitTime = true;
             t.exitTime = 0.85f;
             t.duration = 0.25f;
             t.canTransitionToSelf = false;
         }
 
-        // H) AnyState -> Hit (Reaction hit on receiving damage)
+        // H) AnyState -> Hit (Reaction hit on receiving damage — only for upright zombies and NOT dead!)
         if (hitState != null)
         {
             hitState.tag = "Hit";
             var t = root.AddAnyStateTransition(hitState);
             t.AddCondition(AnimatorConditionMode.If, 0, "Hit");
+            t.AddCondition(AnimatorConditionMode.IfNot, 0, "IsSliding");
+            t.AddCondition(AnimatorConditionMode.IfNot, 0, "IsDead");
             t.hasExitTime = false;
             t.duration = 0.05f;
             t.canTransitionToSelf = false;
@@ -205,29 +257,59 @@ public class ZombieAnimatorAutoSetup : EditorWindow
             if (runState != null)
             {
                 var exitToRun = hitState.AddTransition(runState);
+                exitToRun.AddCondition(AnimatorConditionMode.IfNot, 0, "IsSliding");
+                exitToRun.AddCondition(AnimatorConditionMode.IfNot, 0, "IsDead");
                 exitToRun.hasExitTime = true;
                 exitToRun.exitTime = 0.75f;
                 exitToRun.duration = 0.15f;
                 exitToRun.canTransitionToSelf = false;
             }
+
+            // Hit -> Slide (If wounded <= 600 HP)
+            if (slideState != null)
+            {
+                var exitToSlide = hitState.AddTransition(slideState);
+                exitToSlide.AddCondition(AnimatorConditionMode.If, 0, "IsSliding");
+                exitToSlide.AddCondition(AnimatorConditionMode.IfNot, 0, "IsDead");
+                exitToSlide.hasExitTime = true;
+                exitToSlide.exitTime = 0.75f;
+                exitToSlide.duration = 0.15f;
+                exitToSlide.canTransitionToSelf = false;
+            }
         }
 
-        // I) AnyState -> Die (Death animation)
-        if (dieState != null)
+        // I) Slide Transitions (Health <= 600) — Once sliding, strictly STAY sliding on ground (unless Dead)
+        if (slideState != null)
         {
-            dieState.tag = "Dead";
-            
-            var t1 = root.AddAnyStateTransition(dieState);
-            t1.AddCondition(AnimatorConditionMode.If, 0, "Die");
-            t1.hasExitTime = false;
-            t1.duration = 0.1f;
-            t1.canTransitionToSelf = false;
+            // AnyState -> Slide (STRICTLY when NOT dead!)
+            var tSlide = root.AddAnyStateTransition(slideState);
+            tSlide.AddCondition(AnimatorConditionMode.If, 0, "IsSliding");
+            tSlide.AddCondition(AnimatorConditionMode.IfNot, 0, "IsDead");
+            tSlide.hasExitTime = false;
+            tSlide.duration = 0.12f;
+            tSlide.canTransitionToSelf = false;
 
-            var t2 = root.AddAnyStateTransition(dieState);
-            t2.AddCondition(AnimatorConditionMode.If, 0, "IsDead");
-            t2.hasExitTime = false;
-            t2.duration = 0.1f;
-            t2.canTransitionToSelf = false;
+            // Run -> Slide
+            if (runState != null)
+            {
+                var tRunSlide = runState.AddTransition(slideState);
+                tRunSlide.AddCondition(AnimatorConditionMode.If, 0, "IsSliding");
+                tRunSlide.AddCondition(AnimatorConditionMode.IfNot, 0, "IsDead");
+                tRunSlide.hasExitTime = false;
+                tRunSlide.duration = 0.12f;
+                tRunSlide.canTransitionToSelf = false;
+            }
+
+            // Walk -> Slide
+            if (walkState != null)
+            {
+                var tWalkSlide = walkState.AddTransition(slideState);
+                tWalkSlide.AddCondition(AnimatorConditionMode.If, 0, "IsSliding");
+                tWalkSlide.AddCondition(AnimatorConditionMode.IfNot, 0, "IsDead");
+                tWalkSlide.hasExitTime = false;
+                tWalkSlide.duration = 0.12f;
+                tWalkSlide.canTransitionToSelf = false;
+            }
         }
 
         // ── 5. Save & Refresh ────────────────────────────────────────────────

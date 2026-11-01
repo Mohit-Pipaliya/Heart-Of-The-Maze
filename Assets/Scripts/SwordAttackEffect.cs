@@ -88,10 +88,10 @@ public class SwordAttackEffect : MonoBehaviour
         if (_bladeTrail == null)
             _bladeTrail = bladeTip.gameObject.AddComponent<TrailRenderer>();
 
-        _bladeTrail.time             = trailDuration;
-        _bladeTrail.startWidth       = trailStartWidth;
-        _bladeTrail.endWidth         = trailEndWidth;
-        _bladeTrail.minVertexDistance = 0.04f;
+        _bladeTrail.time             = 0.24f;
+        _bladeTrail.startWidth       = 0.75f;
+        _bladeTrail.endWidth         = 0.05f;
+        _bladeTrail.minVertexDistance = 0.03f;
         _bladeTrail.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         _bladeTrail.receiveShadows   = false;
 
@@ -104,14 +104,14 @@ public class SwordAttackEffect : MonoBehaviour
         Gradient g = new Gradient();
         g.SetKeys(
             new GradientColorKey[] {
-                new GradientColorKey(new Color(1f,   1f,   1f  ), 0f),    // White hot centre
-                new GradientColorKey(new Color(0.6f, 0.85f,1f  ), 0.25f), // Blue-white
-                new GradientColorKey(new Color(0.2f, 0.55f,1f  ), 0.65f), // Cyan
-                new GradientColorKey(new Color(0.05f,0.2f, 0.6f), 1f)     // Deep blue tail
+                new GradientColorKey(new Color(3.0f, 3.0f, 3.2f), 0f),    // White hot cutting core
+                new GradientColorKey(new Color(1.2f, 2.0f, 2.8f), 0.25f), // Electric silver cyan
+                new GradientColorKey(new Color(0.15f, 0.55f, 1.4f), 0.65f), // Luminous razor blue
+                new GradientColorKey(new Color(0.04f, 0.15f, 0.6f), 1f)     // Deep dissipation tail
             },
             new GradientAlphaKey[] {
-                new GradientAlphaKey(0.95f, 0f),
-                new GradientAlphaKey(0.7f,  0.4f),
+                new GradientAlphaKey(1f,    0f),
+                new GradientAlphaKey(0.85f, 0.4f),
                 new GradientAlphaKey(0f,    1f)
             }
         );
@@ -168,21 +168,29 @@ public class SwordAttackEffect : MonoBehaviour
     {
         if (isEnemy)
         {
-            // AAA Flesh Impact: Dynamic red flash + high-speed arterial blood spray + mist
-            VFXUtil.SpawnFadingLight(pos, new Color(0.95f, 0.08f, 0.05f), 6f, 3.2f, 0.09f);
-            VFXUtil.Burst(pos, normal, new Color(0.85f, 0.06f, 0.04f, 1f),
-                sparkCount, 8f, 22f, 0.08f, 0.26f, 0.12f, 0.35f, true, true, 2.0f, 40f);
-            VFXUtil.Burst(pos, Vector3.up, new Color(0.6f, 0.04f, 0.03f, 0.55f),
-                10, 1.2f, 4.0f, 0.25f, 0.6f, 0.3f, 0.7f, false, false, -0.05f, 60f);
+            // AAA Flesh Cleave Impact: Dynamic vivid red flash + high-speed arterial blood spray + mist + bone sparks
+            VFXUtil.SpawnFadingLight(pos, new Color(1.0f, 0.05f, 0.02f), 7.5f, 4.5f, 0.12f);
+            
+            // 1. High-velocity arterial blood splatter spray
+            VFXUtil.Burst(pos, normal, new Color(0.85f, 0.05f, 0.02f, 1f),
+                36, 10f, 26f, 0.08f, 0.30f, 0.14f, 0.42f, true, true, 2.2f, 45f);
+
+            // 2. Lingering blood mist puff
+            VFXUtil.Burst(pos, Vector3.up, new Color(0.65f, 0.04f, 0.03f, 0.65f),
+                14, 1.4f, 4.5f, 0.28f, 0.65f, 0.35f, 0.85f, false, false, -0.05f, 65f);
+
+            // 3. Bone/steel friction micro-sparks (visceral cutting sensation)
+            VFXUtil.Burst(pos, normal, new Color(1f, 0.9f, 0.6f, 1f),
+                12, 12f, 24f, 0.05f, 0.15f, 0.08f, 0.22f, true, true, 1.5f, 35f);
         }
         else
         {
             // AAA World Clash: Bright flash + sparkling ricochet embers + dust
             SpawnFlashLight(pos);
             VFXUtil.Burst(pos, normal, new Color(1f, 0.85f, 0.32f, 1f),
-                sparkCount, 10f, 26f, 0.06f, 0.22f, 0.12f, 0.32f, true, true, 1.6f, 42f);
+                sparkCount, 12f, 28f, 0.06f, 0.22f, 0.12f, 0.32f, true, true, 1.6f, 42f);
             VFXUtil.Burst(pos, Vector3.up, new Color(0.65f, 0.62f, 0.55f, 0.5f),
-                12, 1.2f, 3.8f, 0.4f, 1.1f, 0.3f, 0.55f, false, false, -0.08f, 50f);
+                14, 1.5f, 4.2f, 0.4f, 1.1f, 0.3f, 0.55f, false, false, -0.08f, 50f);
         }
     }
 }

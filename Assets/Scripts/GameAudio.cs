@@ -37,7 +37,13 @@ public static class GameAudio
         ZombieAttack,
         ZombieHurt,
         ZombieDeath,
-        ZombieGroan
+        ZombieGroan,
+        SpiderWalk,
+        SpiderDeath,
+        ZombieWalk,
+        ZombieCrawl,
+        BoatPaddle,
+        BoatWaterLap
     }
 
     private static AudioClip _gunshotClip;
@@ -46,6 +52,8 @@ public static class GameAudio
     private static AudioClip _swordFleshClip;
     private static AudioClip _spiderAttackClip;
     private static AudioClip _spiderHurtClip;
+    private static AudioClip _spiderWalkClip;
+    private static AudioClip _spiderDeathClip;
     private static AudioClip _bulletFleshClip;
     private static AudioClip _bulletGroundClip;
     private static AudioClip _footstepClip;
@@ -54,6 +62,7 @@ public static class GameAudio
     private static AudioClip _pickupClip;
     private static AudioClip _equipClip;
     private static AudioClip _paddleClip;
+    private static AudioClip _boatWaterLapClip;
     private static AudioClip _hitClip;
     private static AudioClip _deathClip;
     private static AudioClip _uiClip;
@@ -62,6 +71,8 @@ public static class GameAudio
     private static AudioClip _zombieHurtClip;
     private static AudioClip _zombieDeathClip;
     private static AudioClip _zombieGroanClip;
+    private static AudioClip _zombieWalkClip;
+    private static AudioClip _zombieCrawlClip;
 
     private static AudioSource[] _pool;
     private static int _poolIndex;
@@ -73,9 +84,13 @@ public static class GameAudio
     private static float _lastSwordImpactTime = -1f;
     private static float _lastSpiderAttackTime = -1f;
     private static float _lastSpiderHurtTime = -1f;
+    private static float _lastSpiderWalkTime = -1f;
     private static float _lastBulletHitTime = -1f;
     private static float _lastFootstepTime = -1f;
     private static float _lastPaddleTime = -1f;
+    private static float _lastZombieWalkTime = -1f;
+    private static float _lastZombieCrawlTime = -1f;
+    private static float _lastWaterLapTime = -1f;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     public static void ResetCache()
@@ -86,10 +101,14 @@ public static class GameAudio
         _swordFleshClip = null;
         _spiderAttackClip = null;
         _spiderHurtClip = null;
+        _spiderWalkClip = null;
+        _spiderDeathClip = null;
         _bulletFleshClip = null;
         _bulletGroundClip = null;
         _footstepClip = _jumpClip = _landClip = _pickupClip = _equipClip = null;
-        _paddleClip = _hitClip = _deathClip = _uiClip = null;
+        _paddleClip = _boatWaterLapClip = _hitClip = _deathClip = _uiClip = null;
+        _zombieScreamClip = _zombieAttackClip = _zombieHurtClip = _zombieDeathClip = _zombieGroanClip = null;
+        _zombieWalkClip = _zombieCrawlClip = null;
         _pool = null;
 
         _lastGunshotTime = -1f;
@@ -97,9 +116,13 @@ public static class GameAudio
         _lastSwordImpactTime = -1f;
         _lastSpiderAttackTime = -1f;
         _lastSpiderHurtTime = -1f;
+        _lastSpiderWalkTime = -1f;
         _lastBulletHitTime = -1f;
         _lastFootstepTime = -1f;
         _lastPaddleTime = -1f;
+        _lastZombieWalkTime = -1f;
+        _lastZombieCrawlTime = -1f;
+        _lastWaterLapTime = -1f;
 
         // Force-preload core combat audio on startup
         PreloadCoreAudio();
@@ -111,10 +134,10 @@ public static class GameAudio
         GetClip(SoundType.SwordSwing);
         GetClip(SoundType.SwordClash);
         GetClip(SoundType.SwordFlesh);
-        GetClip(SoundType.SpiderAttack);
-        GetClip(SoundType.SpiderHurt);
         GetClip(SoundType.BulletFlesh);
         GetClip(SoundType.BulletGround);
+        GetClip(SoundType.Paddle);
+        GetClip(SoundType.BoatWaterLap);
     }
 
     public static AudioClip GetClip(SoundType type)
@@ -138,12 +161,17 @@ public static class GameAudio
                 return _swordFleshClip;
 
             case SoundType.SpiderAttack:
-                if (_spiderAttackClip == null) _spiderAttackClip = LoadAudioClip("SpiderAttack");
-                return _spiderAttackClip;
-
             case SoundType.SpiderHurt:
-                if (_spiderHurtClip == null) _spiderHurtClip = LoadAudioClip("SpiderHurt");
-                return _spiderHurtClip;
+            case SoundType.SpiderWalk:
+            case SoundType.SpiderDeath:
+            case SoundType.ZombieWalk:
+            case SoundType.ZombieCrawl:
+            case SoundType.ZombieScream:
+            case SoundType.ZombieAttack:
+            case SoundType.ZombieHurt:
+            case SoundType.ZombieDeath:
+            case SoundType.ZombieGroan:
+                return null;
 
             case SoundType.BulletFlesh:
                 if (_bulletFleshClip == null) _bulletFleshClip = LoadAudioClip("BulletFlesh");
@@ -169,8 +197,12 @@ public static class GameAudio
                 if (_equipClip == null) _equipClip = MakeProcedural("Equip", 0.18f, 260f, 0.4f);
                 return _equipClip;
             case SoundType.Paddle:
-                if (_paddleClip == null) _paddleClip = MakeProcedural("Paddle", 0.22f, 110f, 0.45f);
+            case SoundType.BoatPaddle:
+                if (_paddleClip == null) _paddleClip = LoadAudioClip("BoatPaddle") ?? MakeProcedural("Paddle", 0.25f, 120f, 0.5f);
                 return _paddleClip;
+            case SoundType.BoatWaterLap:
+                if (_boatWaterLapClip == null) _boatWaterLapClip = LoadAudioClip("BoatWaterLap") ?? MakeProcedural("BoatWaterLap", 0.6f, 180f, 0.4f);
+                return _boatWaterLapClip;
             case SoundType.Hit:
                 if (_hitClip == null) _hitClip = LoadAudioClip("BulletFlesh") ?? MakeProcedural("Hit", 0.2f, 140f, 0.6f);
                 return _hitClip;
@@ -180,21 +212,6 @@ public static class GameAudio
             case SoundType.UI:
                 if (_uiClip == null) _uiClip = MakeProcedural("UI", 0.06f, 880f, 0.25f);
                 return _uiClip;
-            case SoundType.ZombieScream:
-                if (_zombieScreamClip == null) _zombieScreamClip = LoadAudioClip("ZombieScream") ?? MakeProcedural("ZombieScream", 1.2f, 130f, 0.75f);
-                return _zombieScreamClip;
-            case SoundType.ZombieAttack:
-                if (_zombieAttackClip == null) _zombieAttackClip = LoadAudioClip("ZombieAttack") ?? MakeProcedural("ZombieAttack", 0.5f, 110f, 0.65f);
-                return _zombieAttackClip;
-            case SoundType.ZombieHurt:
-                if (_zombieHurtClip == null) _zombieHurtClip = LoadAudioClip("ZombieHurt") ?? MakeProcedural("ZombieHurt", 0.35f, 150f, 0.6f);
-                return _zombieHurtClip;
-            case SoundType.ZombieDeath:
-                if (_zombieDeathClip == null) _zombieDeathClip = LoadAudioClip("ZombieDeath") ?? MakeProcedural("ZombieDeath", 0.9f, 75f, 0.8f);
-                return _zombieDeathClip;
-            case SoundType.ZombieGroan:
-                if (_zombieGroanClip == null) _zombieGroanClip = LoadAudioClip("ZombieGroan") ?? MakeProcedural("ZombieGroan", 0.8f, 95f, 0.45f);
-                return _zombieGroanClip;
 
             default:
                 return null;
@@ -310,43 +327,8 @@ public static class GameAudio
         PlayAtPoint(clip, pos, volume, 0.96f, 1.04f, 0.35f);
     }
 
-    public static void PlaySpiderAttack(Vector3 pos, AudioSource source = null, float volume = 1.1f)
-    {
-        if (Time.time - _lastSpiderAttackTime < 0.15f) return;
-        _lastSpiderAttackTime = Time.time;
-
-        AudioClip clip = GetClip(SoundType.SpiderAttack);
-        if (clip == null) return;
-
-        if (source != null)
-        {
-            source.pitch = Random.Range(0.95f, 1.05f);
-            source.PlayOneShot(clip, volume);
-        }
-        else
-        {
-            PlayAtPoint(clip, pos, volume, 0.95f, 1.05f, 0.4f);
-        }
-    }
-
-    public static void PlaySpiderHurt(Vector3 pos, AudioSource source = null, float volume = 1.2f)
-    {
-        if (Time.time - _lastSpiderHurtTime < 0.10f) return;
-        _lastSpiderHurtTime = Time.time;
-
-        AudioClip clip = GetClip(SoundType.SpiderHurt);
-        if (clip == null) return;
-
-        if (source != null)
-        {
-            source.pitch = Random.Range(0.96f, 1.04f);
-            source.PlayOneShot(clip, volume);
-        }
-        else
-        {
-            PlayAtPoint(clip, pos, volume, 0.96f, 1.04f, 0.4f);
-        }
-    }
+    public static void PlaySpiderAttack(Vector3 pos, AudioSource source = null, float volume = 1.1f) { }
+    public static void PlaySpiderHurt(Vector3 pos, AudioSource source = null, float volume = 1.2f) { }
 
     public static void PlayBulletHit(Vector3 pos, bool isEnemy, float volume = 1.1f)
     {
@@ -356,7 +338,7 @@ public static class GameAudio
         AudioClip clip = isEnemy ? GetClip(SoundType.BulletFlesh) : GetClip(SoundType.BulletGround);
         if (clip == null) return;
 
-            PlayAtPoint(clip, pos, volume, 0.95f, 1.05f, 0.35f);
+        PlayAtPoint(clip, pos, volume, 0.95f, 1.05f, 0.35f);
     }
 
     public static void PlayFootstep(Vector3 pos, float volume = 0.28f)
@@ -369,10 +351,7 @@ public static class GameAudio
 
     public static void PlayJump(Vector3 pos) => PlayAtPoint(GetClip(SoundType.Jump), pos, 0.45f, 0.95f, 1.08f, 0.3f);
     public static void PlayLand(Vector3 pos) => PlayAtPoint(GetClip(SoundType.Land), pos, 0.55f, 0.9f, 1.05f, 0.4f);
-    public static void PlayPickup(Vector3 pos)
-    {
-        // Pickup sounds removed as requested by user
-    }
+    public static void PlayPickup(Vector3 pos) { }
     public static void PlayEquip(Vector3 pos) => PlayAtPoint(GetClip(SoundType.Equip), pos, 0.45f, 0.94f, 1.06f, 0.25f);
     public static void PlayHit(Vector3 pos) => PlayAtPoint(GetClip(SoundType.Hit), pos, 0.7f, 0.92f, 1.08f, 0.35f);
     public static void PlayDeath(Vector3 pos) => PlayAtPoint(GetClip(SoundType.Death), pos, 0.8f, 0.85f, 1.0f, 0.4f);
@@ -385,39 +364,23 @@ public static class GameAudio
         PlayAtPoint(GetClip(SoundType.Paddle), pos, volume, 0.9f, 1.1f, 0.55f);
     }
 
-    public static void PlayZombieScream(Vector3 pos, AudioSource source = null)
-    {
-        AudioClip clip = GetClip(SoundType.ZombieScream);
-        if (source != null) { source.pitch = Random.Range(0.92f, 1.05f); source.PlayOneShot(clip, 1.0f); }
-        else PlayAtPoint(clip, pos, 0.95f, 0.92f, 1.05f, 0.55f);
-    }
+    public static void PlayZombieScream(Vector3 pos, AudioSource source = null) { }
+    public static void PlayZombieAttack(Vector3 pos, AudioSource source = null) { }
+    public static void PlayZombieHurt(Vector3 pos, AudioSource source = null) { }
+    public static void PlayZombieDeath(Vector3 pos, AudioSource source = null) { }
+    public static void PlayZombieGroan(Vector3 pos, AudioSource source = null) { }
+    public static void PlaySpiderWalk(Vector3 pos, AudioSource source = null, float volume = 0.5f) { }
+    public static void PlaySpiderDeath(Vector3 pos, AudioSource source = null, float volume = 1.0f) { }
+    public static void PlayZombieWalk(Vector3 pos, AudioSource source = null, float volume = 0.5f) { }
+    public static void PlayZombieCrawl(Vector3 pos, AudioSource source = null, float volume = 0.6f) { }
 
-    public static void PlayZombieAttack(Vector3 pos, AudioSource source = null)
+    public static void PlayBoatWaterLap(Vector3 pos, AudioSource source = null, float volume = 0.4f)
     {
-        AudioClip clip = GetClip(SoundType.ZombieAttack);
-        if (source != null) { source.pitch = Random.Range(0.95f, 1.08f); source.PlayOneShot(clip, 0.9f); }
-        else PlayAtPoint(clip, pos, 0.85f, 0.95f, 1.08f, 0.45f);
-    }
-
-    public static void PlayZombieHurt(Vector3 pos, AudioSource source = null)
-    {
-        AudioClip clip = GetClip(SoundType.ZombieHurt);
-        if (source != null) { source.pitch = Random.Range(0.9f, 1.1f); source.PlayOneShot(clip, 0.85f); }
-        else PlayAtPoint(clip, pos, 0.8f, 0.9f, 1.1f, 0.45f);
-    }
-
-    public static void PlayZombieDeath(Vector3 pos, AudioSource source = null)
-    {
-        AudioClip clip = GetClip(SoundType.ZombieDeath);
-        if (source != null) { source.pitch = Random.Range(0.85f, 0.98f); source.PlayOneShot(clip, 1.0f); }
-        else PlayAtPoint(clip, pos, 0.95f, 0.85f, 0.98f, 0.5f);
-    }
-
-    public static void PlayZombieGroan(Vector3 pos, AudioSource source = null)
-    {
-        AudioClip clip = GetClip(SoundType.ZombieGroan);
-        if (source != null) { source.pitch = Random.Range(0.88f, 1.05f); source.PlayOneShot(clip, 0.6f); }
-        else PlayAtPoint(clip, pos, 0.55f, 0.88f, 1.05f, 0.5f);
+        if (Time.time - _lastWaterLapTime < 0.65f) return;
+        _lastWaterLapTime = Time.time;
+        AudioClip clip = GetClip(SoundType.BoatWaterLap);
+        if (source != null && source.isActiveAndEnabled) { source.pitch = Random.Range(0.95f, 1.05f); source.PlayOneShot(clip, volume); }
+        else PlayAtPoint(clip, pos, volume, 0.95f, 1.05f, 0.45f);
     }
 
     private static void EnsurePool()

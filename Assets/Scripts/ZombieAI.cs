@@ -45,6 +45,8 @@ public class ZombieAI : MonoBehaviour
     [Header("── Movement Settings ──")]
     public float walkSpeed = 1.6f;
     public float runSpeed = 4.8f;
+    [Tooltip("Health <= 600 hone par zombie crawl/slide karke chase karega uski speed.")]
+    public float slideSpeed = 3.0f;
     public float wanderRadius = 18f;
     public float wanderWaitMin = 1.5f;
     public float wanderWaitMax = 3.5f;
@@ -60,13 +62,6 @@ public class ZombieAI : MonoBehaviour
     [Tooltip("Scream animation kitni der tak hold karke player ki taraf dekhega.")]
     public float screamDuration = 1.9f;
 
-    [Header("── Audio Clips (Optional overrides) ──")]
-    public AudioClip screamSound;
-    public AudioClip attackSound;
-    public AudioClip hitSound;
-    public AudioClip deathSound;
-    public AudioClip groanSound;
-
     [Header("── Target Reference ──")]
     public Transform player;
 
@@ -77,17 +72,19 @@ public class ZombieAI : MonoBehaviour
     // Component References
     private NavMeshAgent _agent;
     private Animator _anim;
-    private AudioSource _audioSource;
     private Collider _collider;
+    private ZombieLocomotion _locomotion;
+    private ZombieFootIK _footIK;
 
     // State Machine
     private State _currentState = State.Wander;
     public State CurrentState => _currentState;
 
     private bool _isDead = false;
+    private bool _isSliding = false;
+    public bool IsSliding => _isSliding;
     private Vector3 _spawnPosition;
     private float _wanderWaitTimer = 0f;
-    private float _nextGroanTime = 0f;
     private Coroutine _activeRoutine;
     private string _currentAnimState = "";
 
@@ -103,6 +100,8 @@ public class ZombieAI : MonoBehaviour
     {
         _agent = GetComponent<NavMeshAgent>();
         _anim = GetComponent<Animator>();
+        _locomotion = GetComponent<ZombieLocomotion>() ?? gameObject.AddComponent<ZombieLocomotion>();
+        _footIK = GetComponent<ZombieFootIK>() ?? gameObject.AddComponent<ZombieFootIK>();
 
         // Disable root motion strictly so animations don't float/lift zombie into the air
         if (_anim != null)
@@ -130,32 +129,21 @@ public class ZombieAI : MonoBehaviour
         {
             CapsuleCollider capsule = gameObject.AddComponent<CapsuleCollider>();
             capsule.center = new Vector3(0f, 0.9f, 0f);
-            capsule.radius = 0.45f;
+            capsule.radius = 0.5f;
             capsule.height = 1.8f;
             capsule.direction = 1;
-            capsule.isTrigger = true;
+            capsule.isTrigger = false; // Solid physical collider so player CANNOT walk through zombie!
             _collider = capsule;
         }
         else
         {
-            _collider.isTrigger = true;
+            _collider.isTrigger = false; // Solid physical collider so player CANNOT walk through zombie!
             if (_collider is CapsuleCollider cap)
             {
                 cap.center = new Vector3(0f, 0.9f, 0f);
                 cap.height = 1.8f;
-                cap.radius = Mathf.Min(cap.radius, 0.45f);
+                cap.radius = Mathf.Max(cap.radius, 0.5f);
             }
-        }
-
-        _audioSource = GetComponent<AudioSource>();
-        if (_audioSource == null)
-        {
-            _audioSource = gameObject.AddComponent<AudioSource>();
-            _audioSource.playOnAwake = false;
-            _audioSource.spatialBlend = 0.45f;
-            _audioSource.minDistance = 2f;
-            _audioSource.maxDistance = 50f;
-            _audioSource.rolloffMode = AudioRolloffMode.Linear;
         }
     }
 
@@ -164,12 +152,15 @@ public class ZombieAI : MonoBehaviour
         _currentHealth = maxHealth;
 
         // Ensure zombie is firmly grounded on terrain/NavMesh at start
-        SnapToGround();
+        if (_locomotion != null)
+            _locomotion.SnapToGroundImmediate();
+        else
+            SnapToGround();
+
         _spawnPosition = transform.position;
 
         AutoFindPlayer();
-        IgnorePlayerBodyCollision();
-        _nextGroanTime = Time.time + Random.Range(4f, 9f);
+        EnsurePlayerCollision();
 
         // Start wandering immediately
         _currentState = State.Wander;
@@ -182,9 +173,9 @@ public class ZombieAI : MonoBehaviour
     }
 
     /// <summary>
-    /// Prevents zombie collider from physically sliding or repelling the player on contact.
+    /// Enforces solid physical collision with player CharacterController so player cannot walk through zombie.
     /// </summary>
-    private void IgnorePlayerBodyCollision()
+    private void EnsurePlayerCollision()
     {
         if (player == null) AutoFindPlayer();
         if (player == null) return;
@@ -192,11 +183,12 @@ public class ZombieAI : MonoBehaviour
         Collider myCol = GetComponent<Collider>();
         if (myCol != null)
         {
+            myCol.isTrigger = false;
             Collider[] playerCols = player.GetComponentsInChildren<Collider>();
             for (int i = 0; i < playerCols.Length; i++)
             {
                 if (playerCols[i] != null && playerCols[i] != myCol)
-                    Physics.IgnoreCollision(myCol, playerCols[i], true);
+                    Physics.IgnoreCollision(myCol, playerCols[i], false);
             }
         }
     }
@@ -237,13 +229,13 @@ public class ZombieAI : MonoBehaviour
 
     private void LateUpdate()
     {
-        if (_isDead) return;
-
-        // Continuously enforce applyRootMotion = false so no animation clip ever floats the character
+        // Continuously enforce applyRootMotion = false so no animation clip ever floats the character (even during death!)
         if (_anim != null && _anim.applyRootMotion)
         {
             _anim.applyRootMotion = false;
         }
+
+        if (_isDead) return;
 
         // Ensure baseOffset remains 0f
         if (_agent != null && _agent.enabled && _agent.baseOffset != 0f)
@@ -276,15 +268,20 @@ public class ZombieAI : MonoBehaviour
             if (player == null) return;
         }
 
-        // Ambient groaning while patrolling
-        if (_currentState == State.Wander && Time.time >= _nextGroanTime)
+        float distanceToPlayer = Vector3.Distance(transform.position, player.position);
+
+        // Anti-penetration safety: firmly prevent player and zombie from clipping/walking through each other
+        if (distanceToPlayer < 1.4f)
         {
-            _nextGroanTime = Time.time + Random.Range(6f, 14f);
-            if (groanSound != null) _audioSource.PlayOneShot(groanSound, 0.6f);
-            else GameAudio.PlayZombieGroan(transform.position, _audioSource);
+            Vector3 pushDir = (transform.position - player.position).normalized;
+            pushDir.y = 0f;
+            if (pushDir.sqrMagnitude > 0.001f && _agent != null && _agent.enabled)
+            {
+                float overlap = 1.4f - distanceToPlayer;
+                _agent.Move(pushDir * (overlap * 0.5f));
+            }
         }
 
-        float distanceToPlayer = Vector3.Distance(transform.position, player.position);
         bool isPlayerInTrigger = IsPlayerInsideTrigger(distanceToPlayer);
 
         switch (_currentState)
@@ -390,12 +387,6 @@ public class ZombieAI : MonoBehaviour
     {
         PlayAnimation("Raad", 0.12f);
 
-        // Play Raad / Scream Audio
-        if (screamSound != null)
-            _audioSource.PlayOneShot(screamSound, 1.0f);
-        else
-            GameAudio.PlayZombieScream(transform.position, _audioSource);
-
         float elapsed = 0f;
         while (elapsed < screamDuration)
         {
@@ -409,7 +400,7 @@ public class ZombieAI : MonoBehaviour
         StartChase();
     }
 
-    // ─── State: Chase (Run) ─────────────────────────────────────────────────
+    // ─── State: Chase (Run / Slide) ─────────────────────────────────────────
 
     private void StartChase()
     {
@@ -419,11 +410,12 @@ public class ZombieAI : MonoBehaviour
         if (_agent != null && _agent.enabled)
         {
             _agent.isStopped = false;
-            _agent.speed = runSpeed;
+            _agent.speed = _isSliding ? slideSpeed : runSpeed;
             _agent.stoppingDistance = Mathf.Max(1.8f, attackRange * 0.8f);
             if (player != null) _agent.SetDestination(player.position);
         }
-        PlayAnimation("Run", 0.15f);
+
+        PlayAnimation(_isSliding ? "Slide" : "Run", 0.15f);
     }
 
     private void HandleChase(float distanceToPlayer)
@@ -431,8 +423,8 @@ public class ZombieAI : MonoBehaviour
         if (_agent == null || !_agent.enabled || player == null) return;
 
         _agent.isStopped = false;
-        _agent.speed = runSpeed;
-        PlayAnimation("Run", 0.15f);
+        _agent.speed = _isSliding ? slideSpeed : runSpeed;
+        PlayAnimation(_isSliding ? "Slide" : "Run", 0.15f);
 
         // Continuously refresh player position
         _agent.SetDestination(player.position);
@@ -449,7 +441,7 @@ public class ZombieAI : MonoBehaviour
         {
             _currentState = State.Wander;
             SetNewWanderDestination();
-            PlayAnimation("Walk", 0.25f);
+            PlayAnimation(_isSliding ? "Slide" : "Walk", 0.25f);
         }
     }
 
@@ -475,13 +467,8 @@ public class ZombieAI : MonoBehaviour
         while (_currentState == State.Attack && !_isDead)
         {
             RotateTowardPlayer();
-            PlayAnimation("Attack", 0.12f);
-
-            // Play Attack SFX
-            if (attackSound != null)
-                _audioSource.PlayOneShot(attackSound, 0.9f);
-            else
-                GameAudio.PlayZombieAttack(transform.position, _audioSource);
+            // When sliding, strictly remain in Slide / crawl without popping upright
+            PlayAnimation(_isSliding ? "Slide" : "Attack", 0.12f);
 
             // Wait for strike frame
             yield return new WaitForSeconds(attackHitDelay);
@@ -536,12 +523,6 @@ public class ZombieAI : MonoBehaviour
         _currentHealth -= amount;
         Debug.Log($"<color=#FF3333><b>[Zombie Hit!]</b></color> Damage: {amount} | HP: {Mathf.Max(0f, _currentHealth)}/{maxHealth}");
 
-        // Hurt audio
-        if (hitSound != null)
-            _audioSource.PlayOneShot(hitSound, 0.85f);
-        else
-            GameAudio.PlayZombieHurt(transform.position, _audioSource);
-
         // Blood VFX & flash
         Vector3 hitPoint = transform.position + Vector3.up * 1.1f;
         VFXUtil.SpawnFadingLight(hitPoint, new Color(0.9f, 0.1f, 0.05f), 4f, 2.0f, 0.08f);
@@ -573,9 +554,44 @@ public class ZombieAI : MonoBehaviour
             return;
         }
 
-        // Trigger Hit Reaction Animation & Stun
+        // Check for 600 HP threshold: Activate Slide (Crawl) mode!
+        if (_currentHealth <= 600f && !_isSliding)
+        {
+            _isSliding = true;
+            if (_footIK != null) _footIK.SetIKActive(false);
+            Debug.Log($"<color=#FFAA00><b>[Zombie Slide Triggered!]</b> Health reached {_currentHealth} <= 600. Playing Slide animation!</color>");
+        }
+
+        // Trigger Hit Reaction: Sliding zombies stay low, only upright zombies play standing Hit
         if (_activeRoutine != null) StopCoroutine(_activeRoutine);
-        _activeRoutine = StartCoroutine(HitRoutine());
+        if (_isSliding)
+        {
+            _activeRoutine = StartCoroutine(SlideHitRoutine());
+        }
+        else
+        {
+            _activeRoutine = StartCoroutine(HitRoutine());
+        }
+    }
+
+    private IEnumerator SlideHitRoutine()
+    {
+        _currentState = State.Hit;
+        if (_agent != null && _agent.enabled)
+        {
+            _agent.isStopped = true;
+            _agent.velocity = Vector3.zero;
+        }
+
+        // Keep playing Slide — NEVER stand up!
+        PlayAnimation("Slide", 0.05f);
+
+        // Brief flinch while staying low
+        yield return new WaitForSeconds(0.25f);
+
+        if (_isDead) yield break;
+
+        StartChase();
     }
 
     private IEnumerator HitRoutine()
@@ -594,7 +610,7 @@ public class ZombieAI : MonoBehaviour
 
         if (_isDead) yield break;
 
-        // Enraged by damage: immediately sprint after player
+        // Enraged by damage: immediately sprint/slide after player
         StartChase();
     }
 
@@ -605,10 +621,31 @@ public class ZombieAI : MonoBehaviour
         if (_isDead) return;
 
         _isDead = true;
+        _isSliding = false;
         _currentState = State.Dead;
         _currentHealth = 0f;
 
         if (_activeRoutine != null) StopCoroutine(_activeRoutine);
+
+        if (_footIK != null) _footIK.SetIKActive(false);
+        if (_locomotion != null) _locomotion.enabled = false;
+
+        // Reset all animation states and triggers so death can NEVER be interrupted
+        if (_anim != null)
+        {
+            _anim.applyRootMotion = false;
+            _anim.ResetTrigger("Hit");
+            _anim.ResetTrigger("Attack");
+            _anim.ResetTrigger("Raad");
+            _anim.ResetTrigger("Slide");
+            SetAnimBoolSafe("IsSliding", false);
+            SetAnimBoolSafe("IsMoving", false);
+            SetAnimBoolSafe("IsRunning", false);
+            SetAnimFloatSafe("Speed", 0f);
+            SetAnimBoolSafe("IsDead", true);
+            SetAnimTriggerSafe("Die");
+            _anim.CrossFadeInFixedTime("Die", 0.08f, 0, 0f);
+        }
 
         // Stop navigation
         if (_agent != null && _agent.enabled)
@@ -618,21 +655,55 @@ public class ZombieAI : MonoBehaviour
             _agent.enabled = false;
         }
 
+        // Freeze Rigidbody so physics forces cannot propel corpse into air
+        Rigidbody rb = GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+            rb.useGravity = false;
+            rb.linearVelocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+        }
+
+        // Snap firmly to terrain ground
+        SnapToGround();
+
+        // Start continuous ground clamp coroutine so corpse stays glued to ground surface throughout death animation
+        StartCoroutine(DeathGroundClampRoutine());
+
         // Disable collider so player doesn't collide with corpse
         if (_collider != null) _collider.enabled = false;
 
-        PlayAnimation("Die", 0.12f);
+        PlayAnimation("Die", 0.08f);
 
-        // Death SFX
-        if (deathSound != null)
-            _audioSource.PlayOneShot(deathSound, 1.0f);
-        else
-            GameAudio.PlayZombieDeath(transform.position, _audioSource);
-
-        Debug.Log("<color=#FF0000><b>[Zombie Dead!]</b></color>");
+        Debug.Log("<color=#FF0000><b>[Zombie Dead!] Firmly grounded on terrain, death animation playing.</b></color>");
 
         // Destroy after 25 seconds (corpse remains on terrain for a while)
         Destroy(gameObject, 25f);
+    }
+
+    private IEnumerator DeathGroundClampRoutine()
+    {
+        float duration = 5.0f;
+        float elapsed = 0f;
+        int groundMask = ~LayerMask.GetMask("Player", "Ignore Raycast");
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+
+            if (_anim != null && _anim.applyRootMotion)
+                _anim.applyRootMotion = false;
+
+            // Firmly glue to ground, preventing any vertical displacement or floating
+            Vector3 origin = transform.position + Vector3.up * 2.0f;
+            if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, 6f, groundMask, QueryTriggerInteraction.Ignore))
+            {
+                transform.position = new Vector3(transform.position.x, hit.point.y, transform.position.z);
+            }
+
+            yield return null;
+        }
     }
 
     // ─── Helpers: Smooth Rotation & Animation ───────────────────────────────
@@ -666,7 +737,16 @@ public class ZombieAI : MonoBehaviour
             case "Run":
                 SetAnimBoolSafe("IsMoving", true);
                 SetAnimBoolSafe("IsRunning", true);
+                SetAnimBoolSafe("IsSliding", false);
                 SetAnimFloatSafe("Speed", runSpeed);
+                break;
+
+            case "Slide":
+                SetAnimBoolSafe("IsMoving", true);
+                SetAnimBoolSafe("IsRunning", false);
+                SetAnimBoolSafe("IsSliding", true);
+                SetAnimFloatSafe("Speed", slideSpeed);
+                SetAnimTriggerSafe("Slide");
                 break;
 
             case "Raad":
@@ -689,7 +769,12 @@ public class ZombieAI : MonoBehaviour
             case "Die":
                 SetAnimBoolSafe("IsMoving", false);
                 SetAnimBoolSafe("IsRunning", false);
+                SetAnimBoolSafe("IsSliding", false);
                 SetAnimFloatSafe("Speed", 0f);
+                SetAnimResetTriggerSafe("Hit");
+                SetAnimResetTriggerSafe("Attack");
+                SetAnimResetTriggerSafe("Raad");
+                SetAnimResetTriggerSafe("Slide");
                 SetAnimTriggerSafe("Die");
                 SetAnimBoolSafe("IsDead", true);
                 break;
@@ -714,6 +799,19 @@ public class ZombieAI : MonoBehaviour
             if (p.name == paramName && p.type == AnimatorControllerParameterType.Trigger)
             {
                 _anim.SetTrigger(paramName);
+                return;
+            }
+        }
+    }
+
+    private void SetAnimResetTriggerSafe(string paramName)
+    {
+        if (_anim == null) return;
+        foreach (var p in _anim.parameters)
+        {
+            if (p.name == paramName && p.type == AnimatorControllerParameterType.Trigger)
+            {
+                _anim.ResetTrigger(paramName);
                 return;
             }
         }

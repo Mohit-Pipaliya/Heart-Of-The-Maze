@@ -19,10 +19,6 @@ public class SpiderEnemy : MonoBehaviour
     [Header("Combat Settings")]
     public float attackCooldown = 2.2f;      // Natural attack cycle
     public float damageToPlayer = 10f;
-
-    [Header("Audio SFX")]
-    public AudioClip attackSound;
-    public AudioClip biteHitSound;
     
     [Header("Movement Settings")]
     public float walkSpeed = 1.8f;           // Natural, calm spider patrol speed
@@ -34,7 +30,6 @@ public class SpiderEnemy : MonoBehaviour
 
     private NavMeshAgent agent;
     private Animator anim;
-    private AudioSource audioSource;
     private Vector3 startPos;
     private float lastAttackTime;
     private float _animSpeedTarget = 0f;     // Smooth animator Speed blending
@@ -64,22 +59,22 @@ public class SpiderEnemy : MonoBehaviour
             anim.applyRootMotion = false;
         }
 
-        // Trigger collider ensures bullet raycasts and sword scans hit the spider,
-        // while Player CharacterController NEVER collides, pushes, or slides against the spider.
-        Collider col = GetComponent<Collider>();
-        if (col == null)
+        // Solid physical CapsuleCollider (isTrigger = false) so Player CharacterController
+        // CANNOT walk through or penetrate inside the spider body!
+        CapsuleCollider cap = GetComponent<CapsuleCollider>();
+        if (cap == null)
         {
-            CapsuleCollider cap = gameObject.AddComponent<CapsuleCollider>();
-            cap.center = new Vector3(0f, 0.75f, 0f);
-            cap.radius = 0.85f;
-            cap.height = 1.6f;
-            cap.direction = 1; // Y-axis
-            cap.isTrigger = true;
+            cap = gameObject.AddComponent<CapsuleCollider>();
         }
-        else
-        {
-            col.isTrigger = true;
-        }
+
+        // Account for transform lossyScale (Spider prefab is scaled 40x in scene)
+        float sx = Mathf.Max(0.001f, transform.lossyScale.x);
+        float sy = Mathf.Max(0.001f, transform.lossyScale.y);
+        cap.direction = 1; // Y-axis
+        cap.radius = 1.15f / sx;
+        cap.height = 1.8f / sy;
+        cap.center = new Vector3(0f, 0.9f / sy, 0f);
+        cap.isTrigger = false;
     }
 
     void Start()
@@ -88,18 +83,6 @@ public class SpiderEnemy : MonoBehaviour
         agent = GetComponent<NavMeshAgent>();
         anim = GetComponent<Animator>();
         if (anim != null) anim.applyRootMotion = false;
-        audioSource = GetComponent<AudioSource>();
-        if (audioSource == null)
-        {
-            audioSource = gameObject.AddComponent<AudioSource>();
-            audioSource.playOnAwake = false;
-            audioSource.spatialBlend = 0.4f;
-        }
-
-        if (attackSound == null)
-            attackSound = GameAudio.GetClip(GameAudio.SoundType.SpiderAttack);
-        if (biteHitSound == null)
-            biteHitSound = GameAudio.GetClip(GameAudio.SoundType.SpiderHurt);
 
         currentHealth = maxHealth;
         startPos = transform.position;
@@ -113,10 +96,13 @@ public class SpiderEnemy : MonoBehaviour
 
         if (agent != null)
         {
-            agent.stoppingDistance = 1.3f;
+            agent.stoppingDistance = Mathf.Max(2.2f, attackRange * 0.95f);
+            agent.radius = 1.0f;
+            agent.obstacleAvoidanceType = ObstacleAvoidanceType.HighQualityObstacleAvoidance;
         }
 
-        IgnorePlayerBodyCollision();
+        // Solid physical collision ensured between player colliders and spider
+        EnsurePlayerCollision();
 
         hashSpeed = Animator.StringToHash("Speed");
         hashAttack = Animator.StringToHash("Attack");
@@ -125,27 +111,18 @@ public class SpiderEnemy : MonoBehaviour
         hashJump = Animator.StringToHash("Jump");
     }
 
-    /// <summary>
-    /// Prevents the spider's physical collider from repelling or sliding the player away on proximity.
-    /// </summary>
-    private void IgnorePlayerBodyCollision()
+    private void EnsurePlayerCollision()
     {
-        if (player == null)
-        {
-            GameObject pObj = GameObject.FindGameObjectWithTag("Player");
-            if (pObj != null) player = pObj.transform;
-        }
-
         if (player == null) return;
-
         Collider myCol = GetComponent<Collider>();
-        if (myCol != null)
+        if (myCol == null) return;
+
+        Collider[] pCols = player.GetComponentsInChildren<Collider>();
+        foreach (var pc in pCols)
         {
-            Collider[] playerCols = player.GetComponentsInChildren<Collider>();
-            for (int i = 0; i < playerCols.Length; i++)
+            if (pc != null && pc != myCol)
             {
-                if (playerCols[i] != null && playerCols[i] != myCol)
-                    Physics.IgnoreCollision(myCol, playerCols[i], true);
+                Physics.IgnoreCollision(myCol, pc, false);
             }
         }
     }
@@ -153,6 +130,38 @@ public class SpiderEnemy : MonoBehaviour
     void Update()
     {
         if (isDead) return;
+
+        // Active Anti-Penetration: Player can NEVER walk or clip inside spider!
+        if (player != null)
+        {
+            Vector3 toPlayer = player.position - transform.position;
+            toPlayer.y = 0f;
+            float distToPlayer = toPlayer.magnitude;
+            float safeDistance = 2.2f;
+
+            if (distToPlayer < safeDistance)
+            {
+                Vector3 pushOut = distToPlayer > 0.001f ? (toPlayer / distToPlayer) : transform.forward;
+                float overlap = safeDistance - distToPlayer;
+
+                // Push player character controller firmly outward
+                CharacterController playerCC = player.GetComponent<CharacterController>();
+                if (playerCC != null && playerCC.enabled)
+                {
+                    playerCC.Move(pushOut * (overlap * 0.8f));
+                }
+                else
+                {
+                    player.position += pushOut * (overlap * 0.8f);
+                }
+
+                // Push spider slightly away if agent is on NavMesh
+                if (agent != null && agent.enabled && agent.isOnNavMesh)
+                {
+                    agent.Move(-pushOut * (overlap * 0.2f));
+                }
+            }
+        }
 
         if (anim != null)
         {
@@ -245,7 +254,7 @@ public class SpiderEnemy : MonoBehaviour
         if (player == null) return;
         agent.isStopped = false;
         agent.speed = runSpeed;
-        agent.stoppingDistance = 1.3f;
+        agent.stoppingDistance = Mathf.Max(2.2f, attackRange * 0.95f);
         agent.SetDestination(player.position);
     }
 
@@ -274,7 +283,6 @@ public class SpiderEnemy : MonoBehaviour
                 anim.SetTrigger(hashAttack);
             }
             lastAttackTime = Time.time;
-            GameAudio.PlaySpiderAttack(transform.position, audioSource);
             StartCoroutine(DealDamageAfterDelay(0.4f));
         }
     }
@@ -331,7 +339,6 @@ public class SpiderEnemy : MonoBehaviour
         if (GunShooter.Instance != null)
             GunShooter.Instance.RegisterHitMarker(currentHealth <= 0);
 
-        GameAudio.PlaySpiderHurt(transform.position, audioSource, 1.2f);
         VFXUtil.SpawnFadingLight(transform.position + Vector3.up * 0.8f, new Color(0.9f, 0.1f, 0.05f), 4f, 2.0f, 0.08f);
         VFXUtil.Burst(transform.position + Vector3.up * 0.8f, Vector3.up,
             new Color(0.7f, 0.12f, 0.08f, 1f), 16, 3f, 9f, 0.08f, 0.2f, 0.15f, 0.35f, true, true, 1.8f, 40f);

@@ -8,9 +8,133 @@ using UnityEngine.Rendering;
 public static class VFXUtil
 {
     private static Texture2D _softTex;
+    private static Texture2D _muzzleTex;
+    private static Texture2D _sparkTex;
+    private static Texture2D _smokeTex;
     private static Material _additive;
     private static Material _alpha;
+    private static Material _muzzleMat;
+    private static Material _sparkMat;
+    private static Material _smokeMat;
     private static Shader _cachedOpaqueShader;
+
+    public static Texture2D MuzzleFlashTexture
+    {
+        get
+        {
+            if (_muzzleTex != null) return _muzzleTex;
+            _muzzleTex = Resources.Load<Texture2D>("VFX/T_MuzzleFlash");
+#if UNITY_EDITOR
+            if (_muzzleTex == null)
+                _muzzleTex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Materials/VFX/T_MuzzleFlash.png");
+#endif
+            if (_muzzleTex != null) return _muzzleTex;
+            return SoftParticleTexture;
+        }
+    }
+
+    public static Texture2D SparkTexture
+    {
+        get
+        {
+            if (_sparkTex != null) return _sparkTex;
+            _sparkTex = Resources.Load<Texture2D>("VFX/T_Spark");
+#if UNITY_EDITOR
+            if (_sparkTex == null)
+                _sparkTex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Materials/VFX/T_Spark.png");
+#endif
+            if (_sparkTex != null) return _sparkTex;
+            return SoftParticleTexture;
+        }
+    }
+
+    public static Texture2D SmokeTexture
+    {
+        get
+        {
+            if (_smokeTex != null) return _smokeTex;
+            _smokeTex = Resources.Load<Texture2D>("VFX/T_Smoke");
+#if UNITY_EDITOR
+            if (_smokeTex == null)
+                _smokeTex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Materials/VFX/T_Smoke.png");
+#endif
+            if (_smokeTex != null) return _smokeTex;
+            return SoftParticleTexture;
+        }
+    }
+
+    public static Material MuzzleFlashMat
+    {
+        get
+        {
+            if (_muzzleMat != null && _muzzleMat.shader != null && !_muzzleMat.shader.name.Contains("Error"))
+                return _muzzleMat;
+            _muzzleMat = Resources.Load<Material>("VFX/M_MuzzleFlash");
+#if UNITY_EDITOR
+            if (_muzzleMat == null)
+                _muzzleMat = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/VFX/M_MuzzleFlash.mat");
+#endif
+            if (_muzzleMat != null)
+            {
+                _muzzleMat = new Material(_muzzleMat);
+                return _muzzleMat;
+            }
+            _muzzleMat = new Material(AdditiveMat);
+            ApplyCustomTexture(_muzzleMat, MuzzleFlashTexture);
+            return _muzzleMat;
+        }
+    }
+
+    public static Material SparkMat
+    {
+        get
+        {
+            if (_sparkMat != null && _sparkMat.shader != null && !_sparkMat.shader.name.Contains("Error"))
+                return _sparkMat;
+            _sparkMat = Resources.Load<Material>("VFX/M_Spark");
+#if UNITY_EDITOR
+            if (_sparkMat == null)
+                _sparkMat = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/VFX/M_Spark.mat");
+#endif
+            if (_sparkMat != null)
+            {
+                _sparkMat = new Material(_sparkMat);
+                return _sparkMat;
+            }
+            _sparkMat = new Material(AdditiveMat);
+            ApplyCustomTexture(_sparkMat, SparkTexture);
+            return _sparkMat;
+        }
+    }
+
+    public static Material SmokeMat
+    {
+        get
+        {
+            if (_smokeMat != null && _smokeMat.shader != null && !_smokeMat.shader.name.Contains("Error"))
+                return _smokeMat;
+            _smokeMat = Resources.Load<Material>("VFX/M_Smoke");
+#if UNITY_EDITOR
+            if (_smokeMat == null)
+                _smokeMat = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/VFX/M_Smoke.mat");
+#endif
+            if (_smokeMat != null)
+            {
+                _smokeMat = new Material(_smokeMat);
+                return _smokeMat;
+            }
+            _smokeMat = new Material(AlphaMat);
+            ApplyCustomTexture(_smokeMat, SmokeTexture);
+            return _smokeMat;
+        }
+    }
+
+    public static void ApplyCustomTexture(Material mat, Texture2D tex)
+    {
+        if (mat == null || tex == null) return;
+        if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", tex);
+        if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", tex);
+    }
 
     public static Texture2D SoftParticleTexture
     {
@@ -324,6 +448,110 @@ public static class VFXUtil
         Burst(pos, Vector3.up, new Color(0.9f, 0.95f, 1f, 0.55f),
             10, 2f * scale, 7f * scale, 0.04f * scale, 0.1f * scale, 0.2f, 0.4f,
             true, true, 1.2f, 40f, 1.0f);
+    }
+
+    /// <summary>
+    /// AAA needle-sharp incandescent ricochet sparks using T_Spark texture.
+    /// </summary>
+    public static ParticleSystem Sparks(Vector3 pos, Vector3 normal, Color color, int count = 26, float speed = 26f)
+    {
+        GameObject go = new GameObject("VFX_Sparks");
+        go.SetActive(false);
+        go.transform.position = pos;
+        go.transform.rotation = Quaternion.LookRotation(normal.sqrMagnitude > 0.001f ? normal : Vector3.up);
+
+        ParticleSystem ps = go.AddComponent<ParticleSystem>();
+        var main = ps.main;
+        main.loop = false;
+        main.playOnAwake = false;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.06f, 0.16f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(speed * 0.5f, speed * 1.3f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.035f, 0.085f);
+        main.startColor = color;
+        main.gravityModifier = 1.8f;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.maxParticles = count * 2;
+
+        var em = ps.emission;
+        em.rateOverTime = 0;
+        em.SetBursts(new[] { new ParticleSystem.Burst(0f, (short)count) });
+
+        var shape = ps.shape;
+        shape.shapeType = ParticleSystemShapeType.Cone;
+        shape.angle = 38f;
+        shape.radius = 0.02f;
+
+        var col = ps.colorOverLifetime;
+        col.enabled = true;
+        Gradient g = new Gradient();
+        g.SetKeys(
+            new[] { new GradientColorKey(color, 0f), new GradientColorKey(color, 1f) },
+            new[] { new GradientAlphaKey(color.a, 0f), new GradientAlphaKey(0f, 1f) });
+        col.color = g;
+
+        ParticleSystemRenderer rend = go.GetComponent<ParticleSystemRenderer>();
+        rend.material = SparkMat;
+        rend.shadowCastingMode = ShadowCastingMode.Off;
+        rend.receiveShadows = false;
+        rend.renderMode = ParticleSystemRenderMode.Stretch;
+        rend.lengthScale = 3.8f;
+        rend.velocityScale = 0.06f;
+
+        go.SetActive(true);
+        ps.Play();
+        Object.Destroy(go, 0.5f);
+        return ps;
+    }
+
+    /// <summary>
+    /// AAA volumetric organic dust/smoke puff using T_Smoke texture.
+    /// </summary>
+    public static ParticleSystem DustPuff(Vector3 pos, Vector3 normal, Color color, int count = 8, float scale = 1f)
+    {
+        GameObject go = new GameObject("VFX_DustPuff");
+        go.SetActive(false);
+        go.transform.position = pos;
+        go.transform.rotation = Quaternion.LookRotation(normal.sqrMagnitude > 0.001f ? normal : Vector3.up);
+
+        ParticleSystem ps = go.AddComponent<ParticleSystem>();
+        var main = ps.main;
+        main.loop = false;
+        main.playOnAwake = false;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.35f, 0.75f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(1.5f * scale, 4.0f * scale);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.28f * scale, 0.65f * scale);
+        main.startColor = color;
+        main.gravityModifier = -0.04f;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.maxParticles = count * 2;
+
+        var em = ps.emission;
+        em.rateOverTime = 0;
+        em.SetBursts(new[] { new ParticleSystem.Burst(0f, (short)count) });
+
+        var shape = ps.shape;
+        shape.shapeType = ParticleSystemShapeType.Cone;
+        shape.angle = 45f;
+        shape.radius = 0.03f;
+
+        var col = ps.colorOverLifetime;
+        col.enabled = true;
+        Gradient g = new Gradient();
+        g.SetKeys(
+            new[] { new GradientColorKey(color, 0f), new GradientColorKey(color, 1f) },
+            new[] { new GradientAlphaKey(color.a, 0f), new GradientAlphaKey(0f, 1f) });
+        col.color = g;
+
+        ParticleSystemRenderer rend = go.GetComponent<ParticleSystemRenderer>();
+        rend.material = SmokeMat;
+        rend.shadowCastingMode = ShadowCastingMode.Off;
+        rend.receiveShadows = false;
+        rend.renderMode = ParticleSystemRenderMode.Billboard;
+
+        go.SetActive(true);
+        ps.Play();
+        Object.Destroy(go, 1.1f);
+        return ps;
     }
 }
 
