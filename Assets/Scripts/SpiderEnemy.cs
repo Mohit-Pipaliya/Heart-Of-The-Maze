@@ -51,35 +51,58 @@ public class SpiderEnemy : MonoBehaviour
 
     private void Awake()
     {
-        attackRange = Mathf.Clamp(attackRange, 1.8f, 2.2f);
-
         anim = GetComponent<Animator>();
         if (anim != null)
         {
             anim.applyRootMotion = false;
         }
 
+        // Configure Layer (Layer 23 is "Enemy")
+        int enemyLayer = LayerMask.NameToLayer("Enemy");
+        if (enemyLayer >= 0)
+        {
+            gameObject.layer = enemyLayer;
+        }
+
+        // Account for transform lossyScale (Spider prefab is scaled 40x in scene)
+        float sx = Mathf.Max(0.001f, transform.lossyScale.x);
+        float sy = Mathf.Max(0.001f, transform.lossyScale.y);
+        float sz = Mathf.Max(0.001f, transform.lossyScale.z);
+
         // Solid physical CapsuleCollider (isTrigger = false) so Player CharacterController
-        // CANNOT walk through or penetrate inside the spider body!
+        // CANNOT walk through or penetrate inside the giant spider body!
         CapsuleCollider cap = GetComponent<CapsuleCollider>();
         if (cap == null)
         {
             cap = gameObject.AddComponent<CapsuleCollider>();
         }
 
-        // Account for transform lossyScale (Spider prefab is scaled 40x in scene)
-        float sx = Mathf.Max(0.001f, transform.lossyScale.x);
-        float sy = Mathf.Max(0.001f, transform.lossyScale.y);
         cap.direction = 1; // Y-axis
-        cap.radius = 1.15f / sx;
-        cap.height = 1.8f / sy;
-        cap.center = new Vector3(0f, 0.9f / sy, 0f);
+        cap.radius = 6.2f / sx; // In world space: 6.2m solid radius
+        cap.height = 6.5f / sy; // In world space: 6.5m height
+        cap.center = new Vector3(0f, 2.8f / sy, 0f);
         cap.isTrigger = false;
+
+        // Broad HitBox across entire carapace & leg span for 100% reliable bullet hits & crosshairs
+        Transform hb = transform.Find("SpiderHitBox");
+        if (hb == null)
+        {
+            GameObject hbObj = new GameObject("SpiderHitBox");
+            hbObj.transform.SetParent(transform, false);
+            if (enemyLayer >= 0) hbObj.layer = enemyLayer;
+
+            BoxCollider box = hbObj.AddComponent<BoxCollider>();
+            box.size = new Vector3(16.0f / sx, 5.5f / sy, 16.0f / sz);
+            box.center = new Vector3(0f, 2.5f / sy, 0f);
+            box.isTrigger = false; // Solid PhysX collider so bullets and crosshairs intercept it
+        }
     }
 
     void Start()
     {
-        attackRange = Mathf.Clamp(attackRange, 1.8f, 2.2f);
+        // Giant Spider realistic combat reach: 10.5m
+        if (attackRange < 8.0f) attackRange = 10.5f;
+
         agent = GetComponent<NavMeshAgent>();
         anim = GetComponent<Animator>();
         if (anim != null) anim.applyRootMotion = false;
@@ -96,8 +119,9 @@ public class SpiderEnemy : MonoBehaviour
 
         if (agent != null)
         {
-            agent.stoppingDistance = Mathf.Max(2.2f, attackRange * 0.95f);
-            agent.radius = 1.0f;
+            agent.stoppingDistance = 8.2f;
+            agent.radius = 4.8f;
+            agent.height = 4.0f;
             agent.obstacleAvoidanceType = ObstacleAvoidanceType.HighQualityObstacleAvoidance;
         }
 
@@ -137,7 +161,7 @@ public class SpiderEnemy : MonoBehaviour
             Vector3 toPlayer = player.position - transform.position;
             toPlayer.y = 0f;
             float distToPlayer = toPlayer.magnitude;
-            float safeDistance = 2.2f;
+            float safeDistance = 6.8f;
 
             if (distToPlayer < safeDistance)
             {
@@ -148,17 +172,17 @@ public class SpiderEnemy : MonoBehaviour
                 CharacterController playerCC = player.GetComponent<CharacterController>();
                 if (playerCC != null && playerCC.enabled)
                 {
-                    playerCC.Move(pushOut * (overlap * 0.8f));
+                    playerCC.Move(pushOut * (overlap * 0.9f));
                 }
                 else
                 {
-                    player.position += pushOut * (overlap * 0.8f);
+                    player.position += pushOut * (overlap * 0.9f);
                 }
 
                 // Push spider slightly away if agent is on NavMesh
                 if (agent != null && agent.enabled && agent.isOnNavMesh)
                 {
-                    agent.Move(-pushOut * (overlap * 0.2f));
+                    agent.Move(-pushOut * (overlap * 0.1f));
                 }
             }
         }
@@ -254,7 +278,7 @@ public class SpiderEnemy : MonoBehaviour
         if (player == null) return;
         agent.isStopped = false;
         agent.speed = runSpeed;
-        agent.stoppingDistance = Mathf.Max(2.2f, attackRange * 0.95f);
+        agent.stoppingDistance = 8.2f;
         agent.SetDestination(player.position);
     }
 
@@ -283,7 +307,7 @@ public class SpiderEnemy : MonoBehaviour
                 anim.SetTrigger(hashAttack);
             }
             lastAttackTime = Time.time;
-            StartCoroutine(DealDamageAfterDelay(0.4f));
+            StartCoroutine(DealDamageAfterDelay(0.45f));
         }
     }
 
@@ -292,7 +316,7 @@ public class SpiderEnemy : MonoBehaviour
         _isAttacking = true;
         yield return new WaitForSeconds(delay);
 
-        if (!isDead && player != null && Vector3.Distance(transform.position, player.position) <= attackRange + 1.2f)
+        if (!isDead && player != null && Vector3.Distance(transform.position, player.position) <= attackRange + 2.5f)
         {
             PlayerController pc = player.GetComponent<PlayerController>();
             if (pc != null && !pc.IsDead)
@@ -366,9 +390,13 @@ public class SpiderEnemy : MonoBehaviour
             anim.SetTrigger(hashDie);
         }
         
-        // Collider band kardo taaki player iss se na takraye
-        Collider col = GetComponent<Collider>();
-        if (col != null) col.enabled = false;
+        // Disable colliders so player doesn't collide with dead spider
+        Collider[] cols = GetComponentsInChildren<Collider>();
+        for (int i = 0; i < cols.Length; i++)
+        {
+            if (cols[i] != null && cols[i] != territoryTrigger)
+                cols[i].enabled = false;
+        }
 
         // 5 second baad body gayab kardo
         Destroy(gameObject, 5f);

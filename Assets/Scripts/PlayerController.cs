@@ -1101,10 +1101,12 @@ public class PlayerController : MonoBehaviour
                 Vector3 toS = s.transform.position - transform.position;
                 toS.y = 0f;
                 float d = toS.magnitude;
-                if (d <= 3.5f)
+                Collider spiderCol = s.GetComponent<Collider>();
+                float dToPerimeter = spiderCol != null ? Vector3.Distance(transform.position, spiderCol.ClosestPoint(transform.position)) : d;
+                if (dToPerimeter <= 3.2f || d <= 9.5f)
                 {
                     float angle = Vector3.Angle(transform.forward, toS.normalized);
-                    if (angle <= 85f || d <= 1.4f)
+                    if (angle <= 95f || dToPerimeter <= 2.2f)
                     {
                         hitEnemies.Add(s.gameObject);
                         connectedAnyHit = true;
@@ -1112,7 +1114,7 @@ public class PlayerController : MonoBehaviour
                         s.TakeDamage(damage);
                         bool isKill = s.IsDead;
 
-                        Vector3 contactPoint = s.transform.position + Vector3.up * 0.8f;
+                        Vector3 contactPoint = spiderCol != null ? spiderCol.ClosestPoint(transform.position + transform.forward * 1.5f + Vector3.up * 0.8f) : (s.transform.position + Vector3.up * 0.8f);
                         GameAudio.PlaySwordImpact(contactPoint, true);
                         if (SwordAttackEffect.Instance != null)
                             SwordAttackEffect.Instance.TriggerImpact(contactPoint, -transform.forward, true);

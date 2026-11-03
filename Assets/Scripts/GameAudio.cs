@@ -164,14 +164,20 @@ public static class GameAudio
             case SoundType.SpiderHurt:
             case SoundType.SpiderWalk:
             case SoundType.SpiderDeath:
-            case SoundType.ZombieWalk:
             case SoundType.ZombieCrawl:
-            case SoundType.ZombieScream:
             case SoundType.ZombieAttack:
             case SoundType.ZombieHurt:
             case SoundType.ZombieDeath:
             case SoundType.ZombieGroan:
                 return null;
+
+            case SoundType.ZombieScream:
+                if (_zombieScreamClip == null) _zombieScreamClip = LoadAudioClip("scream sound zombie");
+                return _zombieScreamClip;
+
+            case SoundType.ZombieWalk:
+                if (_zombieWalkClip == null) _zombieWalkClip = LoadAudioClip("Zombie Walking Sound Effect");
+                return _zombieWalkClip;
 
             case SoundType.BulletFlesh:
                 if (_bulletFleshClip == null) _bulletFleshClip = LoadAudioClip("BulletFlesh");
@@ -364,14 +370,44 @@ public static class GameAudio
         PlayAtPoint(GetClip(SoundType.Paddle), pos, volume, 0.9f, 1.1f, 0.55f);
     }
 
-    public static void PlayZombieScream(Vector3 pos, AudioSource source = null) { }
+    public static void PlayZombieScream(Vector3 pos, AudioSource source = null, float volume = 1.0f)
+    {
+        AudioClip clip = GetClip(SoundType.ZombieScream);
+        if (clip == null) return;
+        if (source != null && source.isActiveAndEnabled)
+        {
+            source.pitch = Random.Range(0.95f, 1.05f);
+            source.PlayOneShot(clip, volume);
+        }
+        else
+        {
+            PlayAtPoint(clip, pos, volume, 0.95f, 1.05f, 1.0f);
+        }
+    }
+
     public static void PlayZombieAttack(Vector3 pos, AudioSource source = null) { }
     public static void PlayZombieHurt(Vector3 pos, AudioSource source = null) { }
     public static void PlayZombieDeath(Vector3 pos, AudioSource source = null) { }
     public static void PlayZombieGroan(Vector3 pos, AudioSource source = null) { }
     public static void PlaySpiderWalk(Vector3 pos, AudioSource source = null, float volume = 0.5f) { }
     public static void PlaySpiderDeath(Vector3 pos, AudioSource source = null, float volume = 1.0f) { }
-    public static void PlayZombieWalk(Vector3 pos, AudioSource source = null, float volume = 0.5f) { }
+
+    public static void PlayZombieWalk(Vector3 pos, AudioSource source = null, float volume = 0.6f)
+    {
+        if (Time.time - _lastZombieWalkTime < 0.45f) return;
+        _lastZombieWalkTime = Time.time;
+        AudioClip clip = GetClip(SoundType.ZombieWalk);
+        if (clip == null) return;
+        if (source != null && source.isActiveAndEnabled)
+        {
+            source.pitch = Random.Range(0.92f, 1.08f);
+            source.PlayOneShot(clip, volume);
+        }
+        else
+        {
+            PlayAtPoint(clip, pos, volume, 0.92f, 1.08f, 0.6f);
+        }
+    }
     public static void PlayZombieCrawl(Vector3 pos, AudioSource source = null, float volume = 0.6f) { }
 
     public static void PlayBoatWaterLap(Vector3 pos, AudioSource source = null, float volume = 0.4f)

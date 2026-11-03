@@ -278,8 +278,8 @@ public class ZombieLocomotion : MonoBehaviour
     {
         if (_anim == null || _agent == null || !_agent.enabled) return;
 
-        // When dead, crawling, or attacking, leave playback speed at normal
-        if (_zombieAI != null && (_zombieAI.IsDead || _zombieAI.IsSliding))
+        // When dead, leave playback speed at normal
+        if (_zombieAI != null && _zombieAI.IsDead)
         {
             _anim.speed = 1f;
             return;
@@ -288,6 +288,22 @@ public class ZombieLocomotion : MonoBehaviour
         Vector3 v = _agent.velocity;
         v.y = 0f;
         float groundSpeed = v.magnitude;
+
+        // Crawl / Slide stride synchronization: matches crawl animation to actual ground speed
+        if (_zombieAI != null && _zombieAI.IsSliding)
+        {
+            if (groundSpeed > 0.1f)
+            {
+                float baseSlideSpeed = 1.05f; // Cadence baseline for crawl animation
+                float crawlRatio = groundSpeed / baseSlideSpeed;
+                _anim.speed = Mathf.Clamp(crawlRatio, 0.65f, 1.35f);
+            }
+            else
+            {
+                _anim.speed = 1f;
+            }
+            return;
+        }
 
         if (groundSpeed > 0.15f)
         {

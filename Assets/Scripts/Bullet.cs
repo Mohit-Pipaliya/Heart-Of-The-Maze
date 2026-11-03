@@ -194,6 +194,13 @@ public class Bullet : MonoBehaviour
         _hasHit = true;
 
         SpiderEnemy spider = hitCollider != null ? (hitCollider.GetComponentInParent<SpiderEnemy>() ?? hitCollider.GetComponentInChildren<SpiderEnemy>() ?? hitCollider.transform.root.GetComponentInChildren<SpiderEnemy>()) : null;
+        if (spider == null && hitCollider != null && (hitCollider.gameObject.name.IndexOf("Spider", System.StringComparison.OrdinalIgnoreCase) >= 0 || hitCollider.transform.root.gameObject.name.IndexOf("Spider", System.StringComparison.OrdinalIgnoreCase) >= 0))
+        {
+            spider = Object.FindAnyObjectByType<SpiderEnemy>();
+            if (spider != null && Vector3.Distance(point, spider.transform.position) > 18f)
+                spider = null;
+        }
+
         ZombieAI zombie = hitCollider != null ? (hitCollider.GetComponentInParent<ZombieAI>() ?? hitCollider.GetComponentInChildren<ZombieAI>() ?? hitCollider.transform.root.GetComponentInChildren<ZombieAI>()) : null;
         bool isEnemy = (spider != null) || (zombie != null);
 

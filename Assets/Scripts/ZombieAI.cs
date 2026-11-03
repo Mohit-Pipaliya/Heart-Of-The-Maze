@@ -46,7 +46,7 @@ public class ZombieAI : MonoBehaviour
     public float walkSpeed = 1.6f;
     public float runSpeed = 4.8f;
     [Tooltip("Health <= 600 hone par zombie crawl/slide karke chase karega uski speed.")]
-    public float slideSpeed = 3.0f;
+    public float slideSpeed = 1.1f;
     public float wanderRadius = 18f;
     public float wanderWaitMin = 1.5f;
     public float wanderWaitMax = 3.5f;
@@ -61,6 +61,12 @@ public class ZombieAI : MonoBehaviour
     [Header("── Raad (Scream) Settings ──")]
     [Tooltip("Scream animation kitni der tak hold karke player ki taraf dekhega.")]
     public float screamDuration = 1.9f;
+
+    [Header("── Audio Settings ──")]
+    public AudioClip screamSound;
+    public AudioClip walkSound;
+    private AudioSource _zombieAudio;
+    private float _nextWalkSoundTime;
 
     [Header("── Target Reference ──")]
     public Transform player;
@@ -144,6 +150,38 @@ public class ZombieAI : MonoBehaviour
                 cap.height = 1.8f;
                 cap.radius = Mathf.Max(cap.radius, 0.5f);
             }
+        }
+
+        // Setup 3D Spatial Audio Source
+        _zombieAudio = GetComponent<AudioSource>();
+        if (_zombieAudio == null)
+        {
+            _zombieAudio = gameObject.AddComponent<AudioSource>();
+            _zombieAudio.spatialBlend = 1.0f;
+            _zombieAudio.minDistance = 3.0f;
+            _zombieAudio.maxDistance = 35.0f;
+            _zombieAudio.rolloffMode = AudioRolloffMode.Linear;
+            _zombieAudio.playOnAwake = false;
+        }
+
+        if (screamSound == null) screamSound = GameAudio.GetClip(GameAudio.SoundType.ZombieScream);
+        if (walkSound == null) walkSound = GameAudio.GetClip(GameAudio.SoundType.ZombieWalk);
+    }
+
+    public void ApplySlidingProfile()
+    {
+        if (_collider is CapsuleCollider cap)
+        {
+            cap.direction = 1;
+            cap.height = 0.5f;
+            cap.radius = 0.45f;
+            cap.center = new Vector3(0f, 0.25f, 0.1f);
+        }
+        if (_agent != null && _agent.enabled)
+        {
+            _agent.height = 0.6f;
+            _agent.radius = 0.45f;
+            _agent.stoppingDistance = 1.2f;
         }
     }
 
@@ -340,6 +378,7 @@ public class ZombieAI : MonoBehaviour
 
         _agent.speed = walkSpeed;
         PlayAnimation("Walk", 0.2f);
+        TryPlayWalkSound();
 
         // Check if reached wander destination
         if (!_agent.pathPending && _agent.remainingDistance <= _agent.stoppingDistance + 0.2f)
@@ -351,6 +390,13 @@ public class ZombieAI : MonoBehaviour
                 _wanderWaitTimer = Random.Range(wanderWaitMin, wanderWaitMax);
             }
         }
+    }
+
+    private void TryPlayWalkSound()
+    {
+        if (_agent == null || _agent.velocity.sqrMagnitude < 0.1f || Time.time < _nextWalkSoundTime) return;
+        _nextWalkSoundTime = Time.time + Random.Range(3.0f, 5.5f);
+        GameAudio.PlayZombieWalk(transform.position, _zombieAudio);
     }
 
     private void SetNewWanderDestination()
@@ -386,6 +432,7 @@ public class ZombieAI : MonoBehaviour
     private IEnumerator RaadRoutine()
     {
         PlayAnimation("Raad", 0.12f);
+        GameAudio.PlayZombieScream(transform.position, _zombieAudio);
 
         float elapsed = 0f;
         while (elapsed < screamDuration)
@@ -411,7 +458,7 @@ public class ZombieAI : MonoBehaviour
         {
             _agent.isStopped = false;
             _agent.speed = _isSliding ? slideSpeed : runSpeed;
-            _agent.stoppingDistance = Mathf.Max(1.8f, attackRange * 0.8f);
+            _agent.stoppingDistance = _isSliding ? 1.2f : Mathf.Max(1.8f, attackRange * 0.8f);
             if (player != null) _agent.SetDestination(player.position);
         }
 
@@ -424,13 +471,17 @@ public class ZombieAI : MonoBehaviour
 
         _agent.isStopped = false;
         _agent.speed = _isSliding ? slideSpeed : runSpeed;
+        _agent.stoppingDistance = _isSliding ? 1.2f : Mathf.Max(1.8f, attackRange * 0.8f);
         PlayAnimation(_isSliding ? "Slide" : "Run", 0.15f);
 
         // Continuously refresh player position
         _agent.SetDestination(player.position);
 
+        TryPlayWalkSound();
+
         // Reached attack area → Attack
-        if (distanceToPlayer <= attackRange)
+        float currentAttackRange = _isSliding ? 1.4f : attackRange;
+        if (distanceToPlayer <= currentAttackRange)
         {
             StartAttack();
             return;
@@ -475,8 +526,10 @@ public class ZombieAI : MonoBehaviour
 
             if (_isDead) yield break;
 
+            float currentAttackRange = _isSliding ? 1.4f : attackRange;
+
             // Deal damage if player is still within melee reach
-            if (player != null && Vector3.Distance(transform.position, player.position) <= attackRange + 0.9f)
+            if (player != null && Vector3.Distance(transform.position, player.position) <= currentAttackRange + 0.9f)
             {
                 PlayerController pc = player.GetComponent<PlayerController>();
                 if (pc != null && !pc.IsDead)
@@ -503,7 +556,7 @@ public class ZombieAI : MonoBehaviour
             }
 
             // Check if player fled out of attack range
-            if (player != null && Vector3.Distance(transform.position, player.position) > attackRange)
+            if (player != null && Vector3.Distance(transform.position, player.position) > currentAttackRange)
             {
                 StartChase();
                 yield break;
@@ -559,6 +612,7 @@ public class ZombieAI : MonoBehaviour
         {
             _isSliding = true;
             if (_footIK != null) _footIK.SetIKActive(false);
+            ApplySlidingProfile();
             Debug.Log($"<color=#FFAA00><b>[Zombie Slide Triggered!]</b> Health reached {_currentHealth} <= 600. Playing Slide animation!</color>");
         }
 
