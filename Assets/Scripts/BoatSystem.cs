@@ -197,6 +197,23 @@ public class BoatSystem : MonoBehaviour
 
         if (!_isOccupied && !_isEntering && !_isExiting)
         {
+            // Idle water wave float (boat gently bobs on water surface while parked)
+            if (RealisticWaterController.Instance != null && RealisticWaterController.Instance.enabled)
+            {
+                float idleWater = RealisticWaterController.GetWaterHeight(transform.position);
+                Vector3 p = transform.position;
+                p.y = Mathf.Lerp(p.y, idleWater - 0.15f, Time.deltaTime * 3f);
+                transform.position = p;
+
+                Vector3 waveNorm = RealisticWaterController.GetWaterNormal(transform.position);
+                Vector3 fwdProj = Vector3.ProjectOnPlane(transform.forward, waveNorm).normalized;
+                if (fwdProj != Vector3.zero)
+                {
+                    Quaternion rot = Quaternion.LookRotation(fwdProj, waveNorm);
+                    transform.rotation = Quaternion.Slerp(transform.rotation, rot, Time.deltaTime * 2f);
+                }
+            }
+
             HandleProximityCheck();
         }
     }
@@ -407,17 +424,45 @@ public class BoatSystem : MonoBehaviour
         Vector3 deltaMove = boatFwd * _currentSpeed * Time.deltaTime;
         transform.position += deltaMove;
 
-        // Water Bobbing
-        if (!_hasWaterRest)
+        // Water Bobbing & Wave Buoyancy
+        if (RealisticWaterController.Instance != null && RealisticWaterController.Instance.enabled)
         {
-            _waterRestY = transform.position.y;
-            _hasWaterRest = true;
-        }
+            if (!_hasWaterRest)
+            {
+                _waterRestY = transform.position.y;
+                _hasWaterRest = true;
+            }
 
-        float bob = Mathf.Sin(Time.time * waterBobSpeed) * waterBobAmount * 0.08f;
-        Vector3 p = transform.position;
-        p.y = _waterRestY + bob;
-        transform.position = p;
+            float currentWaterSurface = RealisticWaterController.GetWaterHeight(transform.position);
+            Vector3 p = transform.position;
+            // Float smoothly at the water surface, maintaining boat waterline
+            p.y = Mathf.Lerp(p.y, currentWaterSurface - 0.15f, Time.deltaTime * 6f);
+            transform.position = p;
+
+            // Gentle wave pitch and roll tilt aligned with wave surface
+            Vector3 waveNormal = RealisticWaterController.GetWaterNormal(transform.position);
+            Vector3 currentFwd = transform.forward;
+            Vector3 targetFwd = Vector3.ProjectOnPlane(currentFwd, waveNormal).normalized;
+            if (targetFwd != Vector3.zero)
+            {
+                Quaternion targetRot = Quaternion.LookRotation(targetFwd, waveNormal);
+                // Subtle pitch/roll blend so boat feels naturally buoyant
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * 4f);
+            }
+        }
+        else
+        {
+            if (!_hasWaterRest)
+            {
+                _waterRestY = transform.position.y;
+                _hasWaterRest = true;
+            }
+
+            float bob = Mathf.Sin(Time.time * waterBobSpeed) * waterBobAmount * 0.08f;
+            Vector3 p = transform.position;
+            p.y = _waterRestY + bob;
+            transform.position = p;
+        }
 
         if (pressing && Time.time >= _nextSplashTime)
         {
@@ -436,7 +481,7 @@ public class BoatSystem : MonoBehaviour
         if (boatRigidbody != null)
             boatRigidbody.position = transform.position;
 
-        // Dynamic Camera
+        // Dynamic Camera — update boat camera distance only while paddling
         if (Camera.main != null)
         {
             CameraController cam = Camera.main.GetComponent<CameraController>();
@@ -444,7 +489,7 @@ public class BoatSystem : MonoBehaviour
             {
                 float speedFactor = Mathf.Abs(_currentSpeed) / Mathf.Max(0.1f, boatForwardSpeed);
                 float dynamicDist = camDistance + (speedFactor * 1.5f);
-                cam.StartCinematic(dynamicDist, camOffset, camYaw, camPitch);
+                cam.UpdateBoatCamera(dynamicDist, camOffset, camPitch);
             }
         }
     }
@@ -524,10 +569,20 @@ public class BoatSystem : MonoBehaviour
         _canPaddle  = true;
         _isEntering = false;
 
+        // Switch to dedicated behind-boat camera view
         if (Camera.main != null)
         {
             CameraController cam = Camera.main.GetComponent<CameraController>();
-            if (cam != null) cam.StartCinematic(camDistance, camOffset, camYaw, camPitch);
+            if (cam != null)
+            {
+                cam.EnterBoatMode(
+                    transform,
+                    GetBoatForward,
+                    camDistance,
+                    camOffset,
+                    camPitch
+                );
+            }
         }
 
         Debug.Log("<color=#00FF88><b>[BoatSystem]</b></color> Player boarded boat and seated directly!");
@@ -542,7 +597,11 @@ public class BoatSystem : MonoBehaviour
         if (Camera.main != null)
         {
             CameraController cam = Camera.main.GetComponent<CameraController>();
-            if (cam != null) cam.StopCinematic();
+            if (cam != null)
+            {
+                // Pass player transform so camera smoothly goes back to following player
+                cam.ExitBoatMode(_playerTransform);
+            }
         }
 
         if (boatRigidbody != null)
