@@ -1847,7 +1847,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1344751361}
-  m_Mesh: {fileID: 1398665144}
+  m_Mesh: {fileID: 0}
 --- !u!4 &1344751365
 Transform:
   m_ObjectHideFlags: 0
@@ -1857,8 +1857,8 @@ Transform:
   m_GameObject: {fileID: 1344751361}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -58.3, y: -24.7, z: 196}
-  m_LocalScale: {x: 118.29, y: 40, z: 300}
+  m_LocalPosition: {x: -45, y: -5.3, z: 200}
+  m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -1872,27 +1872,20 @@ MonoBehaviour:
   m_GameObject: {fileID: 1344751361}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7f1896a2bf17e04b4d75895312340001, type: 3}
+  m_Script: {fileID: 11500000, guid: c81f0923e456b7104b2a8d9e0f345678, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::RealisticWaterController
-  preset: 0
-  resolutionX: 48
-  resolutionZ: 48
-  generateVolumeSkirts: 0
-  waveHeight: 0.22
-  waveLength: 14
-  waveSpeed: 1.4
-  waveSteepness: 0.35
-  windDirection: 45
-  secondaryWaveScale: 0.45
-  secondaryAngleOffset: 38
-  rippleScale: 0.18
-  enableCPUVertexWaves: 0
-  recalculateMeshNormals: 0
-  syncShaderProperties: 1
-  normalScrollSpeed: 2.2
-  makeColliderTrigger: 1
-  baseWaterLevelOffset: 0
+  m_EditorClassIdentifier: Assembly-CSharp::TempleRunRiver
+  riverWidth: 90
+  riverLength: 320
+  startElevation: 4.7
+  totalDrop: 20
+  subdivisionsX: 32
+  subdivisionsZ: 80
+  textureTilingZ: 0.12
+  currentFlowSpeed: 3.5
+  rapidWaveHeight: 0.22
+  rapidWaveFrequency: 1.8
+  configureTriggerCollider: 1
 --- !u!4 &1384927376 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -3480699329000672020, guid: 7e3cbb6379658413a984ee6af33668f1, type: 3}

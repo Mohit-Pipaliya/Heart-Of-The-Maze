@@ -439,6 +439,14 @@ public class BoatSystem : MonoBehaviour
 
         Vector3 boatFwd = HeadingForward();
         Vector3 deltaMove = boatFwd * _currentSpeed * Time.deltaTime;
+
+        // Downward river current drift (Temple Run style downhill flow)
+        if (TempleRunRiver.Instance != null && TempleRunRiver.Instance.enabled)
+        {
+            Vector3 flow = TempleRunRiver.Instance.GetFlowDirection(transform.position);
+            deltaMove += flow * (TempleRunRiver.Instance.currentFlowSpeed * Time.deltaTime);
+        }
+
         transform.position += deltaMove;
 
         if (pressing && Time.time >= _nextSplashTime)
@@ -720,11 +728,30 @@ public class BoatSystem : MonoBehaviour
         float halfW = Mathf.Clamp(Support(hull.extents, right), 0.45f, 2.4f);
         Vector3 center = transform.position;
 
-        float bow = 0f, stern = 0f, port = 0f, star = 0f, mid = 0f;
+        bool hasSlopedRiver = TempleRunRiver.Instance != null && TempleRunRiver.Instance.enabled;
         bool hasWater = RealisticWaterController.Instance != null && RealisticWaterController.Instance.enabled;
-        if (hasWater)
+
+        float bow = 0f, stern = 0f, port = 0f, star = 0f, mid = 0f;
+        float baseWaterY = -4.7f;
+
+        if (hasSlopedRiver)
+        {
+            var river = TempleRunRiver.Instance;
+            baseWaterY = river.GetWaterHeight(center);
+            float bowY = river.GetWaterHeight(center + fwd * halfL);
+            float sternY = river.GetWaterHeight(center - fwd * halfL);
+            float starY = river.GetWaterHeight(center + right * halfW);
+            float portY = river.GetWaterHeight(center - right * halfW);
+
+            bow = bowY - baseWaterY;
+            stern = sternY - baseWaterY;
+            star = starY - baseWaterY;
+            port = portY - baseWaterY;
+        }
+        else if (hasWater)
         {
             var water = RealisticWaterController.Instance;
+            baseWaterY = RealisticWaterController.GetWaterHeight(center);
             mid = water.GetWaveOffset(center);
             bow = water.GetWaveOffset(center + fwd * halfL);
             stern = water.GetWaveOffset(center - fwd * halfL);
@@ -752,9 +779,8 @@ public class BoatSystem : MonoBehaviour
         }
 
         // Float at realistic boat waterline: keel submerged, gunwales & seats cleanly above water
-        float baseWaterY = hasWater ? RealisticWaterController.GetWaterHeight(center) : -4.7f;
         const float boatWaterlineOffset = 0.38f;
-        float targetY = baseWaterY + boatWaterlineOffset + wave * follow + rapids;
+        float targetY = baseWaterY + boatWaterlineOffset + (hasSlopedRiver ? 0f : (wave * follow)) + rapids;
         
         Vector3 p = transform.position;
         p.y = Mathf.SmoothDamp(p.y, targetY, ref _heaveVel, speed01 > 0.12f ? 0.12f : 0.28f);
