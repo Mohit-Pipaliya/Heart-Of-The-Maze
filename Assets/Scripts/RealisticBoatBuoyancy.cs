@@ -2,53 +2,63 @@ using UnityEngine;
 using UnityEngine.Splines;
 
 /// <summary>
-/// Realistic multi-point boat buoyancy and physics simulation for Unity 6 (URP).
-/// Uses Unity 6 Rigidbody API (linearVelocity, linearDamping, angularDamping).
-/// Samples GerstnerWaveMath to ensure exact physical-to-visual wave synchrony.
+/// AAA Multi-point Boat Buoyancy & Physics Controller for Unity 6 (URP).
+/// - Multi-point hull floatation with 4-6 sample points matching GerstnerWaveMath and TempleRunRiver.
+/// - Believable heave, pitch, and roll with wave slope.
+/// - Bank/lean into turns for dynamic runner gameplay feel.
+/// - Heavy hydrodynamic drag preventing erratic oscillations.
+/// - Downhill river current drift.
+/// - Complete wake and spray VFX triggers.
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
 public class RealisticBoatBuoyancy : MonoBehaviour
 {
-    [Header("Hull Float Points (World Transforms)")]
-    [Tooltip("Assign 4-6 transforms placed at bow, stern, port, starboard, and center.")]
+    [Header("Hull Float Points (6 Points Recommended)")]
+    [Tooltip("Place transforms at: Bow, Stern, Port, Starboard, Center-Left, Center-Right")]
     [SerializeField] private Transform[] floatPoints;
-    [SerializeField] private float pointVolume = 0.65f;
-    [SerializeField] private float maxImmersionDepth = 0.8f;
+    [SerializeField] private float pointVolume = 0.55f;
+    [SerializeField] private float maxImmersionDepth = 0.75f;
     [SerializeField] private float waterDensity = 1025f;
 
-    [Header("Linear & Angular Water Damping")]
-    [SerializeField] private float waterLinearDamping = 1.8f;
-    [SerializeField] private float waterAngularDamping = 3.2f;
+    [Header("Hydrodynamic Damping (Heavy Water Feel)")]
+    [SerializeField] private float waterLinearDamping = 1.9f;
+    [SerializeField] private float waterAngularDamping = 3.6f;
+    [SerializeField] private float verticalPointDamping = 620f;
 
-    [Header("River Current & Spline Drift")]
+    [Header("Engine & Steering (WASD Controls)")]
+    public float forwardThrust = 4200f;
+    public float reverseThrust = 2100f;
+    public float steerTorque = 1200f;
+    [Tooltip("How much the boat banks/leans into turns (Degrees/Torque ratio)")]
+    public float turnBankingLean = 450f;
+    [Range(0f, 1f)] public float controlAuthority = 0f;
+
+    [Header("River Current & Downhill Drift")]
     [SerializeField] private SplineContainer riverSpline;
-    [SerializeField] private float riverCurrentSpeed = 2.4f;
+    public float riverCurrentDriftSpeed = 3.5f;
 
-    [Header("Player Engine & Steering Controls")]
-    public float engineThrust = 3200f;
-    public float reverseThrust = 1600f;
-    public float steerTorque = 950f;
-    [Range(0f, 1f)] public float controlAuthority = 0f; // 1 when player is driving, 0 when empty
-
-    [Header("Visual Effects & Wake")]
-    [SerializeField] private ParticleSystem bowSprayVFX;
-    [SerializeField] private TrailRenderer wakeTrailPort;
-    [SerializeField] private TrailRenderer wakeTrailStarboard;
+    [Header("Wake & Particle VFX")]
+    [SerializeField] private ParticleSystem bowSplashVFX;
+    [SerializeField] private TrailRenderer sternWakePort;
+    [SerializeField] private TrailRenderer sternWakeStarboard;
 
     private Rigidbody _rb;
     private float _throttleInput;
     private float _steerInput;
+    private bool _isSubmerged;
 
     public Rigidbody BoatRigidbody => _rb;
+    public bool IsSubmerged => _isSubmerged;
+    public float CurrentSpeed => _rb != null ? _rb.linearVelocity.magnitude : 0f;
 
     private void Awake()
     {
         _rb = GetComponent<Rigidbody>();
         
-        // Unity 6 Rigidbody damping properties (replacing drag / angularDrag)
+        // Unity 6 Rigidbody settings
         _rb.linearDamping = 0.05f;
         _rb.angularDamping = 0.05f;
-        _rb.centerOfMass = new Vector3(0f, -0.45f, 0f); // Low center of mass prevents flipping
+        _rb.centerOfMass = new Vector3(0f, -0.42f, 0f); // Low center of gravity prevents tipping over
     }
 
     public void SetPlayerInput(float throttle, float steer)
@@ -62,7 +72,7 @@ public class RealisticBoatBuoyancy : MonoBehaviour
         float time = Time.time;
         int submergedCount = 0;
 
-        // 1. Multi-point Buoyancy sampling identical Gerstner wave math
+        // 1. Multi-point Buoyancy sampling shared Gerstner / Sloped River Math
         if (floatPoints != null && floatPoints.Length > 0)
         {
             for (int i = 0; i < floatPoints.Length; i++)
@@ -80,30 +90,33 @@ public class RealisticBoatBuoyancy : MonoBehaviour
                     float immersion01 = Mathf.Clamp01(depth / maxImmersionDepth);
                     float buoyantForceMagnitude = pointVolume * waterDensity * Mathf.Abs(Physics.gravity.y) * immersion01;
 
+                    // Buoyant lift
                     Vector3 buoyantForce = Vector3.up * buoyantForceMagnitude;
                     _rb.AddForceAtPosition(buoyantForce, ptPos, ForceMode.Force);
 
-                    // Hydrodynamic point drag (resist vertical oscillation)
+                    // Point water drag (dampens vertical bouncing and rocking)
                     Vector3 ptVelocity = _rb.GetPointVelocity(ptPos);
-                    Vector3 verticalDamping = -Vector3.up * (ptVelocity.y * 550f * immersion01);
+                    Vector3 verticalDamping = -Vector3.up * (ptVelocity.y * verticalPointDamping * immersion01);
                     _rb.AddForceAtPosition(verticalDamping, ptPos, ForceMode.Force);
                 }
             }
         }
 
-        // Apply water-surface damping when submerged
-        if (submergedCount > 0)
+        _isSubmerged = submergedCount > 0;
+
+        if (_isSubmerged)
         {
-            float subRatio = (float)submergedCount / floatPoints.Length;
-            
-            // Unity 6: linearVelocity and angularVelocity
-            _rb.linearVelocity = Vector3.Lerp(_rb.linearVelocity, new Vector3(_rb.linearVelocity.x, _rb.linearVelocity.y * 0.96f, _rb.linearVelocity.z), waterLinearDamping * subRatio * Time.fixedDeltaTime);
+            float subRatio = (float)submergedCount / Mathf.Max(1, floatPoints.Length);
+
+            // Water linear and angular drag (Unity 6 linearVelocity)
+            Vector3 v = _rb.linearVelocity;
+            _rb.linearVelocity = Vector3.Lerp(v, new Vector3(v.x * 0.98f, v.y * 0.94f, v.z * 0.98f), waterLinearDamping * subRatio * Time.fixedDeltaTime);
             _rb.angularVelocity = Vector3.Lerp(_rb.angularVelocity, Vector3.zero, waterAngularDamping * subRatio * Time.fixedDeltaTime);
 
-            // 2. River Current Spline Push
+            // 2. River Current Drift (Carries boat downstream along slope/spline)
             ApplyRiverCurrent();
 
-            // 3. Engine Throttle & Steering
+            // 3. Engine Throttle, Steering & Banking Lean
             if (controlAuthority > 0.01f)
             {
                 ApplyControls();
@@ -115,50 +128,56 @@ public class RealisticBoatBuoyancy : MonoBehaviour
 
     private void ApplyRiverCurrent()
     {
-        Vector3 currentDirection = transform.forward;
-        if (riverSpline != null && riverSpline.Splines != null && riverSpline.Splines.Count > 0)
+        Vector3 flowDirection = transform.forward;
+
+        if (TempleRunRiver.Instance != null && TempleRunRiver.Instance.enabled)
         {
-            // Evaluate tangent at closest point on spline
+            flowDirection = TempleRunRiver.Instance.GetFlowDirection(transform.position);
+        }
+        else if (riverSpline != null && riverSpline.Splines != null && riverSpline.Splines.Count > 0)
+        {
             Unity.Mathematics.float3 localPos = riverSpline.transform.InverseTransformPoint(transform.position);
-            SplineUtility.GetNearestPoint(riverSpline.Spline, localPos, out Unity.Mathematics.float3 nearest, out float t);
+            SplineUtility.GetNearestPoint(riverSpline.Spline, localPos, out _, out float t);
             riverSpline.Spline.Evaluate(t, out _, out Unity.Mathematics.float3 tan, out _);
-            currentDirection = riverSpline.transform.TransformDirection(tan).normalized;
+            flowDirection = riverSpline.transform.TransformDirection(tan).normalized;
         }
 
-        Vector3 riverForce = currentDirection * (riverCurrentSpeed * waterDensity * 0.5f);
+        Vector3 riverForce = flowDirection * (riverCurrentDriftSpeed * waterDensity * 0.45f);
         _rb.AddForce(riverForce, ForceMode.Force);
     }
 
     private void ApplyControls()
     {
-        // Forward / Reverse Throttle
-        float thrust = _throttleInput >= 0f ? _throttleInput * engineThrust : _throttleInput * reverseThrust;
-        Vector3 forwardThrust = transform.forward * (thrust * controlAuthority);
-        _rb.AddForce(forwardThrust, ForceMode.Force);
+        // Throttle (Forward / Reverse)
+        float thrust = _throttleInput >= 0f ? _throttleInput * forwardThrust : _throttleInput * reverseThrust;
+        Vector3 thrustForce = transform.forward * (thrust * controlAuthority);
+        _rb.AddForce(thrustForce, ForceMode.Force);
 
         // Steering torque
         if (Mathf.Abs(_steerInput) > 0.01f)
         {
-            // Boat can only steer effectively when it has forward or current momentum
-            float speedFactor = Mathf.Clamp01(_rb.linearVelocity.magnitude / 2.5f);
-            Vector3 torque = Vector3.up * (_steerInput * steerTorque * controlAuthority * speedFactor);
-            _rb.AddTorque(torque, ForceMode.Force);
+            float speedFactor = Mathf.Clamp01(_rb.linearVelocity.magnitude / 2.0f);
+            Vector3 steer = Vector3.up * (_steerInput * steerTorque * controlAuthority * speedFactor);
+            _rb.AddTorque(steer, ForceMode.Force);
+
+            // Bank / Roll lean into turns (Temple Run style dynamic lean)
+            Vector3 bankingTorque = -transform.forward * (_steerInput * turnBankingLean * controlAuthority * speedFactor);
+            _rb.AddTorque(bankingTorque, ForceMode.Force);
         }
     }
 
     private void UpdateWakeVFX()
     {
         float speed = _rb.linearVelocity.magnitude;
-        bool isMoving = speed > 0.8f;
+        bool isMoving = speed > 0.8f && _isSubmerged;
 
-        if (bowSprayVFX != null)
+        if (bowSplashVFX != null)
         {
-            var emission = bowSprayVFX.emission;
-            emission.rateOverTime = isMoving ? speed * 12f : 0f;
+            var emission = bowSplashVFX.emission;
+            emission.rateOverTime = isMoving ? speed * 15f : 0f;
         }
 
-        if (wakeTrailPort != null) wakeTrailPort.emitting = isMoving;
-        if (wakeTrailStarboard != null) wakeTrailStarboard.emitting = isMoving;
+        if (sternWakePort != null) sternWakePort.emitting = isMoving;
+        if (sternWakeStarboard != null) sternWakeStarboard.emitting = isMoving;
     }
 }
-

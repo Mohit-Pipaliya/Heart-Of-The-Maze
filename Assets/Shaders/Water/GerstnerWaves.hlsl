@@ -49,6 +49,7 @@ void CalculateGerstnerWaves_float(
     float4 Wave3,
     float4 SpeedsSteepness, // x,y,z,w: speeds for waves 0-3
     float4 SteepnessAll,   // x,y,z,w: steepness for waves 0-3
+    float3 SwellSettings,  // x: amp, y: wavelength, z: speed
     out float3 WorldDisplacement,
     out float3 WorldNormal,
     out float CrestIntensity)
@@ -89,10 +90,15 @@ void CalculateGerstnerWaves_float(
         EvaluateGerstnerWave(WorldPos.xz, Time, waves[i], disp, norm, crest);
     }
 
+    // Large rolling swell ridges along the flow direction (Z)
+    float kSwell = 6.28318530718 / max(SwellSettings.y, 0.001);
+    float swellTheta = kSwell * WorldPos.z - (kSwell * SwellSettings.z) * Time;
+    disp.y += sin(swellTheta) * SwellSettings.x;
+    norm.z -= cos(swellTheta) * (kSwell * SwellSettings.x);
+
     WorldDisplacement = disp;
     WorldNormal = normalize(norm);
-    CrestIntensity = saturate((crest / 4.0) * 0.5 + 0.5);
+    CrestIntensity = saturate((crest / 4.0) * 0.5 + 0.5 + (sin(swellTheta) * 0.25));
 }
 
 #endif // GERSTNER_WAVES_INCLUDED
-

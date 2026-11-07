@@ -265,3 +265,4 @@ public class TempleRunRiver : MonoBehaviour
         Gizmos.DrawWireCube(Vector3.zero, new Vector3(riverWidth, totalDrop, riverLength));
     }
 }
+
