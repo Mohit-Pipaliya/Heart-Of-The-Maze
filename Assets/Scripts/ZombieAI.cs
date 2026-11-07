@@ -5,13 +5,13 @@ using UnityEngine.AI;
 /// <summary>
 /// ZombieAI
 /// ========
-/// AAA State-Machine driven Zombie AI:
-/// 1. Wander/Patrol: Walks naturally across the terrain on NavMesh ("Walk").
-/// 2. Alert/Trigger: When player enters trigger area, turns to face player and screams ("Raad").
-/// 3. Chase: Immediately sprints toward the player at run speed ("Run").
-/// 4. Attack: Strikes player with melee attacks and inflicts damage ("Attack").
-/// 5. Hit Reaction: Plays reaction hit animation and brief stun on taking damage ("Hit").
-/// 6. Death: 1000 HP pool; plays death animation and disables collisions upon reaching 0 ("Die").
+/// AAA zombie brain:
+/// 1. Sight is a cone plus a ray, so walls block aggro. Smell only works up close.
+/// 2. Hearing: gunshots, sword swings, and another zombie's scream pull an investigate.
+/// 3. Chase uses the last place the player was actually seen, with a short lead on their velocity.
+/// 4. Lost sight becomes a search, then the zombie gives up and wanders.
+/// 5. A scream wakes the pack. Each one screams only when it sees the player itself.
+/// 6. Attacks need a facing commit, can whiff, and light hits do not stunlock the swing.
 /// </summary>
 [RequireComponent(typeof(NavMeshAgent))]
 [RequireComponent(typeof(Animator))]
@@ -20,8 +20,10 @@ public class ZombieAI : MonoBehaviour
     public enum State
     {
         Wander,
+        Investigate,
         Raad,
         Chase,
+        Search,
         Attack,
         Hit,
         Dead
@@ -35,12 +37,24 @@ public class ZombieAI : MonoBehaviour
     public bool IsDead => _isDead;
 
     [Header("── AI Territory & Trigger Area ──")]
-    [Tooltip("Optional: Inspector me koi BoxCollider/SphereCollider assign karein. Agar empty ho toh detectionRadius use hoga.")]
+    [Tooltip("Optional designer volume. Standing inside it still counts as contact.")]
     public Collider triggerArea;
-    [Tooltip("Player is radius me aate hi zombie use dekhkar 'Raad' (scream) karega.")]
+    [Tooltip("How far the zombie can see, in metres.")]
     public float detectionRadius = 18f;
-    [Tooltip("Player is distance ke bahar nikal jaye toh zombie chase chhodkar wapas walk karne lagega.")]
+    [Tooltip("Hard drop distance once the player has been out of sight for a while.")]
     public float loseTargetRadius = 36f;
+
+    [Header("── Senses ──")]
+    [Range(40f, 180f)] public float viewAngle = 118f;
+    [Tooltip("Behind or beside the zombie, this close still counts as contact.")]
+    public float proximityRadius = 2.8f;
+    [Tooltip("Eye height used for the line-of-sight ray.")]
+    public float eyeHeight = 1.55f;
+    [Tooltip("Seconds without a visual before the chase becomes a search.")]
+    public float loseSightDelay = 1.15f;
+    [Tooltip("How long a search lasts before the zombie goes back to wandering.")]
+    public float searchDuration = 7.5f;
+    public float senseInterval = 0.12f;
 
     [Header("── Movement Settings ──")]
     public float walkSpeed = 1.6f;
@@ -51,12 +65,18 @@ public class ZombieAI : MonoBehaviour
     public float wanderWaitMin = 1.5f;
     public float wanderWaitMax = 3.5f;
     public float rotationSpeed = 8.0f;
+    [Tooltip("Extra burst when the zombie commits a lunge just outside melee.")]
+    public float lungeSpeed = 6.4f;
 
     [Header("── Combat & Attack Settings ──")]
     public float attackRange = 2.2f;
     public float attackDamage = 15f;
-    public float attackCooldown = 2.0f;
+    public float attackCooldown = 1.7f;
     public float attackHitDelay = 0.45f;
+    [Tooltip("Hits at or above this value always break the current action. Sword does. Bullets do not.")]
+    public float heavyStaggerDamage = 140f;
+    [Tooltip("Minimum time between flinches so gunfire cannot freeze the zombie.")]
+    public float staggerCooldown = 0.8f;
 
     [Header("── Raad (Scream) Settings ──")]
     [Tooltip("Scream animation kitni der tak hold karke player ki taraf dekhega.")]
@@ -75,14 +95,12 @@ public class ZombieAI : MonoBehaviour
     [Tooltip("Zombie ke sir ke upar health bar show karein jab damage ho ya player pass ho.")]
     public bool showFloatingHealthBar = false;
 
-    // Component References
     private NavMeshAgent _agent;
     private Animator _anim;
     private Collider _collider;
     private ZombieLocomotion _locomotion;
     private ZombieFootIK _footIK;
 
-    // State Machine
     private State _currentState = State.Wander;
     public State CurrentState => _currentState;
 
@@ -94,13 +112,24 @@ public class ZombieAI : MonoBehaviour
     private Coroutine _activeRoutine;
     private string _currentAnimState = "";
 
-    // Animator Hashes for high-performance crossfade & parameters
-    private static readonly int HashWalk   = Animator.StringToHash("Walk");
-    private static readonly int HashRaad   = Animator.StringToHash("Raad");
-    private static readonly int HashRun    = Animator.StringToHash("Run");
-    private static readonly int HashAttack = Animator.StringToHash("Attack");
-    private static readonly int HashHit    = Animator.StringToHash("Hit");
-    private static readonly int HashDie    = Animator.StringToHash("Die");
+    private bool _canSee;
+    private float _nextSenseTime;
+    private float _lastSeenTime = -999f;
+    private Vector3 _lastKnown;
+    private Vector3 _prevPlayerPos;
+    private Vector3 _playerVelocity;
+    private bool _screamedThisEngagement;
+    private bool _attackCommitted;
+    private float _nextStaggerTime;
+    private float _nextRepathTime;
+    private float _stuckTimer;
+    private float _searchEndTime;
+    private int _searchStepsLeft;
+    private float _flankOffset;
+    private int _avoidancePriority;
+
+    private static readonly Collider[] SepBuffer = new Collider[16];
+    private static readonly RaycastHit[] LosBuffer = new RaycastHit[16];
 
     private void Awake()
     {
@@ -109,20 +138,22 @@ public class ZombieAI : MonoBehaviour
         _locomotion = GetComponent<ZombieLocomotion>() ?? gameObject.AddComponent<ZombieLocomotion>();
         _footIK = GetComponent<ZombieFootIK>() ?? gameObject.AddComponent<ZombieFootIK>();
 
-        // Disable root motion strictly so animations don't float/lift zombie into the air
         if (_anim != null)
-        {
-            _anim.applyRootMotion = false;
-        }
+            _anim.applyRootMotion = true;
 
         if (_agent != null)
         {
             _agent.baseOffset = 0f;
             _agent.updatePosition = true;
             _agent.updateRotation = true;
+            _agent.acceleration = 14f;
+            _agent.angularSpeed = 260f;
+            _agent.autoBraking = true;
+            _agent.obstacleAvoidanceType = ObstacleAvoidanceType.HighQualityObstacleAvoidance;
+            _avoidancePriority = Random.Range(28, 72);
+            _agent.avoidancePriority = _avoidancePriority;
         }
 
-        // Rigidbody safety: on NavMeshAgent, Rigidbody must be kinematic so physics does not fling zombie up
         Rigidbody rb = GetComponent<Rigidbody>();
         if (rb != null)
         {
@@ -134,25 +165,16 @@ public class ZombieAI : MonoBehaviour
         if (_collider == null)
         {
             CapsuleCollider capsule = gameObject.AddComponent<CapsuleCollider>();
-            capsule.center = new Vector3(0f, 0.9f, 0f);
-            capsule.radius = 0.5f;
-            capsule.height = 1.8f;
-            capsule.direction = 1;
-            capsule.isTrigger = false; // Solid physical collider so player CANNOT walk through zombie!
+            FitCapsule(capsule, 1.8f, 0.45f, 0.9f);
             _collider = capsule;
         }
         else
         {
-            _collider.isTrigger = false; // Solid physical collider so player CANNOT walk through zombie!
+            _collider.isTrigger = false;
             if (_collider is CapsuleCollider cap)
-            {
-                cap.center = new Vector3(0f, 0.9f, 0f);
-                cap.height = 1.8f;
-                cap.radius = Mathf.Max(cap.radius, 0.5f);
-            }
+                FitCapsule(cap, 1.8f, 0.45f, 0.9f);
         }
 
-        // Setup 3D Spatial Audio Source
         _zombieAudio = GetComponent<AudioSource>();
         if (_zombieAudio == null)
         {
@@ -166,53 +188,76 @@ public class ZombieAI : MonoBehaviour
 
         if (screamSound == null) screamSound = GameAudio.GetClip(GameAudio.SoundType.ZombieScream);
         if (walkSound == null) walkSound = GameAudio.GetClip(GameAudio.SoundType.ZombieWalk);
+
+        _flankOffset = Random.Range(-1.35f, 1.35f);
+        _nextSenseTime = Time.time + Random.Range(0f, senseInterval);
+    }
+
+    private void OnEnable()
+    {
+        ZombieSense.OnNoise += OnNoise;
+    }
+
+    private void OnDisable()
+    {
+        ZombieSense.OnNoise -= OnNoise;
     }
 
     public void ApplySlidingProfile()
     {
         if (_collider is CapsuleCollider cap)
-        {
-            cap.direction = 1;
-            cap.height = 0.5f;
-            cap.radius = 0.45f;
-            cap.center = new Vector3(0f, 0.25f, 0.1f);
-        }
+            FitCapsule(cap, 0.55f, 0.4f, 0.28f);
         if (_agent != null && _agent.enabled)
         {
             _agent.height = 0.6f;
             _agent.radius = 0.45f;
             _agent.stoppingDistance = 1.2f;
+            _agent.angularSpeed = 45f;
+            _agent.acceleration = 4.5f;
         }
+    }
+
+    /// <summary>
+    /// Collider numbers are world metres. The zombie prefab is scaled, so the
+    /// local capsule has to be divided by that scale or the player cannot reach the body.
+    /// </summary>
+    private void FitCapsule(CapsuleCollider cap, float worldHeight, float worldRadius, float worldCenterY)
+    {
+        float sx = Mathf.Max(0.01f, Mathf.Abs(transform.lossyScale.x));
+        float sy = Mathf.Max(0.01f, Mathf.Abs(transform.lossyScale.y));
+        cap.direction = 1;
+        cap.height = worldHeight / sy;
+        cap.radius = worldRadius / sx;
+        cap.center = new Vector3(0f, worldCenterY / sy, 0f);
+        cap.isTrigger = false;
     }
 
     private void Start()
     {
         _currentHealth = maxHealth;
 
-        // Ensure zombie is firmly grounded on terrain/NavMesh at start
         if (_locomotion != null)
             _locomotion.SnapToGroundImmediate();
         else
             SnapToGround();
 
         _spawnPosition = transform.position;
+        _lastKnown = _spawnPosition;
 
         AutoFindPlayer();
+        if (player != null) _prevPlayerPos = player.position;
         EnsurePlayerCollision();
 
-        // Start wandering immediately
         _currentState = State.Wander;
         if (_agent != null && _agent.enabled)
         {
             _agent.speed = walkSpeed;
-            _agent.stoppingDistance = 1.8f;
+            _agent.stoppingDistance = 1.2f;
         }
         PlayAnimation("Walk", 0.1f);
+        SetNewWanderDestination();
     }
 
-    /// <summary>
-    /// Enforces solid physical collision with player CharacterController so player cannot walk through zombie.
-    /// </summary>
     private void EnsurePlayerCollision()
     {
         if (player == null) AutoFindPlayer();
@@ -231,55 +276,37 @@ public class ZombieAI : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Clamps the zombie's feet firmly to the terrain surface or NavMesh.
-    /// </summary>
     public void SnapToGround()
     {
-        if (_anim != null) _anim.applyRootMotion = false;
+        if (_anim != null) _anim.applyRootMotion = true;
         if (_agent != null) _agent.baseOffset = 0f;
 
-        // 1. Try NavMesh sampling
         if (NavMesh.SamplePosition(transform.position, out NavMeshHit navHit, 30f, NavMesh.AllAreas))
         {
             if (_agent != null && _agent.enabled)
-            {
                 _agent.Warp(navHit.position);
-            }
             else
-            {
                 transform.position = navHit.position;
-            }
             return;
         }
 
-        // 2. Fallback: Raycast down to Terrain / Mesh Collider
-        int groundMask = ~LayerMask.GetMask("Player", "Ignore Raycast");
-        if (Physics.Raycast(transform.position + Vector3.up * 10f, Vector3.down, out RaycastHit hit, 50f, groundMask, QueryTriggerInteraction.Ignore))
+        if (ZombieLocomotion.TryGetGroundPoint(transform.position, 30f, out Vector3 ground))
         {
-            transform.position = hit.point;
-            if (_agent != null && _agent.enabled && NavMesh.SamplePosition(hit.point, out NavMeshHit snapHit, 10f, NavMesh.AllAreas))
-            {
+            transform.position = ground;
+            if (_agent != null && _agent.enabled && NavMesh.SamplePosition(ground, out NavMeshHit snapHit, 10f, NavMesh.AllAreas))
                 _agent.Warp(snapHit.position);
-            }
         }
     }
 
     private void LateUpdate()
     {
-        // Continuously enforce applyRootMotion = false so no animation clip ever floats the character (even during death!)
-        if (_anim != null && _anim.applyRootMotion)
-        {
-            _anim.applyRootMotion = false;
-        }
+        if (_anim != null && !_anim.applyRootMotion)
+            _anim.applyRootMotion = true;
 
         if (_isDead) return;
 
-        // Ensure baseOffset remains 0f
         if (_agent != null && _agent.enabled && _agent.baseOffset != 0f)
-        {
             _agent.baseOffset = 0f;
-        }
     }
 
     private void AutoFindPlayer()
@@ -307,81 +334,201 @@ public class ZombieAI : MonoBehaviour
         }
 
         float distanceToPlayer = Vector3.Distance(transform.position, player.position);
+        SeparateFromPack();
+        KeepBodiesApart(distanceToPlayer);
 
-        // Anti-penetration safety: firmly prevent player and zombie from clipping/walking through each other
-        if (distanceToPlayer < 1.4f)
+        if (Time.time >= _nextSenseTime)
         {
-            Vector3 pushDir = (transform.position - player.position).normalized;
-            pushDir.y = 0f;
-            if (pushDir.sqrMagnitude > 0.001f && _agent != null && _agent.enabled)
-            {
-                float overlap = 1.4f - distanceToPlayer;
-                _agent.Move(pushDir * (overlap * 0.5f));
-            }
+            _nextSenseTime = Time.time + senseInterval;
+            RefreshSenses(distanceToPlayer);
         }
-
-        bool isPlayerInTrigger = IsPlayerInsideTrigger(distanceToPlayer);
 
         switch (_currentState)
         {
             case State.Wander:
-                HandleWander(isPlayerInTrigger);
+                HandleWander();
                 break;
-
+            case State.Investigate:
+                HandleInvestigate();
+                break;
             case State.Raad:
-                RotateTowardPlayer();
+                FacePlayer();
                 break;
-
             case State.Chase:
                 HandleChase(distanceToPlayer);
                 break;
-
-            case State.Attack:
-                RotateTowardPlayer();
+            case State.Search:
+                HandleSearch();
                 break;
-
+            case State.Attack:
+                FacePlayer();
+                break;
             case State.Hit:
-                // Hit stun is handled by coroutine
                 break;
         }
     }
 
-    // ─── Trigger & Proximity Check ──────────────────────────────────────────
+    // ─── Senses ─────────────────────────────────────────────────────────────
 
-    private bool IsPlayerInsideTrigger(float distanceToPlayer)
+    private void RefreshSenses(float distanceToPlayer)
+    {
+        Vector3 current = player.position;
+        float dt = Mathf.Max(senseInterval, Time.deltaTime);
+        Vector3 delta = current - _prevPlayerPos;
+        if (delta.sqrMagnitude > 64f)
+        {
+            _playerVelocity = Vector3.zero;
+        }
+        else
+        {
+            _playerVelocity = delta / dt;
+            _playerVelocity.y = 0f;
+        }
+        _prevPlayerPos = current;
+
+        _canSee = CanSeePlayer(distanceToPlayer);
+
+        if (_canSee)
+        {
+            _lastSeenTime = Time.time;
+            _lastKnown = current + Vector3.ClampMagnitude(_playerVelocity, 8f) * 0.35f;
+
+            if (_currentState == State.Wander || _currentState == State.Investigate || _currentState == State.Search)
+                EngageFromSight();
+        }
+        else
+        {
+            HearFootsteps(distanceToPlayer);
+        }
+    }
+
+    private bool CanSeePlayer(float distanceToPlayer)
     {
         if (player == null) return false;
 
-        // 1. Collider trigger bounds (if assigned)
-        if (triggerArea != null)
+        if (triggerArea != null && triggerArea.bounds.Contains(player.position))
+            return true;
+
+        if (distanceToPlayer <= 1.15f)
+            return true;
+
+        bool close = distanceToPlayer <= proximityRadius;
+        if (!close && distanceToPlayer > detectionRadius)
+            return false;
+
+        Vector3 eye = transform.position + Vector3.up * eyeHeight;
+        Vector3 chest = player.position + Vector3.up * 1.05f;
+        Vector3 to = chest - eye;
+        float dist = to.magnitude;
+        if (dist < 0.05f) return true;
+
+        Vector3 dir = to / dist;
+        Vector3 flatFwd = transform.forward;
+        flatFwd.y = 0f;
+        Vector3 flatTo = to;
+        flatTo.y = 0f;
+        if (!close && flatFwd.sqrMagnitude > 0.001f && flatTo.sqrMagnitude > 0.001f)
         {
-            if (triggerArea.bounds.Contains(player.position))
-                return true;
+            if (Vector3.Angle(flatFwd, flatTo) > viewAngle * 0.5f)
+                return false;
         }
 
-        // 2. Spherical proximity radius
-        return distanceToPlayer <= detectionRadius;
+        int count = Physics.RaycastNonAlloc(eye, dir, LosBuffer, dist - 0.15f, ~0, QueryTriggerInteraction.Ignore);
+        float closest = float.MaxValue;
+        int closestIndex = -1;
+        for (int i = 0; i < count; i++)
+        {
+            Transform hitTransform = LosBuffer[i].transform;
+            if (hitTransform == transform || hitTransform.IsChildOf(transform))
+                continue;
+            if (hitTransform.GetComponentInParent<ZombieAI>() != null)
+                continue;
+            if (LosBuffer[i].distance < closest)
+            {
+                closest = LosBuffer[i].distance;
+                closestIndex = i;
+            }
+        }
+
+        if (closestIndex < 0)
+            return true;
+
+        Transform blocker = LosBuffer[closestIndex].transform;
+        return blocker == player || blocker.IsChildOf(player) || player.IsChildOf(blocker);
     }
 
-    // ─── State: Wander / Patrol ─────────────────────────────────────────────
-
-    private void HandleWander(bool isPlayerInTrigger)
+    private void HearFootsteps(float distanceToPlayer)
     {
-        // Player enters trigger area → trigger Raad (scream)
-        if (isPlayerInTrigger)
+        CharacterController cc = player.GetComponent<CharacterController>();
+        if (cc == null) return;
+
+        Vector3 flat = cc.velocity;
+        flat.y = 0f;
+        float speed = flat.magnitude;
+        float hearRange = 6.5f + speed * 0.45f;
+        if (speed <= 3.4f || distanceToPlayer > hearRange) return;
+
+        _lastKnown = player.position;
+        if (_currentState == State.Investigate)
         {
-            StartRaad();
+            if (Time.time >= _nextRepathTime)
+            {
+                _nextRepathTime = Time.time + 0.45f;
+                SetGoal(player.position, 2.5f);
+            }
             return;
         }
 
-        if (_agent == null || !_agent.enabled) return;
+        if (_currentState == State.Wander || _currentState == State.Search)
+            BeginInvestigate(player.position, speed > 5.5f);
+    }
 
-        _agent.speed = walkSpeed;
-        PlayAnimation("Walk", 0.2f);
+    private void OnNoise(ZombieSense.Noise noise)
+    {
+        if (_isDead || !isActiveAndEnabled) return;
+
+        float dist = Vector3.Distance(transform.position, noise.position);
+        if (dist < 0.4f || dist > noise.radius) return;
+
+        bool loud = noise.kind == ZombieSense.Kind.Gunshot || noise.kind == ZombieSense.Kind.Scream;
+
+        if (_canSee && (_currentState == State.Chase || _currentState == State.Attack || _currentState == State.Raad))
+            return;
+
+        _lastKnown = noise.position;
+
+        if (_currentState == State.Chase)
+        {
+            SetGoal(noise.position, _isSliding ? 1.1f : 1.4f);
+            return;
+        }
+
+        if (_currentState == State.Attack || _currentState == State.Raad || _currentState == State.Hit)
+            return;
+
+        BeginInvestigate(noise.position, loud);
+    }
+
+    private void EngageFromSight()
+    {
+        if (!_screamedThisEngagement && !_isSliding)
+            StartRaad();
+        else
+            StartChase();
+    }
+
+    // ─── Wander ─────────────────────────────────────────────────────────────
+
+    private void HandleWander()
+    {
+        if (_agent == null || !_agent.enabled || !_agent.isOnNavMesh) return;
+
+        SetAgentFacing(true);
+        _agent.speed = _isSliding ? slideSpeed : walkSpeed;
+        PlayAnimation(_isSliding ? "Slide" : "Walk", 0.2f);
         TryPlayWalkSound();
 
-        // Check if reached wander destination
-        if (!_agent.pathPending && _agent.remainingDistance <= _agent.stoppingDistance + 0.2f)
+        if (!_agent.pathPending && _agent.remainingDistance <= _agent.stoppingDistance + 0.25f)
         {
             _wanderWaitTimer -= Time.deltaTime;
             if (_wanderWaitTimer <= 0f)
@@ -404,28 +551,73 @@ public class ZombieAI : MonoBehaviour
         Vector3 targetCenter = triggerArea != null ? triggerArea.bounds.center : _spawnPosition;
         Vector3 randomPoint = targetCenter + Random.insideUnitSphere * wanderRadius;
         randomPoint.y = transform.position.y;
+        SetGoal(randomPoint, 0.8f);
+    }
 
-        if (NavMesh.SamplePosition(randomPoint, out NavMeshHit hit, wanderRadius, NavMesh.AllAreas))
+    // ─── Investigate (heard, not seen) ──────────────────────────────────────
+
+    private void BeginInvestigate(Vector3 point, bool sprint)
+    {
+        if (_isDead) return;
+        if (_currentState == State.Raad || _currentState == State.Attack || _currentState == State.Hit)
+            return;
+
+        StopActiveRoutine();
+        _currentState = State.Investigate;
+        _lastKnown = point;
+        _stuckTimer = 0f;
+
+        if (_agent != null && _agent.enabled)
         {
+            SetAgentFacing(true);
             _agent.isStopped = false;
-            _agent.SetDestination(hit.position);
+            _agent.speed = _isSliding ? slideSpeed : (sprint ? runSpeed : walkSpeed * 1.25f);
+            _agent.stoppingDistance = 1.1f;
+        }
+
+        PlayAnimation(_isSliding ? "Slide" : (sprint ? "Run" : "Walk"), 0.18f);
+        SetGoal(point, 2.5f);
+    }
+
+    private void HandleInvestigate()
+    {
+        if (_canSee)
+        {
+            EngageFromSight();
+            return;
+        }
+
+        if (_agent == null || !_agent.enabled || !_agent.isOnNavMesh) return;
+
+        SetAgentFacing(true);
+        bool arrived = !_agent.pathPending && _agent.remainingDistance <= _agent.stoppingDistance + 0.45f;
+        RecoverIfStuck();
+
+        if (arrived)
+        {
+            BeginSearch();
+            return;
+        }
+
+        if (Time.time >= _nextRepathTime)
+        {
+            _nextRepathTime = Time.time + 0.45f;
+            SetGoal(_lastKnown, 2.5f);
         }
     }
 
-    // ─── State: Raad (Scream / Alert) ────────────────────────────────────────
+    // ─── Raad ───────────────────────────────────────────────────────────────
 
     private void StartRaad()
     {
         if (_currentState == State.Raad || _isDead) return;
 
         _currentState = State.Raad;
-        if (_agent != null && _agent.enabled)
-        {
-            _agent.isStopped = true;
-            _agent.velocity = Vector3.zero;
-        }
+        _screamedThisEngagement = true;
+        StopAgent();
+        SetAgentFacing(false);
 
-        if (_activeRoutine != null) StopCoroutine(_activeRoutine);
+        StopActiveRoutine();
         _activeRoutine = StartCoroutine(RaadRoutine());
     }
 
@@ -433,103 +625,260 @@ public class ZombieAI : MonoBehaviour
     {
         PlayAnimation("Raad", 0.12f);
         GameAudio.PlayZombieScream(transform.position, _zombieAudio);
+        ZombieSense.Report(transform.position, ZombieSense.Kind.Scream);
 
         float elapsed = 0f;
         while (elapsed < screamDuration)
         {
             if (_isDead) yield break;
-            RotateTowardPlayer();
+            FacePlayer();
             elapsed += Time.deltaTime;
             yield return null;
         }
 
-        // Turant hi player ki side run karke jana chahiye
         StartChase();
     }
 
-    // ─── State: Chase (Run / Slide) ─────────────────────────────────────────
+    // ─── Chase ──────────────────────────────────────────────────────────────
 
     private void StartChase()
     {
         if (_isDead) return;
 
+        StopActiveRoutine();
         _currentState = State.Chase;
+        _stuckTimer = 0f;
+        _attackCommitted = false;
+
         if (_agent != null && _agent.enabled)
         {
             _agent.isStopped = false;
             _agent.speed = _isSliding ? slideSpeed : runSpeed;
-            _agent.stoppingDistance = _isSliding ? 1.2f : Mathf.Max(1.8f, attackRange * 0.8f);
-            if (player != null) _agent.SetDestination(player.position);
+            _agent.stoppingDistance = _isSliding ? 1.15f : 1.35f;
+            SetAgentFacing(true);
         }
 
         PlayAnimation(_isSliding ? "Slide" : "Run", 0.15f);
+        SetGoal(ChaseDestination(), 2f);
     }
 
     private void HandleChase(float distanceToPlayer)
     {
-        if (_agent == null || !_agent.enabled || player == null) return;
+        if (_agent == null || !_agent.enabled || !_agent.isOnNavMesh || player == null) return;
 
-        _agent.isStopped = false;
-        _agent.speed = _isSliding ? slideSpeed : runSpeed;
-        _agent.stoppingDistance = _isSliding ? 1.2f : Mathf.Max(1.8f, attackRange * 0.8f);
-        PlayAnimation(_isSliding ? "Slide" : "Run", 0.15f);
+        float melee = _isSliding ? 1.4f : attackRange;
+        bool recentlySeen = Time.time - _lastSeenTime <= loseSightDelay;
 
-        // Continuously refresh player position
-        _agent.SetDestination(player.position);
-
-        TryPlayWalkSound();
-
-        // Reached attack area → Attack
-        float currentAttackRange = _isSliding ? 1.4f : attackRange;
-        if (distanceToPlayer <= currentAttackRange)
+        if (_canSee && distanceToPlayer <= melee && FacingPlayer(42f))
         {
             StartAttack();
             return;
         }
 
-        // Lost player outside chase perimeter → resume wander
-        if (distanceToPlayer > loseTargetRadius)
+        if (!_canSee && !recentlySeen)
         {
-            _currentState = State.Wander;
-            SetNewWanderDestination();
-            PlayAnimation(_isSliding ? "Slide" : "Walk", 0.25f);
+            BeginSearch();
+            return;
+        }
+
+        if (!_canSee && distanceToPlayer > loseTargetRadius && Time.time - _lastSeenTime > 2.5f)
+        {
+            Disengage();
+            return;
+        }
+
+        bool close = _canSee && distanceToPlayer < melee * 1.7f;
+        SetAgentFacing(!close);
+        if (close) FacePlayer();
+
+        _agent.isStopped = false;
+        _agent.speed = _isSliding ? slideSpeed : runSpeed;
+        PlayAnimation(_isSliding ? "Slide" : "Run", 0.15f);
+        TryPlayWalkSound();
+        RecoverIfStuck();
+
+        if (Time.time >= _nextRepathTime)
+        {
+            _nextRepathTime = Time.time + (close ? 0.12f : 0.22f);
+            SetGoal(ChaseDestination(), 2f);
         }
     }
 
-    // ─── State: Attack ──────────────────────────────────────────────────────
+    private Vector3 ChaseDestination()
+    {
+        if (!_canSee || player == null) return _lastKnown;
+
+        Vector3 toPlayer = player.position - transform.position;
+        toPlayer.y = 0f;
+        if (toPlayer.sqrMagnitude < 0.01f) return player.position;
+
+        float dist = toPlayer.magnitude;
+        if (dist > attackRange * 3.2f)
+            return player.position + Vector3.ClampMagnitude(_playerVelocity, 7f) * 0.28f;
+
+        Vector3 side = Vector3.Cross(Vector3.up, toPlayer.normalized);
+        float holdOff = Mathf.Max(0.4f, attackRange * 0.72f);
+        return player.position - toPlayer.normalized * holdOff + side * _flankOffset;
+    }
+
+    // ─── Search ─────────────────────────────────────────────────────────────
+
+    private void BeginSearch()
+    {
+        if (_isDead) return;
+        if (_currentState == State.Search) return;
+
+        StopActiveRoutine();
+        _currentState = State.Search;
+        _searchEndTime = Time.time + searchDuration;
+        _searchStepsLeft = 3;
+        _stuckTimer = 0f;
+
+        if (_agent != null && _agent.enabled)
+        {
+            SetAgentFacing(true);
+            _agent.isStopped = false;
+            _agent.speed = _isSliding ? slideSpeed : walkSpeed;
+            _agent.stoppingDistance = 0.7f;
+        }
+
+        PlayAnimation(_isSliding ? "Slide" : "Walk", 0.22f);
+        PickSearchPoint();
+    }
+
+    private void HandleSearch()
+    {
+        if (_canSee)
+        {
+            EngageFromSight();
+            return;
+        }
+
+        if (Time.time >= _searchEndTime || _searchStepsLeft <= 0)
+        {
+            Disengage();
+            return;
+        }
+
+        if (_agent == null || !_agent.enabled || !_agent.isOnNavMesh) return;
+
+        SetAgentFacing(true);
+        _agent.speed = _isSliding ? slideSpeed : walkSpeed;
+        PlayAnimation(_isSliding ? "Slide" : "Walk", 0.2f);
+        RecoverIfStuck();
+
+        if (!_agent.pathPending && _agent.remainingDistance <= _agent.stoppingDistance + 0.35f)
+        {
+            _searchStepsLeft--;
+            if (_searchStepsLeft <= 0)
+            {
+                Disengage();
+                return;
+            }
+            PickSearchPoint();
+        }
+    }
+
+    private void PickSearchPoint()
+    {
+        Vector3 offset = Random.insideUnitSphere * Random.Range(2.5f, 6.5f);
+        offset.y = 0f;
+        SetGoal(_lastKnown + offset, 4f);
+    }
+
+    private void Disengage()
+    {
+        StopActiveRoutine();
+        _screamedThisEngagement = false;
+        _canSee = false;
+        _currentState = State.Wander;
+        _stuckTimer = 0f;
+        if (_agent != null && _agent.enabled)
+        {
+            SetAgentFacing(true);
+            _agent.isStopped = false;
+            _agent.speed = _isSliding ? slideSpeed : walkSpeed;
+            _agent.stoppingDistance = 0.8f;
+        }
+        PlayAnimation(_isSliding ? "Slide" : "Walk", 0.25f);
+        SetNewWanderDestination();
+    }
+
+    // ─── Attack ─────────────────────────────────────────────────────────────
 
     private void StartAttack()
     {
         if (_currentState == State.Attack || _isDead) return;
 
         _currentState = State.Attack;
-        if (_agent != null && _agent.enabled)
-        {
-            _agent.isStopped = true;
-            _agent.velocity = Vector3.zero;
-        }
+        _attackCommitted = false;
+        StopAgent();
+        SetAgentFacing(false);
 
-        if (_activeRoutine != null) StopCoroutine(_activeRoutine);
+        StopActiveRoutine();
         _activeRoutine = StartCoroutine(AttackRoutine());
     }
 
     private IEnumerator AttackRoutine()
     {
+        float melee = _isSliding ? 1.4f : attackRange;
+
+        if (!_isSliding && player != null)
+        {
+            float dist = Vector3.Distance(transform.position, player.position);
+            if (dist > melee * 0.85f && dist < melee * 2.5f)
+            {
+                if (_agent != null && _agent.enabled && _agent.isOnNavMesh)
+                {
+                    _agent.isStopped = false;
+                    _agent.speed = lungeSpeed;
+                    _agent.stoppingDistance = 0.85f;
+                    SetGoal(player.position, 1.5f);
+                }
+                PlayAnimation("Run", 0.08f);
+
+                float lunged = 0f;
+                while (lunged < 0.32f && !_isDead)
+                {
+                    FacePlayer();
+                    lunged += Time.deltaTime;
+                    if (player != null && Vector3.Distance(transform.position, player.position) <= melee * 0.9f)
+                        break;
+                    yield return null;
+                }
+
+                StopAgent();
+            }
+        }
+
         while (_currentState == State.Attack && !_isDead)
         {
-            RotateTowardPlayer();
-            // When sliding, strictly remain in Slide / crawl without popping upright
-            PlayAnimation(_isSliding ? "Slide" : "Attack", 0.12f);
+            float aimTime = 0f;
+            while (aimTime < 0.28f && !FacingPlayer(32f))
+            {
+                if (_isDead) yield break;
+                FacePlayer();
+                aimTime += Time.deltaTime;
+                yield return null;
+            }
 
-            // Wait for strike frame
-            yield return new WaitForSeconds(attackHitDelay);
+            _attackCommitted = true;
+            FacePlayer();
+            PlayAnimation(_isSliding ? "Slide" : "Attack", 0.08f);
 
-            if (_isDead) yield break;
+            float wind = 0f;
+            while (wind < attackHitDelay)
+            {
+                if (_isDead) yield break;
+                FacePlayer();
+                wind += Time.deltaTime;
+                yield return null;
+            }
 
-            float currentAttackRange = _isSliding ? 1.4f : attackRange;
-
-            // Deal damage if player is still within melee reach
-            if (player != null && Vector3.Distance(transform.position, player.position) <= currentAttackRange + 0.9f)
+            melee = _isSliding ? 1.4f : attackRange;
+            bool inReach = player != null && Vector3.Distance(transform.position, player.position) <= melee + 0.55f;
+            bool aimed = FacingPlayer(58f);
+            if (inReach && aimed)
             {
                 PlayerController pc = player.GetComponent<PlayerController>();
                 if (pc != null && !pc.IsDead)
@@ -537,26 +886,25 @@ public class ZombieAI : MonoBehaviour
                     pc.TakeDamage((int)attackDamage);
                     GameAudio.PlayBulletHit(player.position, true);
 
-                    // Blood splash on player
                     Vector3 strikePos = player.position + Vector3.up * 1.1f;
                     VFXUtil.Burst(strikePos, transform.forward, new Color(0.85f, 0.08f, 0.05f, 1f),
                         14, 4f, 11f, 0.06f, 0.18f, 0.15f, 0.32f, true, true, 1.8f, 35f);
                 }
             }
 
-            // Remainder of attack cooldown
-            float restCooldown = Mathf.Max(0.05f, attackCooldown - attackHitDelay);
+            _attackCommitted = false;
+
+            float rest = Mathf.Max(0.2f, attackCooldown - attackHitDelay + Random.Range(-0.15f, 0.25f));
             float timer = 0f;
-            while (timer < restCooldown)
+            while (timer < rest)
             {
                 if (_isDead) yield break;
-                RotateTowardPlayer();
+                FacePlayer();
                 timer += Time.deltaTime;
                 yield return null;
             }
 
-            // Check if player fled out of attack range
-            if (player != null && Vector3.Distance(transform.position, player.position) > currentAttackRange)
+            if (player == null || Vector3.Distance(transform.position, player.position) > melee || !FacingPlayer(70f))
             {
                 StartChase();
                 yield break;
@@ -564,107 +912,105 @@ public class ZombieAI : MonoBehaviour
         }
     }
 
-    // ─── Damage & Hit Reaction ──────────────────────────────────────────────
+    // ─── Damage ─────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Player attack (Bullet raycast or Sword overlap) calls this function.
-    /// </summary>
-    public void TakeDamage(float amount)
+    public void TakeDamage(float amount, Vector3 hitPoint = default, Vector3 hitNormal = default)
     {
         if (_isDead) return;
 
         _currentHealth -= amount;
-        Debug.Log($"<color=#FF3333><b>[Zombie Hit!]</b></color> Damage: {amount} | HP: {Mathf.Max(0f, _currentHealth)}/{maxHealth}");
 
-        // Blood VFX & flash
-        Vector3 hitPoint = transform.position + Vector3.up * 1.1f;
-        VFXUtil.SpawnFadingLight(hitPoint, new Color(0.9f, 0.1f, 0.05f), 4f, 2.0f, 0.08f);
-        VFXUtil.Burst(hitPoint, Vector3.up, new Color(0.85f, 0.08f, 0.05f, 1f),
-            20, 4f, 12f, 0.07f, 0.22f, 0.14f, 0.38f, true, true, 2.0f, 40f);
+        Vector3 fxPos = hitPoint == default ? (transform.position + Vector3.up * 1.1f) : hitPoint;
+        VFXUtil.SpawnFadingLight(fxPos, new Color(1.0f, 0.04f, 0.02f), 4.5f, 3.2f, 0.08f);
 
         if (GunShooter.Instance != null)
             GunShooter.Instance.RegisterHitMarker(_currentHealth <= 0f);
 
-        // Visceral Hit Knockback (push zombie back away from player on impact so it visibly flinches)
         if (player != null)
         {
-            Vector3 pushDir = (transform.position - player.position).normalized;
+            _lastKnown = player.position;
+            _lastSeenTime = Time.time;
+            _screamedThisEngagement = true;
+        }
+
+        bool heavy = amount >= heavyStaggerDamage;
+        bool armored = _attackCommitted && !heavy;
+        bool canStagger = heavy || Time.time >= _nextStaggerTime;
+        float knock = heavy ? 0.55f : 0.08f;
+        if (_isSliding) knock *= 0.55f;
+
+        if (player != null && knock > 0f)
+        {
+            Vector3 pushDir = (transform.position - player.position);
             pushDir.y = 0f;
-            if (_agent != null && _agent.enabled)
+            if (pushDir.sqrMagnitude > 0.001f)
             {
-                _agent.Move(pushDir * 0.4f);
-            }
-            else
-            {
-                transform.position += pushDir * 0.4f;
+                pushDir.Normalize();
+                if (_agent != null && _agent.enabled)
+                    _agent.Move(pushDir * knock);
+                else
+                    transform.position += pushDir * knock;
             }
         }
 
-        // Check for Death
         if (_currentHealth <= 0f)
         {
             Die();
             return;
         }
 
-        // Check for 600 HP threshold: Activate Slide (Crawl) mode!
         if (_currentHealth <= 600f && !_isSliding)
         {
             _isSliding = true;
             if (_footIK != null) _footIK.SetIKActive(false);
             ApplySlidingProfile();
-            Debug.Log($"<color=#FFAA00><b>[Zombie Slide Triggered!]</b> Health reached {_currentHealth} <= 600. Playing Slide animation!</color>");
         }
 
-        // Trigger Hit Reaction: Sliding zombies stay low, only upright zombies play standing Hit
-        if (_activeRoutine != null) StopCoroutine(_activeRoutine);
-        if (_isSliding)
+        if (_currentState == State.Wander || _currentState == State.Investigate || _currentState == State.Search)
+            _currentState = State.Chase;
+
+        if (armored || !canStagger)
         {
-            _activeRoutine = StartCoroutine(SlideHitRoutine());
+            if (_currentState != State.Attack && _currentState != State.Raad && _currentState != State.Hit)
+                StartChase();
+            return;
         }
-        else
-        {
-            _activeRoutine = StartCoroutine(HitRoutine());
-        }
+
+        _nextStaggerTime = Time.time + (heavy ? 0.35f : staggerCooldown);
+
+        StopActiveRoutine();
+        _activeRoutine = StartCoroutine(_isSliding ? SlideHitRoutine() : HitRoutine());
     }
 
     private IEnumerator SlideHitRoutine()
     {
         _currentState = State.Hit;
-        if (_agent != null && _agent.enabled)
-        {
-            _agent.isStopped = true;
-            _agent.velocity = Vector3.zero;
-        }
-
-        // Keep playing Slide — NEVER stand up!
+        _attackCommitted = false;
+        StopAgent();
         PlayAnimation("Slide", 0.05f);
 
-        // Brief flinch while staying low
-        yield return new WaitForSeconds(0.25f);
-
+        yield return new WaitForSeconds(0.22f);
         if (_isDead) yield break;
-
         StartChase();
     }
 
     private IEnumerator HitRoutine()
     {
         _currentState = State.Hit;
-        if (_agent != null && _agent.enabled)
-        {
-            _agent.isStopped = true;
-            _agent.velocity = Vector3.zero;
-        }
-
+        _attackCommitted = false;
+        StopAgent();
+        SetAgentFacing(false);
         PlayAnimation("Hit", 0.06f);
 
-        // Stun window (allows animation to display)
-        yield return new WaitForSeconds(0.42f);
+        float elapsed = 0f;
+        while (elapsed < 0.42f)
+        {
+            if (_isDead) yield break;
+            FacePlayer();
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
 
-        if (_isDead) yield break;
-
-        // Enraged by damage: immediately sprint/slide after player
         StartChase();
     }
 
@@ -678,16 +1024,16 @@ public class ZombieAI : MonoBehaviour
         _isSliding = false;
         _currentState = State.Dead;
         _currentHealth = 0f;
+        _attackCommitted = false;
 
-        if (_activeRoutine != null) StopCoroutine(_activeRoutine);
+        StopActiveRoutine();
 
         if (_footIK != null) _footIK.SetIKActive(false);
         if (_locomotion != null) _locomotion.enabled = false;
 
-        // Reset all animation states and triggers so death can NEVER be interrupted
         if (_anim != null)
         {
-            _anim.applyRootMotion = false;
+            _anim.applyRootMotion = true;
             _anim.ResetTrigger("Hit");
             _anim.ResetTrigger("Attack");
             _anim.ResetTrigger("Raad");
@@ -701,7 +1047,6 @@ public class ZombieAI : MonoBehaviour
             _anim.CrossFadeInFixedTime("Die", 0.08f, 0, 0f);
         }
 
-        // Stop navigation
         if (_agent != null && _agent.enabled)
         {
             _agent.isStopped = true;
@@ -709,7 +1054,6 @@ public class ZombieAI : MonoBehaviour
             _agent.enabled = false;
         }
 
-        // Freeze Rigidbody so physics forces cannot propel corpse into air
         Rigidbody rb = GetComponent<Rigidbody>();
         if (rb != null)
         {
@@ -719,20 +1063,11 @@ public class ZombieAI : MonoBehaviour
             rb.angularVelocity = Vector3.zero;
         }
 
-        // Snap firmly to terrain ground
         SnapToGround();
-
-        // Start continuous ground clamp coroutine so corpse stays glued to ground surface throughout death animation
         StartCoroutine(DeathGroundClampRoutine());
 
-        // Disable collider so player doesn't collide with corpse
         if (_collider != null) _collider.enabled = false;
-
         PlayAnimation("Die", 0.08f);
-
-        Debug.Log("<color=#FF0000><b>[Zombie Dead!] Firmly grounded on terrain, death animation playing.</b></color>");
-
-        // Destroy after 25 seconds (corpse remains on terrain for a while)
         Destroy(gameObject, 25f);
     }
 
@@ -740,46 +1075,137 @@ public class ZombieAI : MonoBehaviour
     {
         float duration = 5.0f;
         float elapsed = 0f;
-        int groundMask = ~LayerMask.GetMask("Player", "Ignore Raycast");
 
         while (elapsed < duration)
         {
             elapsed += Time.deltaTime;
 
-            if (_anim != null && _anim.applyRootMotion)
-                _anim.applyRootMotion = false;
+            if (_anim != null && !_anim.applyRootMotion)
+                _anim.applyRootMotion = true;
 
-            // Firmly glue to ground, preventing any vertical displacement or floating
-            Vector3 origin = transform.position + Vector3.up * 2.0f;
-            if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, 6f, groundMask, QueryTriggerInteraction.Ignore))
-            {
-                transform.position = new Vector3(transform.position.x, hit.point.y, transform.position.z);
-            }
+            if (ZombieLocomotion.TryGetGroundPoint(transform.position, 6f, out Vector3 ground))
+                transform.position = new Vector3(transform.position.x, ground.y, transform.position.z);
 
             yield return null;
         }
     }
 
-    // ─── Helpers: Smooth Rotation & Animation ───────────────────────────────
+    // ─── Steering helpers ───────────────────────────────────────────────────
 
-    private void RotateTowardPlayer()
+    private void FacePlayer()
     {
         if (player == null) return;
 
         Vector3 dir = player.position - transform.position;
         dir.y = 0f;
-        if (dir.sqrMagnitude > 0.001f)
-        {
-            Quaternion targetRot = Quaternion.LookRotation(dir);
+        if (dir.sqrMagnitude < 0.001f) return;
+
+        Quaternion targetRot = Quaternion.LookRotation(dir);
+        if (_isSliding)
+            transform.rotation = Quaternion.RotateTowards(transform.rotation, targetRot, 45f * Time.deltaTime);
+        else
             transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * rotationSpeed);
+    }
+
+    private bool FacingPlayer(float degrees)
+    {
+        if (player == null) return false;
+        Vector3 dir = player.position - transform.position;
+        dir.y = 0f;
+        if (dir.sqrMagnitude < 0.001f) return true;
+        return Vector3.Angle(transform.forward, dir) <= degrees;
+    }
+
+    private void SetAgentFacing(bool agentDrivesRotation)
+    {
+        if (_agent != null && _agent.enabled)
+            _agent.updateRotation = agentDrivesRotation && !_isSliding;
+    }
+
+    private void StopAgent()
+    {
+        if (_agent != null && _agent.enabled && _agent.isOnNavMesh)
+        {
+            _agent.isStopped = true;
+            _agent.velocity = Vector3.zero;
+            _agent.ResetPath();
         }
+    }
+
+    private void StopActiveRoutine()
+    {
+        if (_activeRoutine != null)
+        {
+            StopCoroutine(_activeRoutine);
+            _activeRoutine = null;
+        }
+    }
+
+    private bool SetGoal(Vector3 world, float sampleRadius)
+    {
+        if (_agent == null || !_agent.enabled || !_agent.isOnNavMesh) return false;
+        if (!NavMesh.SamplePosition(world, out NavMeshHit hit, sampleRadius, NavMesh.AllAreas))
+            return false;
+
+        _agent.isStopped = false;
+        _agent.SetDestination(hit.position);
+        return true;
+    }
+
+    private void RecoverIfStuck()
+    {
+        if (_agent == null || !_agent.enabled || !_agent.isOnNavMesh) return;
+        bool blocked = _agent.velocity.sqrMagnitude < 0.04f && _agent.remainingDistance > 1.25f && !_agent.pathPending;
+        _stuckTimer = blocked ? _stuckTimer + Time.deltaTime : 0f;
+        if (_stuckTimer < 1.05f) return;
+
+        _stuckTimer = 0f;
+        Vector3 side = transform.right * Random.Range(-2.4f, 2.4f) + transform.forward * Random.Range(1.2f, 2.8f);
+        SetGoal(transform.position + side, 3f);
+    }
+
+    private void SeparateFromPack()
+    {
+        if (_agent == null || !_agent.enabled || !_agent.isOnNavMesh) return;
+        if (_currentState == State.Raad || _currentState == State.Hit || _currentState == State.Dead) return;
+
+        int count = Physics.OverlapSphereNonAlloc(transform.position, 1.45f, SepBuffer, ~0, QueryTriggerInteraction.Ignore);
+        Vector3 push = Vector3.zero;
+        int hits = 0;
+        for (int i = 0; i < count; i++)
+        {
+            Collider col = SepBuffer[i];
+            if (col == null || col.transform == transform || col.transform.IsChildOf(transform)) continue;
+            ZombieAI other = col.GetComponentInParent<ZombieAI>();
+            if (other == null || other == this || other.IsDead) continue;
+
+            Vector3 away = transform.position - other.transform.position;
+            away.y = 0f;
+            float mag = away.magnitude;
+            if (mag < 0.05f) away = transform.right;
+            else away /= mag;
+            push += away * (1.45f - Mathf.Min(mag, 1.45f));
+            hits++;
+        }
+
+        if (hits > 0)
+            _agent.Move((push / hits) * (2.2f * Time.deltaTime));
+    }
+
+    private void KeepBodiesApart(float distanceToPlayer)
+    {
+        if (distanceToPlayer >= 1.35f) return;
+        Vector3 pushDir = transform.position - player.position;
+        pushDir.y = 0f;
+        if (pushDir.sqrMagnitude < 0.001f || _agent == null || !_agent.enabled) return;
+        float overlap = 1.35f - distanceToPlayer;
+        _agent.Move(pushDir.normalized * (overlap * 0.5f));
     }
 
     private void PlayAnimation(string stateName, float crossfade = 0.15f)
     {
         if (_anim == null) return;
 
-        // Synchronize Animator Parameters for Transition Conditions
         switch (stateName)
         {
             case "Walk":
@@ -787,14 +1213,12 @@ public class ZombieAI : MonoBehaviour
                 SetAnimBoolSafe("IsRunning", false);
                 SetAnimFloatSafe("Speed", walkSpeed);
                 break;
-
             case "Run":
                 SetAnimBoolSafe("IsMoving", true);
                 SetAnimBoolSafe("IsRunning", true);
                 SetAnimBoolSafe("IsSliding", false);
                 SetAnimFloatSafe("Speed", runSpeed);
                 break;
-
             case "Slide":
                 SetAnimBoolSafe("IsMoving", true);
                 SetAnimBoolSafe("IsRunning", false);
@@ -802,24 +1226,21 @@ public class ZombieAI : MonoBehaviour
                 SetAnimFloatSafe("Speed", slideSpeed);
                 SetAnimTriggerSafe("Slide");
                 break;
-
             case "Raad":
                 SetAnimBoolSafe("IsMoving", false);
                 SetAnimBoolSafe("IsRunning", false);
                 SetAnimFloatSafe("Speed", 0f);
                 SetAnimTriggerSafe("Raad");
                 break;
-
             case "Attack":
                 SetAnimBoolSafe("IsMoving", false);
+                SetAnimBoolSafe("IsRunning", false);
                 SetAnimFloatSafe("Speed", 0f);
                 SetAnimTriggerSafe("Attack");
                 break;
-
             case "Hit":
                 SetAnimTriggerSafe("Hit");
                 break;
-
             case "Die":
                 SetAnimBoolSafe("IsMoving", false);
                 SetAnimBoolSafe("IsRunning", false);
@@ -837,12 +1258,9 @@ public class ZombieAI : MonoBehaviour
         if (_currentAnimState == stateName) return;
         _currentAnimState = stateName;
 
-        // Direct State Crossfade (works reliably with Zombie.controller states)
         int hash = Animator.StringToHash(stateName);
         if (_anim.HasState(0, hash))
-        {
             _anim.CrossFadeInFixedTime(stateName, crossfade);
-        }
     }
 
     private void SetAnimTriggerSafe(string paramName)
@@ -897,26 +1315,34 @@ public class ZombieAI : MonoBehaviour
         }
     }
 
-    // ─── Floating Health Bar (Disabled / Removed per user request) ───────────
-
     private void OnGUI()
     {
-        // Health bar removed completely
     }
 
     private void OnDrawGizmosSelected()
     {
-        // Detection Area (Yellow)
-        Gizmos.color = new Color(1f, 0.9f, 0.1f, 0.4f);
-        Gizmos.DrawWireSphere(transform.position, detectionRadius);
+        Gizmos.color = new Color(1f, 0.9f, 0.1f, 0.85f);
+        Vector3 eye = transform.position + Vector3.up * eyeHeight;
+        Vector3 left = Quaternion.Euler(0f, -viewAngle * 0.5f, 0f) * transform.forward;
+        Vector3 right = Quaternion.Euler(0f, viewAngle * 0.5f, 0f) * transform.forward;
+        Gizmos.DrawLine(eye, eye + left * detectionRadius);
+        Gizmos.DrawLine(eye, eye + right * detectionRadius);
 
-        // Attack Range (Red)
+        Gizmos.color = new Color(1f, 0.45f, 0.1f, 0.45f);
+        Gizmos.DrawWireSphere(transform.position, proximityRadius);
+
         Gizmos.color = new Color(1f, 0.15f, 0.15f, 0.6f);
         Gizmos.DrawWireSphere(transform.position, attackRange);
 
-        // Wander Radius (Cyan)
         Vector3 center = triggerArea != null ? triggerArea.bounds.center : (Application.isPlaying ? _spawnPosition : transform.position);
         Gizmos.color = new Color(0.2f, 0.8f, 1f, 0.3f);
         Gizmos.DrawWireSphere(center, wanderRadius);
+
+        if (Application.isPlaying)
+        {
+            Gizmos.color = new Color(1f, 0.2f, 0.8f, 0.9f);
+            Gizmos.DrawSphere(_lastKnown, 0.25f);
+            Gizmos.DrawLine(transform.position + Vector3.up, _lastKnown + Vector3.up * 0.2f);
+        }
     }
 }

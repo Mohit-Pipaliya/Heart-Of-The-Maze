@@ -37,7 +37,7 @@ public class ZombieFootIK : MonoBehaviour
     public float raycastDownDistance = 0.85f;
 
     [Tooltip("Vertical offset from ground hit to foot bone pivot (sole thickness).")]
-    public float footBottomOffset = 0.11f;
+    public float footBottomOffset = 0.02f;
 
     [Header("── Pelvis / Hips Adjustment ──")]
     [Tooltip("Multiplier for how much hips drop when one foot is on lower ground.")]
@@ -118,6 +118,11 @@ public class ZombieFootIK : MonoBehaviour
         // Check if zombie is dead or sliding/crawling on belly
         bool isSuppressed = (_zombieAI != null && (_zombieAI.IsDead || _zombieAI.IsSliding));
 
+        // Pull the skeleton down or up so the lowest foot sits on the floor.
+        // This does not move the NavMeshAgent, so the body cannot ratchet into the air.
+        if (!isSuppressed)
+            PlantBodyToGround();
+
         // 1. Foot IK Processing
         if (enableFootIK && !isSuppressed)
         {
@@ -155,23 +160,73 @@ public class ZombieFootIK : MonoBehaviour
         }
     }
 
+    private static readonly RaycastHit[] FootHits = new RaycastHit[12];
+
+    private void PlantBodyToGround()
+    {
+        if (_anim == null || !_anim.isHuman) return;
+
+        Transform left = _anim.GetBoneTransform(HumanBodyBones.LeftFoot);
+        Transform right = _anim.GetBoneTransform(HumanBodyBones.RightFoot);
+        if (left == null || right == null) return;
+
+        float lowest = Mathf.Min(left.position.y, right.position.y);
+        Transform leftToes = _anim.GetBoneTransform(HumanBodyBones.LeftToes);
+        Transform rightToes = _anim.GetBoneTransform(HumanBodyBones.RightToes);
+        if (leftToes != null) lowest = Mathf.Min(lowest, leftToes.position.y);
+        if (rightToes != null) lowest = Mathf.Min(lowest, rightToes.position.y);
+
+        if (!ZombieLocomotion.TryGetGroundPoint(transform.position, 6f, out Vector3 ground))
+            return;
+
+        float error = lowest - (ground.y + footBottomOffset);
+        if (Mathf.Abs(error) < 0.02f) return;
+        error = Mathf.Clamp(error, -1.4f, 1.4f);
+
+        Vector3 body = _anim.bodyPosition;
+        body.y -= error;
+        _anim.bodyPosition = body;
+    }
+
+    private bool TryFootGround(Vector3 footPos, out RaycastHit groundHit)
+    {
+        groundHit = default;
+        Vector3 origin = footPos + Vector3.up * raycastUpDistance;
+        float length = raycastUpDistance + raycastDownDistance;
+        int count = Physics.RaycastNonAlloc(origin, Vector3.down, FootHits, length, groundLayer, QueryTriggerInteraction.Ignore);
+        float closest = float.MaxValue;
+        bool found = false;
+
+        for (int i = 0; i < count; i++)
+        {
+            Transform hitTransform = FootHits[i].transform;
+            if (hitTransform == null) continue;
+            if (hitTransform == transform || hitTransform.IsChildOf(transform)) continue;
+            if (hitTransform.GetComponentInParent<ZombieAI>() != null) continue;
+            if (hitTransform.GetComponentInParent<PlayerController>() != null) continue;
+            if (Mathf.Abs(FootHits[i].point.y - footPos.y) > 0.45f) continue;
+            if (FootHits[i].distance < closest)
+            {
+                closest = FootHits[i].distance;
+                groundHit = FootHits[i];
+                found = true;
+            }
+        }
+
+        return found;
+    }
+
     private void ProcessFootIK(AvatarIKGoal foot, ref float currentWeight, ref Vector3 targetPos, ref Quaternion targetRot, out float groundOffset)
     {
         Vector3 footAnimPos = _anim.GetIKPosition(foot);
         Quaternion footAnimRot = _anim.GetIKRotation(foot);
 
-        // Raycast origin elevated above the foot
-        Vector3 rayOrigin = footAnimPos + Vector3.up * raycastUpDistance;
-        float rayLength = raycastUpDistance + raycastDownDistance;
-
-        if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, rayLength, groundLayer, QueryTriggerInteraction.Ignore))
+        if (TryFootGround(footAnimPos, out RaycastHit hit))
         {
             currentWeight = Mathf.MoveTowards(currentWeight, 1f, Time.deltaTime * ikWeightSpeed);
 
-            // Target position: hit point + sole thickness offset
             targetPos = hit.point + Vector3.up * footBottomOffset;
 
-            // Surface normal alignment (tilt foot to match terrain slope)
             Quaternion surfaceRot = Quaternion.FromToRotation(Vector3.up, hit.normal);
             targetRot = surfaceRot * footAnimRot;
 

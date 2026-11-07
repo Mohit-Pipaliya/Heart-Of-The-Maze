@@ -610,18 +610,20 @@ MonoBehaviour:
   triggerArea: {fileID: 0}
   detectionRadius: 50
   loseTargetRadius: 36
-  walkSpeed: 1.3
-  runSpeed: 4.2
+  walkSpeed: 7
+  runSpeed: 10
   slideSpeed: 3
   wanderRadius: 18
   wanderWaitMin: 1.5
   wanderWaitMax: 3.5
   rotationSpeed: 8
-  attackRange: 7
+  attackRange: 13
   attackDamage: 15
   attackCooldown: 2
   attackHitDelay: 0.45
   screamDuration: 1.9
+  screamSound: {fileID: 0}
+  walkSound: {fileID: 0}
   player: {fileID: 1943372672}
   showFloatingHealthBar: 0
 --- !u!136 &367801503
@@ -1543,11 +1545,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SpiderEnemy
   maxHealth: 1500
   territoryTrigger: {fileID: 387778993}
-  attackRange: 2.2
+  attackRange: 30
   aggroDistance: 45
   attackCooldown: 2.2
   damageToPlayer: 10
-  walkSpeed: 4
+  walkSpeed: 8
   runSpeed: 8
   rotationSpeed: 8
   player: {fileID: 1943372672}
@@ -1560,7 +1562,7 @@ NavMeshAgent:
   m_GameObject: {fileID: 633680321}
   m_Enabled: 1
   m_AgentTypeID: 0
-  m_Radius: 1
+  m_Radius: 0.5
   m_Speed: 3.5
   m_Acceleration: 8
   avoidancePriority: 50
@@ -3171,18 +3173,20 @@ MonoBehaviour:
   triggerArea: {fileID: 0}
   detectionRadius: 50
   loseTargetRadius: 36
-  walkSpeed: 1.3
-  runSpeed: 4.2
+  walkSpeed: 7
+  runSpeed: 10
   slideSpeed: 3
   wanderRadius: 18
   wanderWaitMin: 1.5
   wanderWaitMax: 3.5
   rotationSpeed: 8
-  attackRange: 7
+  attackRange: 13
   attackDamage: 15
   attackCooldown: 2
   attackHitDelay: 0.45
   screamDuration: 1.9
+  screamSound: {fileID: 0}
+  walkSound: {fileID: 0}
   player: {fileID: 1943372672}
   showFloatingHealthBar: 0
 --- !u!136 &2006101363

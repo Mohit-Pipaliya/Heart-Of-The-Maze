@@ -88,6 +88,7 @@ public class ZombieLocomotion : MonoBehaviour
     private float _perlinSeed;
     private float _currentSmoothedSpeed = 0f;
     private float _currentSmoothedTurn = 0f;
+    private float _turnStrideScale = 1f;
     private bool _isGrounded = true;
 
     public float SpeedMultiplier => _speedMultiplier;
@@ -135,7 +136,8 @@ public class ZombieLocomotion : MonoBehaviour
         // Animator Performance Setting
         if (_anim != null)
         {
-            _anim.cullingMode = AnimatorCullingMode.CullUpdateTransforms;
+            _anim.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            _anim.applyRootMotion = true;
         }
 
         // Generate per-instance random seed for organic variance
@@ -187,29 +189,35 @@ public class ZombieLocomotion : MonoBehaviour
         ProcessStrideMatching();
     }
 
-    private void LateUpdate()
+    private void OnAnimatorMove()
     {
-        // Keep NavMeshAgent position locked to transform ground position to prevent vertical drift
-        if (_agent != null && _agent.enabled && _agent.isOnNavMesh)
-        {
-            _agent.nextPosition = transform.position;
-        }
+        // Swallow root motion. The NavMeshAgent owns the body, so a clip cannot lift it.
     }
 
     // ─── 1. Ground Snapping Engine ───────────────────────────────────────────
     private void ProcessGroundSnapping()
     {
-        Vector3 rayStart = transform.position + Vector3.up * raycastOriginHeight;
-
-        if (Physics.Raycast(rayStart, Vector3.down, out RaycastHit hit, maxGroundRayDistance, groundLayer, QueryTriggerInteraction.Ignore))
+        // On a NavMesh the agent is already on the floor. Raycasting here hits the
+        // zombie's own capsule and ratchets the body upward.
+        if (_agent != null && _agent.enabled && _agent.isOnNavMesh)
         {
             _isGrounded = true;
-            float targetY = hit.point.y + groundOffset;
+            if (_agent.baseOffset != 0f)
+                _agent.baseOffset = 0f;
+            return;
+        }
 
-            // Smoothly glue Y to terrain surface
+        if (TryGetGroundPoint(transform.position, 8f, out Vector3 ground))
+        {
+            _isGrounded = true;
             Vector3 currentPos = transform.position;
-            currentPos.y = Mathf.Lerp(currentPos.y, targetY, Time.deltaTime * groundSnapSpeed);
-            transform.position = currentPos;
+            float targetY = ground.y + groundOffset;
+            // Only pull toward real ground. Never climb onto a body or prop.
+            if (targetY < currentPos.y + 0.05f)
+            {
+                currentPos.y = Mathf.Lerp(currentPos.y, targetY, Time.deltaTime * groundSnapSpeed);
+                transform.position = currentPos;
+            }
         }
         else
         {
@@ -217,13 +225,47 @@ public class ZombieLocomotion : MonoBehaviour
         }
     }
 
+    private static readonly RaycastHit[] GroundHits = new RaycastHit[16];
+
+    public static bool TryGetGroundPoint(Vector3 around, float distance, out Vector3 point)
+    {
+        Vector3 origin = around + Vector3.up * 3.5f;
+        int count = Physics.RaycastNonAlloc(origin, Vector3.down, GroundHits, distance + 3.5f, ~0, QueryTriggerInteraction.Ignore);
+        float closest = float.MaxValue;
+        bool found = false;
+        point = around;
+
+        for (int i = 0; i < count; i++)
+        {
+            Transform hitTransform = GroundHits[i].transform;
+            if (hitTransform == null) continue;
+            if (hitTransform.GetComponentInParent<ZombieAI>() != null) continue;
+            if (hitTransform.GetComponentInParent<PlayerController>() != null) continue;
+            if (GroundHits[i].distance < closest)
+            {
+                closest = GroundHits[i].distance;
+                point = GroundHits[i].point;
+                found = true;
+            }
+        }
+
+        if (found) return true;
+
+        if (NavMesh.SamplePosition(around, out NavMeshHit navHit, distance, NavMesh.AllAreas))
+        {
+            point = navHit.position;
+            return true;
+        }
+
+        return false;
+    }
+
     public void SnapToGroundImmediate()
     {
-        Vector3 rayStart = transform.position + Vector3.up * 3.0f;
-        if (Physics.Raycast(rayStart, Vector3.down, out RaycastHit hit, 8f, groundLayer, QueryTriggerInteraction.Ignore))
+        if (ZombieLocomotion.TryGetGroundPoint(transform.position, 8f, out Vector3 ground))
         {
             Vector3 p = transform.position;
-            p.y = hit.point.y + groundOffset;
+            p.y = ground.y + groundOffset;
             transform.position = p;
         }
         else if (NavMesh.SamplePosition(transform.position, out NavMeshHit navHit, 6f, NavMesh.AllAreas))
@@ -232,9 +274,7 @@ public class ZombieLocomotion : MonoBehaviour
         }
 
         if (_agent != null && _agent.enabled && _agent.isOnNavMesh)
-        {
             _agent.Warp(transform.position);
-        }
     }
 
     // ─── 2. Locomotion & Turning Parameters ─────────────────────────────────
@@ -257,12 +297,14 @@ public class ZombieLocomotion : MonoBehaviour
             turnAngle = Vector3.SignedAngle(transform.forward, desiredDir.normalized, Vector3.up);
         }
 
-        // Sharp Turn Deceleration: slow down linear speed into turns
+        // Sharp turns only slow the stride. Never multiply NavMeshAgent.speed —
+        // that decay stuck every zombie at crawl pace after one corner.
+        float playbackScale = 1f;
         if (enableTurnDeceleration && Mathf.Abs(turnAngle) > sharpTurnAngleThreshold)
         {
-            float turnFactor = Mathf.Clamp01(1f - (Mathf.Abs(turnAngle) - sharpTurnAngleThreshold) / 90f);
-            _agent.speed = Mathf.Max(0.6f, _agent.speed * turnFactor);
+            playbackScale = Mathf.Clamp(1f - (Mathf.Abs(turnAngle) - sharpTurnAngleThreshold) / 140f, 0.72f, 1f);
         }
+        _turnStrideScale = playbackScale;
 
         // Feed parameters to Animator with smooth damping
         _anim.SetFloat(_hashSpeed, actualSpeed, speedDampTime, Time.deltaTime);
@@ -321,7 +363,7 @@ public class ZombieLocomotion : MonoBehaviour
             }
 
             // Clamp playback speed within natural biomechanical limits (0.75x to 1.30x)
-            _anim.speed = Mathf.Clamp(strideRatio, 0.75f, 1.30f);
+            _anim.speed = Mathf.Clamp(strideRatio * _turnStrideScale, 0.75f, 1.30f);
         }
         else
         {

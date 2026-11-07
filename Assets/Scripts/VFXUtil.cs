@@ -553,6 +553,45 @@ public static class VFXUtil
         Object.Destroy(go, 1.1f);
         return ps;
     }
+
+    public static void GunFleshHit(Vector3 pos, Vector3 normal)
+    {
+        Vector3 spray = normal.sqrMagnitude > 0.001f ? normal.normalized : Vector3.up;
+        SpawnFadingLight(pos, new Color(1f, 0.45f, 0.12f), 1.6f, 3.5f, 0.04f);
+        Burst(pos, spray, new Color(0.62f, 0.02f, 0.01f, 1f), 10, 4f, 9f, 0.03f, 0.07f, 0.08f, 0.16f, false, false, 1.2f, 22f, 0.28f);
+    }
+
+    public static void GunSurfaceHit(Vector3 pos, Vector3 normal)
+    {
+        Vector3 n = normal.sqrMagnitude > 0.001f ? normal.normalized : Vector3.up;
+        SpawnFadingLight(pos, new Color(1f, 0.78f, 0.35f), 2.4f, 6f, 0.05f);
+        Sparks(pos, n, new Color(6f, 3.4f, 0.8f, 1f), 18, 22f);
+        Burst(pos, n, new Color(1f, 0.85f, 0.45f, 1f), 8, 4f, 9f, 0.02f, 0.05f, 0.04f, 0.1f, true, true, 0.4f, 30f, 0.16f);
+        DustPuff(pos, n, new Color(0.72f, 0.68f, 0.58f, 0.4f), 7, 0.7f);
+    }
+
+    public static void SwordFleshHit(Vector3 pos, Vector3 normal)
+    {
+        Vector3 cut = normal.sqrMagnitude > 0.001f ? normal.normalized : Vector3.forward;
+        Vector3 fan = Vector3.Cross(cut, Vector3.up).sqrMagnitude > 0.01f ? Vector3.Cross(cut, Vector3.up).normalized : Vector3.right;
+        SpawnFadingLight(pos, new Color(1f, 0.92f, 0.75f), 2.8f, 5f, 0.04f);
+        SpawnFadingLight(pos, new Color(0.9f, 0.02f, 0.01f), 6.5f, 5f, 0.14f);
+        Burst(pos, cut, new Color(0.62f, 0.01f, 0.01f, 1f), 28, 6f, 14f, 0.04f, 0.1f, 0.1f, 0.22f, true, true, 1.1f, 55f, 0.4f);
+        Burst(pos, fan, new Color(0.75f, 0.04f, 0.02f, 1f), 14, 4f, 9f, 0.04f, 0.09f, 0.12f, 0.28f, true, true, 1.6f, 40f, 0.45f);
+        Burst(pos, -fan, new Color(0.75f, 0.04f, 0.02f, 1f), 14, 4f, 9f, 0.04f, 0.09f, 0.12f, 0.28f, true, true, 1.6f, 40f, 0.45f);
+        Burst(pos, Vector3.up, new Color(0.5f, 0.02f, 0.02f, 0.9f), 12, 1.5f, 4f, 0.06f, 0.14f, 0.25f, 0.55f, false, false, 2.2f, 75f, 0.8f);
+        Sparks(pos, cut, new Color(6f, 5.2f, 3.2f, 1f), 10, 16f);
+        DustPuff(pos, cut, new Color(0.4f, 0.02f, 0.02f, 0.4f), 5, 0.7f);
+    }
+
+    public static void SwordClash(Vector3 pos, Vector3 normal)
+    {
+        Vector3 n = normal.sqrMagnitude > 0.001f ? normal.normalized : Vector3.up;
+        SpawnFadingLight(pos, new Color(1f, 0.9f, 0.6f), 3.5f, 6f, 0.06f);
+        Sparks(pos, n, new Color(7f, 5f, 2f, 1f), 22, 20f);
+        Burst(pos, n, new Color(1f, 0.8f, 0.35f, 1f), 8, 3f, 8f, 0.03f, 0.07f, 0.05f, 0.12f, true, true, 0.3f, 25f, 0.18f);
+        DustPuff(pos, n, new Color(0.7f, 0.66f, 0.55f, 0.45f), 8, 0.85f);
+    }
 }
 
 public class VFXLightFade : MonoBehaviour

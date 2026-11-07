@@ -148,7 +148,7 @@ public class SwordAttackEffect : MonoBehaviour
         }
 
         SpawnFlashLight(transform.position);
-        yield return new WaitForSeconds(0.28f);
+        yield return new WaitForSeconds(0.55f); // Stay active during full forward cutting arc
 
         if (_bladeTrail != null)
             _bladeTrail.emitting = false;
@@ -168,29 +168,12 @@ public class SwordAttackEffect : MonoBehaviour
     {
         if (isEnemy)
         {
-            // AAA Flesh Cleave Impact: Dynamic vivid red flash + high-speed arterial blood spray + mist + bone sparks
-            VFXUtil.SpawnFadingLight(pos, new Color(1.0f, 0.05f, 0.02f), 7.5f, 4.5f, 0.12f);
-            
-            // 1. High-velocity arterial blood splatter spray
-            VFXUtil.Burst(pos, normal, new Color(0.85f, 0.05f, 0.02f, 1f),
-                36, 10f, 26f, 0.08f, 0.30f, 0.14f, 0.42f, true, true, 2.2f, 45f);
-
-            // 2. Lingering blood mist puff
-            VFXUtil.Burst(pos, Vector3.up, new Color(0.65f, 0.04f, 0.03f, 0.65f),
-                14, 1.4f, 4.5f, 0.28f, 0.65f, 0.35f, 0.85f, false, false, -0.05f, 65f);
-
-            // 3. Bone/steel friction micro-sparks (visceral cutting sensation)
-            VFXUtil.Burst(pos, normal, new Color(1f, 0.9f, 0.6f, 1f),
-                12, 12f, 24f, 0.05f, 0.15f, 0.08f, 0.22f, true, true, 1.5f, 35f);
+            VFXUtil.SwordFleshHit(pos, normal);
         }
         else
         {
-            // AAA World Clash: Bright flash + sparkling ricochet embers + dust
             SpawnFlashLight(pos);
-            VFXUtil.Burst(pos, normal, new Color(1f, 0.85f, 0.32f, 1f),
-                sparkCount, 12f, 28f, 0.06f, 0.22f, 0.12f, 0.32f, true, true, 1.6f, 42f);
-            VFXUtil.Burst(pos, Vector3.up, new Color(0.65f, 0.62f, 0.55f, 0.5f),
-                14, 1.5f, 4.2f, 0.4f, 1.1f, 0.3f, 0.55f, false, false, -0.08f, 50f);
+            VFXUtil.SwordClash(pos, normal);
         }
     }
 }

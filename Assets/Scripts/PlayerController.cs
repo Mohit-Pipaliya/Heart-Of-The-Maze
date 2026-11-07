@@ -98,9 +98,12 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private Vector3 swordBackOffsetPos = Vector3.zero; 
     [SerializeField] private Vector3 swordBackOffsetRot = Vector3.zero; 
 
-    [Header("Sword Combat & Damage")]
-    [Tooltip("Melee damage dealt per sword strike (Set to 100f for zombie combat).")]
-    [SerializeField] private float swordDamage = 100f; 
+    [Header("── Combat & Weapon Damage ──")]
+    [Tooltip("Melee damage dealt per sword strike. Recommended: 200 - 250 (Spider has 60 HP [1 hit kill], Zombie has 1000 HP [4-5 hits kill]).")]
+    public float swordDamage = 200f; 
+
+    [Tooltip("Damage dealt per bullet hit. Recommended: 75 - 100 (Spider has 60 HP [1 shot kill], Zombie has 1000 HP [10-12 shots kill]).")]
+    public float gunDamage = 85f; 
 
     // Ye dono script apne aap player ki haddiyon (bones) me dhundh legi, tumhe banane ki zarurat nahi!
     private Transform swordHandTransform;  
@@ -183,6 +186,7 @@ public class PlayerController : MonoBehaviour
     private float _nextFootstepTime;
     private float _swordReadyTime;
     private int _swordCombo;
+    private bool _isSwordAttacking;
     private float _lastAirYVelocity;
 
     // ─── Unity Lifecycle ───────────────────────────────────────────────────────
@@ -190,7 +194,15 @@ public class PlayerController : MonoBehaviour
     private void Awake()
     {
         Instance = this;
-        if (swordDamage < 50f) swordDamage = 250f;
+        if (swordDamage <= 0f) swordDamage = 200f;
+        if (gunDamage <= 0f) gunDamage = 85f;
+
+        GunShooter gs = GetComponentInChildren<GunShooter>() ?? FindFirstObjectByType<GunShooter>();
+        if (gs != null)
+        {
+            gs.bulletDamage = gunDamage;
+        }
+
         _anim   = GetComponent<Animator>();
         _cc     = GetComponent<CharacterController>();
         _health = maxHealth;
@@ -373,6 +385,11 @@ public class PlayerController : MonoBehaviour
         HandleLocomotionFeel();
         HandleWeaponSwitch();
         HandleAttack();
+
+        if (GunShooter.Instance != null && gunDamage > 0f)
+        {
+            GunShooter.Instance.bulletDamage = gunDamage;
+        }
     }
 
     private void OnAnimatorMove()
@@ -605,6 +622,25 @@ public class PlayerController : MonoBehaviour
 
     private void CalculateHorizontalMovement()
     {
+        if (_isSwordAttacking)
+        {
+            if (_isGrounded)
+            {
+                _velocity.x = 0f;
+                _velocity.z = 0f;
+            }
+            _anim.SetFloat(HashSpeed, 0f);
+
+            // Smoothly track camera look direction during swing
+            GetCameraPlanarAxes(out Vector3 camAimFwd, out _);
+            if (camAimFwd.sqrMagnitude > 0.001f)
+            {
+                Quaternion aimRot = Quaternion.LookRotation(camAimFwd, Vector3.up);
+                transform.rotation = Quaternion.RotateTowards(transform.rotation, aimRot, rotationSpeed * 0.45f * Time.deltaTime);
+            }
+            return;
+        }
+
         float h = Input.GetAxisRaw("Horizontal");
         float v = Input.GetAxisRaw("Vertical");
         Vector2 moveInput = new Vector2(h, v);
@@ -727,6 +763,8 @@ public class PlayerController : MonoBehaviour
 
     private void HandleJump()
     {
+        if (_isSwordAttacking) return;
+
         // Jump Buffer Logic: Hawa me space dabane par bhi yaad rakhega
         if (Input.GetKeyDown(KeyCode.Space))
         {
@@ -758,7 +796,7 @@ public class PlayerController : MonoBehaviour
 
     private void HandleWeaponSwitch()
     {
-        if (_isEquipping || _isSequenceRunning) return;
+        if (_isEquipping || _isSequenceRunning || _isSwordAttacking) return;
 
         // Press 1: Jo bhi weapon hath mein hai, uska unequip animation chalao → Unarmed
         if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1))
@@ -987,9 +1025,12 @@ public class PlayerController : MonoBehaviour
 
         if (_currentWeapon == WeaponState.Sword)
         {
-            if (Input.GetMouseButtonDown(0) && Time.time >= _swordReadyTime)
+            // Strict Animation Lock: Agar attack chal raha hai toh naya click bilkul ignore karo!
+            if (_isSwordAttacking) return;
+
+            if (Input.GetMouseButtonDown(0))
             {
-                _swordReadyTime = Time.time + 0.48f;
+                _isSwordAttacking = true;
 
                 // Auto-orient player towards camera aim direction so swing strikes where player is looking
                 GetCameraPlanarAxes(out Vector3 camFwd, out _);
@@ -1004,8 +1045,8 @@ public class PlayerController : MonoBehaviour
                 _anim.SetTrigger(HashAttack);
 
                 // Subtle windup screen tension
-                if (cameraRig != null) cameraRig.AddRecoil(0.08f, Random.Range(-0.06f, 0.06f), 0.012f);
-                GameFeel.FovPunch(1.1f);
+                if (cameraRig != null) cameraRig.AddRecoil(0.10f, Random.Range(-0.06f, 0.06f), 0.015f);
+                GameFeel.FovPunch(1.2f);
 
                 StartCoroutine(PerformSwordAttackSequence(swordDamage));
             }
@@ -1027,69 +1068,52 @@ public class PlayerController : MonoBehaviour
 
     private IEnumerator PerformSwordAttackSequence(float damage)
     {
-        if (damage <= 0f) damage = 100f;
+        _isSwordAttacking = true;
+        if (damage <= 0f) damage = swordDamage > 0f ? swordDamage : 200f;
 
-        // ── Phase 1: Windup Anticipation (0.07s) ───────────────────────────
-        yield return new WaitForSeconds(0.07f);
+        // ── Phase 1: Windup Anticipation (0.20s) ───────────────────────────
+        // Realistic windup: character prepares weapon before unleashing the forward blade
+        yield return new WaitForSeconds(0.20f);
 
-        // ── Phase 2: Swing Start (Whoosh SFX & Glowing Trail Activation) ────
+        // ── Phase 2: Swing Whoosh & Luminous Slash Trail ────────────────────
         GameAudio.PlaySwordSwing(transform.position);
+        ZombieSense.Report(transform.position, ZombieSense.Kind.Sword);
         if (SwordAttackEffect.Instance != null)
             SwordAttackEffect.Instance.TriggerAttack();
 
-        // Directional swing camera impulse for visceral kinetic feedback
+        // Directional camera shake impulse for visceral swing feeling
         if (cameraRig != null)
-            cameraRig.AddRecoil(0.18f, _swordCombo == 0 ? -0.12f : 0.12f, 0.02f);
+            cameraRig.AddRecoil(0.25f, _swordCombo == 0 ? -0.16f : 0.16f, 0.025f);
 
-        // ── Phase 3: Continuous Active Hit Window (0.07s to 0.35s) ─────────
-        // Sweeps across frames during the full blade arc so enemies cannot slip through
-        float swingDuration = 0.28f;
+        // ── Phase 3: Active Forward Cutting Arc (0.20s to 0.72s) ───────────
+        // Sweeps every frame during the active slash so no enemy in front can slip through
+        float activeSwingDuration = 0.52f;
         float elapsed = 0f;
         HashSet<GameObject> hitEnemies = new HashSet<GameObject>();
         bool connectedAnyHit = false;
 
-        while (elapsed < swingDuration)
+        while (elapsed < activeSwingDuration)
         {
             elapsed += Time.deltaTime;
 
-            // Realistic forward combat step / lunge into the swing
             if (_cc != null && _cc.enabled)
             {
-                float stepSpeed = Mathf.Lerp(3.4f, 0.4f, elapsed / swingDuration);
+                float stepSpeed = Mathf.Lerp(4.2f, 0.4f, elapsed / activeSwingDuration);
                 _cc.Move(transform.forward * (stepSpeed * Time.deltaTime));
             }
 
-            // 1. Direct Scene Proximity & Arc Scan (100% fail-safe against missing colliders or layer mismatches)
             ZombieAI[] sceneZombies = FindObjectsByType<ZombieAI>(FindObjectsSortMode.None);
             for (int zIdx = 0; zIdx < sceneZombies.Length; zIdx++)
             {
                 ZombieAI z = sceneZombies[zIdx];
                 if (z == null || z.IsDead || hitEnemies.Contains(z.gameObject)) continue;
-                Vector3 toZ = z.transform.position - transform.position;
-                toZ.y = 0f;
-                float d = toZ.magnitude;
-                if (d <= 3.5f)
+
+                if (BladeHits(z.transform, out Vector3 contactPoint))
                 {
-                    float angle = Vector3.Angle(transform.forward, toZ.normalized);
-                    if (angle <= 85f || d <= 1.4f)
-                    {
-                        hitEnemies.Add(z.gameObject);
-                        connectedAnyHit = true;
-
-                        // Deal exactly 100 damage to zombie per hit
-                        z.TakeDamage(damage);
-                        bool isKill = z.IsDead;
-
-                        Vector3 contactPoint = z.transform.position + Vector3.up * 1.1f;
-                        GameAudio.PlaySwordImpact(contactPoint, true);
-                        if (SwordAttackEffect.Instance != null)
-                            SwordAttackEffect.Instance.TriggerImpact(contactPoint, -transform.forward, true);
-                        if (GunShooter.Instance != null)
-                            GunShooter.Instance.RegisterHitMarker(isKill);
-                        if (cameraRig != null) cameraRig.AddRecoil(0.48f, _swordCombo == 0 ? -0.18f : 0.18f, 0.06f);
-                        GameFeel.HitStop(0.06f);
-                        GameFeel.FovPunch(2.8f);
-                    }
+                    hitEnemies.Add(z.gameObject);
+                    connectedAnyHit = true;
+                    z.TakeDamage(damage, contactPoint, -transform.forward);
+                    TriggerSwordHitFeel(contactPoint, -transform.forward, z.IsDead);
                 }
             }
 
@@ -1098,87 +1122,13 @@ public class PlayerController : MonoBehaviour
             {
                 SpiderEnemy s = sceneSpiders[sIdx];
                 if (s == null || s.IsDead || hitEnemies.Contains(s.gameObject)) continue;
-                Vector3 toS = s.transform.position - transform.position;
-                toS.y = 0f;
-                float d = toS.magnitude;
-                Collider spiderCol = s.GetComponent<Collider>();
-                float dToPerimeter = spiderCol != null ? Vector3.Distance(transform.position, spiderCol.ClosestPoint(transform.position)) : d;
-                if (dToPerimeter <= 3.2f || d <= 9.5f)
+
+                if (BladeHits(s.transform, out Vector3 contactPoint))
                 {
-                    float angle = Vector3.Angle(transform.forward, toS.normalized);
-                    if (angle <= 95f || dToPerimeter <= 2.2f)
-                    {
-                        hitEnemies.Add(s.gameObject);
-                        connectedAnyHit = true;
-
-                        s.TakeDamage(damage);
-                        bool isKill = s.IsDead;
-
-                        Vector3 contactPoint = spiderCol != null ? spiderCol.ClosestPoint(transform.position + transform.forward * 1.5f + Vector3.up * 0.8f) : (s.transform.position + Vector3.up * 0.8f);
-                        GameAudio.PlaySwordImpact(contactPoint, true);
-                        if (SwordAttackEffect.Instance != null)
-                            SwordAttackEffect.Instance.TriggerImpact(contactPoint, -transform.forward, true);
-                        if (GunShooter.Instance != null)
-                            GunShooter.Instance.RegisterHitMarker(isKill);
-                        if (cameraRig != null) cameraRig.AddRecoil(0.38f, Random.Range(-0.1f, 0.1f), 0.04f);
-                        GameFeel.HitStop(0.045f);
-                        GameFeel.FovPunch(2.2f);
-                    }
-                }
-            }
-
-            // 2. Sweeping PhysX volume: Capsule from player chest to forward arc reach
-            Vector3 capsuleBottom = transform.position + Vector3.up * 0.35f;
-            Vector3 capsuleTop = transform.position + transform.forward * 2.4f + Vector3.up * 1.15f;
-            float capsuleRadius = 1.8f;
-
-            Collider[] hits = Physics.OverlapCapsule(capsuleBottom, capsuleTop, capsuleRadius, ~0, QueryTriggerInteraction.Collide);
-
-            for (int i = 0; i < hits.Length; i++)
-            {
-                Collider col = hits[i];
-                if (col == null) continue;
-                if (col.transform == transform || col.transform.IsChildOf(transform)) continue;
-
-                // Deep search in parent, children, and root to guarantee finding enemy script
-                SpiderEnemy spider = col.GetComponentInParent<SpiderEnemy>() ?? col.GetComponentInChildren<SpiderEnemy>() ?? col.transform.root.GetComponentInChildren<SpiderEnemy>();
-                ZombieAI zombie = col.GetComponentInParent<ZombieAI>() ?? col.GetComponentInChildren<ZombieAI>() ?? col.transform.root.GetComponentInChildren<ZombieAI>();
-
-                if (spider != null && !spider.IsDead && !hitEnemies.Contains(spider.gameObject))
-                {
-                    hitEnemies.Add(spider.gameObject);
+                    hitEnemies.Add(s.gameObject);
                     connectedAnyHit = true;
-
-                    spider.TakeDamage(damage);
-                    bool isKill = spider.IsDead;
-
-                    Vector3 contactPoint = col.ClosestPoint(transform.position + transform.forward * 1.5f + Vector3.up * 0.8f);
-                    GameAudio.PlaySwordImpact(contactPoint, true);
-                    if (SwordAttackEffect.Instance != null)
-                        SwordAttackEffect.Instance.TriggerImpact(contactPoint, -transform.forward, true);
-                    if (GunShooter.Instance != null)
-                        GunShooter.Instance.RegisterHitMarker(isKill);
-                    if (cameraRig != null) cameraRig.AddRecoil(0.38f, Random.Range(-0.1f, 0.1f), 0.04f);
-                    GameFeel.HitStop(0.045f);
-                    GameFeel.FovPunch(2.2f);
-                }
-                else if (zombie != null && !zombie.IsDead && !hitEnemies.Contains(zombie.gameObject))
-                {
-                    hitEnemies.Add(zombie.gameObject);
-                    connectedAnyHit = true;
-
-                    zombie.TakeDamage(damage);
-                    bool isKill = zombie.IsDead;
-
-                    Vector3 contactPoint = col.ClosestPoint(transform.position + transform.forward * 1.5f + Vector3.up * 1.1f);
-                    GameAudio.PlaySwordImpact(contactPoint, true);
-                    if (SwordAttackEffect.Instance != null)
-                        SwordAttackEffect.Instance.TriggerImpact(contactPoint, -transform.forward, true);
-                    if (GunShooter.Instance != null)
-                        GunShooter.Instance.RegisterHitMarker(isKill);
-                    if (cameraRig != null) cameraRig.AddRecoil(0.42f, Random.Range(-0.12f, 0.12f), 0.05f);
-                    GameFeel.HitStop(0.05f);
-                    GameFeel.FovPunch(2.5f);
+                    s.TakeDamage(damage, contactPoint, -transform.forward);
+                    TriggerSwordHitFeel(contactPoint, -transform.forward, s.IsDead);
                 }
             }
 
@@ -1189,7 +1139,7 @@ public class PlayerController : MonoBehaviour
         if (!connectedAnyHit)
         {
             Vector3 chestOrigin = transform.position + Vector3.up * 1.0f;
-            if (Physics.SphereCast(chestOrigin, 0.75f, transform.forward, out RaycastHit directHit, 3.0f, ~0, QueryTriggerInteraction.Collide))
+            if (Physics.SphereCast(chestOrigin, 0.85f, transform.forward, out RaycastHit directHit, 3.2f, ~0, QueryTriggerInteraction.Collide))
             {
                 Collider col = directHit.collider;
                 if (col != null && !col.transform.IsChildOf(transform))
@@ -1201,25 +1151,15 @@ public class PlayerController : MonoBehaviour
                     {
                         hitEnemies.Add(spider.gameObject);
                         connectedAnyHit = true;
-                        spider.TakeDamage(damage);
-                        GameAudio.PlaySwordImpact(directHit.point, true);
-                        if (SwordAttackEffect.Instance != null)
-                            SwordAttackEffect.Instance.TriggerImpact(directHit.point, directHit.normal, true);
-                        if (GunShooter.Instance != null)
-                            GunShooter.Instance.RegisterHitMarker(spider.IsDead);
-                        GameFeel.HitStop(0.045f);
+                        spider.TakeDamage(damage, directHit.point, directHit.normal);
+                        TriggerSwordHitFeel(directHit.point, directHit.normal, spider.IsDead);
                     }
                     else if (zombie != null && !zombie.IsDead && !hitEnemies.Contains(zombie.gameObject))
                     {
                         hitEnemies.Add(zombie.gameObject);
                         connectedAnyHit = true;
-                        zombie.TakeDamage(damage);
-                        GameAudio.PlaySwordImpact(directHit.point, true);
-                        if (SwordAttackEffect.Instance != null)
-                            SwordAttackEffect.Instance.TriggerImpact(directHit.point, directHit.normal, true);
-                        if (GunShooter.Instance != null)
-                            GunShooter.Instance.RegisterHitMarker(zombie.IsDead);
-                        GameFeel.HitStop(0.05f);
+                        zombie.TakeDamage(damage, directHit.point, directHit.normal);
+                        TriggerSwordHitFeel(directHit.point, directHit.normal, zombie.IsDead);
                     }
                 }
             }
@@ -1229,17 +1169,127 @@ public class PlayerController : MonoBehaviour
         if (!connectedAnyHit)
         {
             Vector3 origin = transform.position + Vector3.up * 1.0f + transform.forward * 0.4f;
-            if (Physics.SphereCast(origin, 0.35f, transform.forward, out RaycastHit worldHit, 2.4f, ~0, QueryTriggerInteraction.Ignore))
+            if (Physics.SphereCast(origin, 0.4f, transform.forward, out RaycastHit worldHit, 2.5f, ~0, QueryTriggerInteraction.Ignore))
             {
                 if (!worldHit.collider.transform.IsChildOf(transform))
                 {
                     GameAudio.PlaySwordImpact(worldHit.point, false);
                     if (SwordAttackEffect.Instance != null)
                         SwordAttackEffect.Instance.TriggerImpact(worldHit.point, worldHit.normal, false);
-                    if (cameraRig != null) cameraRig.AddRecoil(0.18f, 0f, 0.02f);
+                    if (cameraRig != null) cameraRig.AddRecoil(0.2f, 0f, 0.02f);
                 }
             }
         }
+
+        // ── Phase 5: Strict Animation Lock — WAIT UNTIL ENTIRE ANIMATION FINISHES! ──
+        // Kisi bhi agle click ka koi asar nahi hoga jab tak animation poora na ho jaye.
+        float maxAnimWait = 1.45f;
+        float elapsedTotal = 0.20f + activeSwingDuration; // ~0.72s
+        while (elapsedTotal < maxAnimWait)
+        {
+            elapsedTotal += Time.deltaTime;
+            AnimatorStateInfo state = _anim.GetCurrentAnimatorStateInfo(0);
+            bool isStillAttackingState = state.IsName("SwordAttack1") || state.IsName("SwordAttack2");
+            if (isStillAttackingState && state.normalizedTime < 0.95f)
+            {
+                yield return null;
+            }
+            else if (elapsedTotal >= 0.90f && !isStillAttackingState && !_anim.IsInTransition(0))
+            {
+                // Has safely transitioned back to idle/locomotion
+                break;
+            }
+            else
+            {
+                yield return null;
+            }
+        }
+
+        _anim.ResetTrigger(HashAttack);
+        _isSwordAttacking = false;
+    }
+
+    /// <summary>
+    /// True when the swing reaches the enemy mesh or any of its colliders.
+    /// Distance is measured to the surface, so a scaled body still gets cut.
+    /// </summary>
+    private bool BladeHits(Transform target, out Vector3 point)
+    {
+        Vector3 chest = transform.position + Vector3.up * 1.15f;
+        Vector3 blade = chest + transform.forward * 1.45f;
+        if (_swordSystem != null && _swordSystem.sword != null && _swordSystem.sword.activeInHierarchy)
+            blade = _swordSystem.sword.transform.position;
+
+        const float reach = 3.1f;
+        float best = float.MaxValue;
+        point = target.position;
+
+        Collider[] cols = target.GetComponentsInChildren<Collider>();
+        for (int i = 0; i < cols.Length; i++)
+        {
+            Collider col = cols[i];
+            if (col == null || !col.enabled) continue;
+            ConsiderSwordPoint(col.ClosestPoint(blade), blade, chest, ref best, ref point);
+            ConsiderSwordPoint(col.ClosestPoint(chest), blade, chest, ref best, ref point);
+        }
+
+        Renderer[] renders = target.GetComponentsInChildren<Renderer>();
+        if (renders.Length > 0)
+        {
+            Bounds bounds = renders[0].bounds;
+            for (int i = 1; i < renders.Length; i++)
+            {
+                if (renders[i] != null)
+                    bounds.Encapsulate(renders[i].bounds);
+            }
+            ConsiderSwordPoint(bounds.ClosestPoint(blade), blade, chest, ref best, ref point);
+            ConsiderSwordPoint(bounds.ClosestPoint(chest), blade, chest, ref best, ref point);
+        }
+
+        if (best > reach) return false;
+
+        Vector3 flat = point - transform.position;
+        flat.y = 0f;
+        if (flat.sqrMagnitude > 1.4f && Vector3.Angle(transform.forward, flat) > 130f)
+            return false;
+
+        return true;
+    }
+
+    private static void ConsiderSwordPoint(Vector3 candidate, Vector3 blade, Vector3 chest, ref float best, ref Vector3 point)
+    {
+        float fromBlade = Vector3.Distance(blade, candidate);
+        float fromChest = Vector3.Distance(chest, candidate);
+        float dist = Mathf.Min(fromBlade, fromChest);
+        if (dist < best)
+        {
+            best = dist;
+            point = candidate;
+        }
+    }
+
+    private void TriggerSwordHitFeel(Vector3 contactPoint, Vector3 normal, bool isKill)
+    {
+        // 1. Visceral Impact Audio
+        GameAudio.PlaySwordImpact(contactPoint, true);
+
+        // 2. AAA Blood Splash, Flesh Cleave, Mist & Sparks
+        if (SwordAttackEffect.Instance != null)
+            SwordAttackEffect.Instance.TriggerImpact(contactPoint, normal, true);
+
+        // 3. UI Hitmarker
+        if (GunShooter.Instance != null)
+            GunShooter.Instance.RegisterHitMarker(isKill);
+
+        // 4. Punchy Camera Shake & Recoil
+        if (cameraRig != null)
+            cameraRig.AddRecoil(0.55f, _swordCombo == 0 ? -0.22f : 0.22f, 0.08f);
+
+        // 5. Heavy Hit Stop / Freeze Frame (the signature feeling of cutting through flesh)
+        GameFeel.HitStop(isKill ? 0.09f : 0.065f);
+
+        // 6. FOV Impact Punch
+        GameFeel.FovPunch(3.2f);
     }
 
     private void HandleLocomotionFeel()
@@ -1591,4 +1641,7 @@ public class PlayerController : MonoBehaviour
 
     /// <summary>Returns true if an unequip or equip sequence is currently active.</summary>
     public bool IsSequenceRunning => _isSequenceRunning;
+
+    /// <summary>Returns true if player is currently in the middle of a sword attack.</summary>
+    public bool IsSwordAttacking => _isSwordAttacking;
 }

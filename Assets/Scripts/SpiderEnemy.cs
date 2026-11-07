@@ -125,6 +125,8 @@ public class SpiderEnemy : MonoBehaviour
             agent.obstacleAvoidanceType = ObstacleAvoidanceType.HighQualityObstacleAvoidance;
         }
 
+        FitHitboxToBody();
+
         // Solid physical collision ensured between player colliders and spider
         EnsurePlayerCollision();
 
@@ -133,6 +135,31 @@ public class SpiderEnemy : MonoBehaviour
         hashHit = Animator.StringToHash("Hit");
         hashDie = Animator.StringToHash("Die");
         hashJump = Animator.StringToHash("Jump");
+    }
+
+    private void FitHitboxToBody()
+    {
+        Renderer[] renders = GetComponentsInChildren<Renderer>();
+        if (renders == null || renders.Length == 0) return;
+
+        Bounds world = renders[0].bounds;
+        for (int i = 1; i < renders.Length; i++)
+        {
+            if (renders[i] != null)
+                world.Encapsulate(renders[i].bounds);
+        }
+
+        Transform hb = transform.Find("SpiderHitBox");
+        if (hb == null) return;
+        BoxCollider box = hb.GetComponent<BoxCollider>();
+        if (box == null) return;
+
+        float sx = Mathf.Max(0.01f, Mathf.Abs(transform.lossyScale.x));
+        float sy = Mathf.Max(0.01f, Mathf.Abs(transform.lossyScale.y));
+        float sz = Mathf.Max(0.01f, Mathf.Abs(transform.lossyScale.z));
+        box.center = transform.InverseTransformPoint(world.center);
+        box.size = new Vector3(world.size.x / sx, world.size.y / sy, world.size.z / sz);
+        box.isTrigger = false;
     }
 
     private void EnsurePlayerCollision()
@@ -331,7 +358,7 @@ public class SpiderEnemy : MonoBehaviour
     }
 
     // Player jab attack kare toh ye function call karega
-    public void TakeDamage(float amount)
+    public void TakeDamage(float amount, Vector3 hitPoint = default, Vector3 hitNormal = default)
     {
         if (isDead) return;
 
@@ -352,20 +379,34 @@ public class SpiderEnemy : MonoBehaviour
             pushDir.y = 0f;
             if (agent != null && agent.enabled)
             {
-                agent.Move(pushDir * 0.4f);
+                agent.Move(pushDir * 0.35f);
             }
             else
             {
-                transform.position += pushDir * 0.4f;
+                transform.position += pushDir * 0.35f;
             }
         }
 
         if (GunShooter.Instance != null)
             GunShooter.Instance.RegisterHitMarker(currentHealth <= 0);
 
-        VFXUtil.SpawnFadingLight(transform.position + Vector3.up * 0.8f, new Color(0.9f, 0.1f, 0.05f), 4f, 2.0f, 0.08f);
-        VFXUtil.Burst(transform.position + Vector3.up * 0.8f, Vector3.up,
-            new Color(0.7f, 0.12f, 0.08f, 1f), 16, 3f, 9f, 0.08f, 0.2f, 0.15f, 0.35f, true, true, 1.8f, 40f);
+        // Resolve exact blood impact origin and spray angle
+        Vector3 fxPos = hitPoint;
+        if (fxPos == default)
+        {
+            if (player != null)
+            {
+                Vector3 toPlayer = (player.position - transform.position).normalized;
+                fxPos = transform.position + Vector3.up * 2.8f + toPlayer * 4.2f;
+            }
+            else
+            {
+                fxPos = transform.position + Vector3.up * 2.8f;
+            }
+        }
+
+        VFXUtil.SpawnFadingLight(fxPos, new Color(1.0f, 0.04f, 0.02f), 5.0f, 3.5f, 0.08f);
+
         _hitStunUntil = Time.time + 0.45f;
 
         if (currentHealth <= 0)

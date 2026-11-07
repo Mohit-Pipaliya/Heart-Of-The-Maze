@@ -4,8 +4,8 @@ using UnityEngine;
 public class Bullet : MonoBehaviour
 {
     [Header("── Bullet Settings ──")]
-    [Tooltip("Bullet damage dealt per impact (Default: 50f for punchy, balanced combat against 1000 HP enemies).")]
-    public float damage = 50f;
+    [Tooltip("Bullet damage dealt per impact (Recommended: 75f - 100f).")]
+    public float damage = 85f;
     public bool disableTrailOnImpact = true;
     public string ignoreLayerName = "Player";
     public LayerMask hitMask = ~0;
@@ -19,11 +19,12 @@ public class Bullet : MonoBehaviour
     private Vector3 _velocity;
     private Vector3 _prevPos;
     private TrailRenderer _trail;
+    private LineRenderer _tracer;
     private Light _bulletLight;
 
     private void Awake()
     {
-        if (damage < 50f) damage = 75f;
+        if (damage <= 0f) damage = 85f;
 
         // Hide bulky 3D unfired bullet cartridge mesh so only the optical laser-sharp supersonic tracer streak is visible
         MeshRenderer[] mrs = GetComponentsInChildren<MeshRenderer>();
@@ -72,66 +73,112 @@ public class Bullet : MonoBehaviour
 
     private void SetupTracerVisuals()
     {
-        // High-velocity razor-sharp supersonic tracer streak (optical needle beam)
-        _trail = GetComponent<TrailRenderer>();
-        if (_trail == null)
-            _trail = gameObject.AddComponent<TrailRenderer>();
+        MeshRenderer[] existing = GetComponentsInChildren<MeshRenderer>();
+        for (int i = 0; i < existing.Length; i++)
+        {
+            if (existing[i] != null) existing[i].enabled = false;
+        }
 
-        _trail.time = 0.05f;
-        _trail.startWidth = 0.055f;
-        _trail.endWidth = 0.008f;
-        _trail.minVertexDistance = 0.015f;
-        _trail.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        _trail.receiveShadows = false;
-        _trail.numCapVertices = 4;
-        _trail.numCornerVertices = 4;
+        _tracer = gameObject.GetComponent<LineRenderer>();
+        if (_tracer == null) _tracer = gameObject.AddComponent<LineRenderer>();
+        _tracer.positionCount = 2;
+        _tracer.useWorldSpace = true;
+        _tracer.startWidth = 0.055f;
+        _tracer.endWidth = 0.012f;
+        _tracer.numCapVertices = 4;
+        _tracer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        _tracer.receiveShadows = false;
+        _tracer.textureMode = LineTextureMode.Stretch;
 
-        // Guaranteed fail-safe URP Additive Material with whiteTexture for pure gradient evaluation
-        Material trailMat = new Material(GetVFXMaterial(true));
-        if (trailMat.HasProperty("_BaseMap")) trailMat.SetTexture("_BaseMap", Texture2D.whiteTexture);
-        if (trailMat.HasProperty("_MainTex")) trailMat.SetTexture("_MainTex", Texture2D.whiteTexture);
-        _trail.material = trailMat;
+        Shader shader = VFXUtil.FindValidShader(false);
+        Material tracerMat = new Material(shader != null ? shader : VFXUtil.Get(false).shader);
+        Color head = new Color(1f, 0.72f, 0.15f, 1f);
+        Color tail = new Color(1f, 0.28f, 0.02f, 0.15f);
+        if (tracerMat.HasProperty("_BaseColor")) tracerMat.SetColor("_BaseColor", head);
+        if (tracerMat.HasProperty("_Color")) tracerMat.SetColor("_Color", head);
+        tracerMat.color = head;
+        _tracer.material = tracerMat;
+        _tracer.startColor = head;
+        _tracer.endColor = tail;
 
-        // Gradient: Ultra-bright white-hot core → blazing gold → amber tracer tip
-        Gradient gradient = new Gradient();
-        gradient.SetKeys(
-            new GradientColorKey[] {
-                new GradientColorKey(new Color(5.0f, 4.8f, 3.8f), 0f),    // Incandescent white-hot core
-                new GradientColorKey(new Color(3.2f, 2.4f, 0.8f), 0.25f), // Blazing gold
-                new GradientColorKey(new Color(2.2f, 1.1f, 0.2f), 0.65f), // Amber streak
-                new GradientColorKey(new Color(1.2f, 0.3f, 0.05f), 1f)    // Fading red tail
-            },
-            new GradientAlphaKey[] {
-                new GradientAlphaKey(1f,    0f),
-                new GradientAlphaKey(0.9f, 0.45f),
-                new GradientAlphaKey(0f,    1f)
-            }
-        );
-        _trail.colorGradient = gradient;
-
-        // Dynamic bullet point light (casts moving light as bullet streaks across scene)
         GameObject lightObj = new GameObject("TracerLight");
         lightObj.transform.SetParent(transform, false);
         _bulletLight = lightObj.AddComponent<Light>();
         _bulletLight.type = LightType.Point;
-        _bulletLight.color = new Color(1f, 0.88f, 0.5f);
-        _bulletLight.range = 6.0f;
-        _bulletLight.intensity = 3.5f;
+        _bulletLight.color = new Color(1f, 0.62f, 0.15f);
+        _bulletLight.range = 3.2f;
+        _bulletLight.intensity = 2.2f;
         _bulletLight.shadows = LightShadows.None;
+    }
+
+    private void DrawTracer()
+    {
+        if (_tracer == null || _velocity.sqrMagnitude < 0.01f) return;
+        Vector3 dir = _velocity.normalized;
+        _tracer.SetPosition(0, transform.position);
+        _tracer.SetPosition(1, transform.position - dir * 3.2f);
+    }
+
+    private Vector3 _destination;
+    private bool _flyToPoint;
+    private SpiderEnemy _lockedSpider;
+    private ZombieAI _lockedZombie;
+    private Vector3 _spawnPos;
+
+    public void LaunchTo(Vector3 destination, SpiderEnemy spider, ZombieAI zombie, float lifetime, AudioClip fleshSfx = null, AudioClip groundSfx = null)
+    {
+        _destination = destination;
+        _flyToPoint = true;
+        _lockedSpider = spider;
+        _lockedZombie = zombie;
+        _spawnPos = transform.position;
+        Vector3 dir = destination - transform.position;
+        if (dir.sqrMagnitude < 0.001f) dir = transform.forward;
+        _velocity = dir.normalized * 78f;
+        _prevPos = transform.position;
+        if (fleshSfx != null) fleshHitSound = fleshSfx;
+        if (groundSfx != null) groundHitSound = groundSfx;
+        DrawTracer();
+        Destroy(gameObject, lifetime);
     }
 
     public void Launch(Vector3 direction, float speed, float lifetime, AudioClip fleshSfx = null, AudioClip groundSfx = null)
     {
-        _velocity = direction.normalized * speed;
-        _prevPos = transform.position;
-        if (fleshSfx != null) fleshHitSound = fleshSfx;
-        if (groundSfx != null) groundHitSound = groundSfx;
-        Destroy(gameObject, lifetime);
+        LaunchTo(transform.position + direction.normalized * 40f, null, null, lifetime, fleshSfx, groundSfx);
     }
 
     private void Update()
     {
         if (_hasHit) return;
+
+        DrawTracer();
+
+        if (_flyToPoint)
+        {
+            Vector3 toPoint = _destination - transform.position;
+            float step = 78f * Time.deltaTime;
+            if (toPoint.magnitude <= step)
+            {
+                transform.position = _destination;
+                DrawTracer();
+                ArriveAtAim();
+                return;
+            }
+
+            Vector3 next = transform.position + toPoint.normalized * step;
+            if (BlockedBeforeAim(_prevPos, next, out RaycastHit block))
+            {
+                transform.position = block.point;
+                OnImpact(block.point, block.normal, block.collider);
+                return;
+            }
+
+            transform.position = next;
+            transform.rotation = Quaternion.LookRotation(toPoint.normalized);
+            _prevPos = transform.position;
+            DrawTracer();
+            return;
+        }
 
         Vector3 moveStep = _velocity * Time.deltaTime;
         float distance = moveStep.magnitude;
@@ -146,6 +193,7 @@ public class Bullet : MonoBehaviour
                 Collider hitCol = hits[i].collider;
                 if (hitCol == null) continue;
                 if (hitCol.GetComponentInParent<PlayerController>() != null) continue;
+                if (hitCol.GetComponentInParent<GunShooter>() != null) continue;
 
                 // For triggers, only hit if it belongs to an enemy (SpiderEnemy or ZombieAI)
                 if (hitCol.isTrigger)
@@ -166,6 +214,72 @@ public class Bullet : MonoBehaviour
         transform.position += moveStep;
         transform.rotation = Quaternion.LookRotation(_velocity);
         _prevPos = transform.position;
+    }
+
+    private bool BlockedBeforeAim(Vector3 from, Vector3 to, out RaycastHit block)
+    {
+        block = default;
+        Vector3 delta = to - from;
+        float dist = delta.magnitude;
+        if (dist < 0.001f) return false;
+
+        RaycastHit[] hits = Physics.RaycastAll(from, delta / dist, dist, hitMask, QueryTriggerInteraction.Collide);
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        for (int i = 0; i < hits.Length; i++)
+        {
+            Collider col = hits[i].collider;
+            if (col == null) continue;
+            if (col.GetComponentInParent<PlayerController>() != null) continue;
+            if (col.GetComponentInParent<GunShooter>() != null) continue;
+            if (Vector3.Distance(from, _spawnPos) + hits[i].distance < 0.45f) continue;
+
+            SpiderEnemy spider = col.GetComponentInParent<SpiderEnemy>();
+            ZombieAI zombie = col.GetComponentInParent<ZombieAI>();
+            if ((_lockedSpider != null && spider == _lockedSpider) || (_lockedZombie != null && zombie == _lockedZombie))
+                continue;
+            if (col.isTrigger && spider == null && zombie == null)
+                continue;
+
+            float remain = Vector3.Distance(hits[i].point, _destination);
+            if (remain < 0.75f)
+                continue;
+
+            block = hits[i];
+            return true;
+        }
+        return false;
+    }
+
+    private void ArriveAtAim()
+    {
+        if (_hasHit) return;
+        _hasHit = true;
+
+        Vector3 point = _destination;
+        Vector3 normal = (_spawnPos - _destination).normalized;
+        if (normal.sqrMagnitude < 0.001f) normal = Vector3.up;
+
+        if (_lockedSpider != null && !_lockedSpider.IsDead)
+        {
+            _lockedSpider.TakeDamage(Mathf.Max(damage, 1f), point, normal);
+            if (GunShooter.Instance != null) GunShooter.Instance.RegisterHitMarker(_lockedSpider.IsDead);
+            GameAudio.PlayBulletHit(point, true);
+            VFXUtil.GunFleshHit(point, normal);
+        }
+        else if (_lockedZombie != null && !_lockedZombie.IsDead)
+        {
+            _lockedZombie.TakeDamage(Mathf.Max(damage, 1f), point, normal);
+            if (GunShooter.Instance != null) GunShooter.Instance.RegisterHitMarker(_lockedZombie.IsDead);
+            GameAudio.PlayBulletHit(point, true);
+            VFXUtil.GunFleshHit(point, normal);
+        }
+        else
+        {
+            GameAudio.PlayBulletHit(point, false);
+            VFXUtil.GunSurfaceHit(point, normal);
+        }
+
+        Destroy(gameObject);
     }
 
     private void OnCollisionEnter(Collision collision)
@@ -206,16 +320,16 @@ public class Bullet : MonoBehaviour
 
         if (isEnemy)
         {
-            float effectiveDamage = Mathf.Max(damage, 75f);
+            float effectiveDamage = Mathf.Max(damage, 1f);
             bool isKill = false;
             if (spider != null)
             {
-                spider.TakeDamage(effectiveDamage);
+                spider.TakeDamage(effectiveDamage, point, normal);
                 isKill = spider.IsDead;
             }
             else if (zombie != null)
             {
-                zombie.TakeDamage(effectiveDamage);
+                zombie.TakeDamage(effectiveDamage, point, normal);
                 isKill = zombie.IsDead;
             }
 
@@ -223,15 +337,13 @@ public class Bullet : MonoBehaviour
                 GunShooter.Instance.RegisterHitMarker(isKill);
 
             GameAudio.PlayBulletHit(point, true);
-
-            SpawnFleshImpactEffect(point, normal);
+            VFXUtil.GunFleshHit(point, normal);
             GameFeel.HitStop(0.035f);
         }
         else
         {
             GameAudio.PlayBulletHit(point, false);
-
-            SpawnRicochetImpactEffect(point, normal);
+            VFXUtil.GunSurfaceHit(point, normal);
         }
 
         if (disableTrailOnImpact && _trail != null)
@@ -241,21 +353,5 @@ public class Bullet : MonoBehaviour
         }
 
         Destroy(gameObject);
-    }
-
-    private void SpawnFleshImpactEffect(Vector3 pos, Vector3 normal)
-    {
-        // AAA Flesh Impact: Dynamic crimson flash + arterial blood spray + lingering blood mist
-        VFXUtil.SpawnFadingLight(pos, new Color(1f, 0.04f, 0.02f), 8.0f, 8.0f, 0.12f);
-        VFXUtil.Burst(pos, normal, new Color(0.85f, 0.02f, 0.02f, 1f), 32, 10f, 24f, 0.12f, 0.35f, 0.15f, 0.4f, true, true, 2.5f, 42f);
-        VFXUtil.DustPuff(pos, normal, new Color(0.6f, 0.03f, 0.02f, 0.55f), 8, 0.75f);
-    }
-
-    private void SpawnRicochetImpactEffect(Vector3 pos, Vector3 normal)
-    {
-        // AAA Ricochet Impact: Incandescent golden flash + needle sparks + concrete/dirt dust puff
-        VFXUtil.SpawnFadingLight(pos, new Color(1f, 0.88f, 0.45f), 9.0f, 9.0f, 0.10f);
-        VFXUtil.Sparks(pos, normal, new Color(4.0f, 2.8f, 1.0f, 1f), 28, 28f);
-        VFXUtil.DustPuff(pos, normal, new Color(0.85f, 0.82f, 0.75f, 0.38f), 8, 1.0f);
     }
 }
