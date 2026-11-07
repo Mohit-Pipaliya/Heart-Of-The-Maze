@@ -328,7 +328,7 @@ public class BoatSystem : MonoBehaviour
             if (driveBoatUI != null)  driveBoatUI.SetActive(hasOar);
             if (collectOarUI != null) collectOarUI.SetActive(!hasOar);
 
-            if (Input.GetKeyDown(KeyCode.B))
+            if (Input.GetKeyDown(KeyCode.B) || Input.GetKeyDown(KeyCode.E))
             {
                 if (!hasOar)
                 {
@@ -464,7 +464,7 @@ public class BoatSystem : MonoBehaviour
 
     private void HandleExitInput()
     {
-        if ((Input.GetKeyDown(KeyCode.G) || Input.GetKeyDown(KeyCode.F)) && !_isExiting)
+        if ((Input.GetKeyDown(KeyCode.G) || Input.GetKeyDown(KeyCode.F) || Input.GetKeyDown(KeyCode.E)) && !_isExiting)
         {
             StartCoroutine(ExitBoatSequence());
         }
@@ -730,6 +730,15 @@ public class BoatSystem : MonoBehaviour
             stern = water.GetWaveOffset(center - fwd * halfL);
             star = water.GetWaveOffset(center + right * halfW);
             port = water.GetWaveOffset(center - right * halfW);
+        }
+        else
+        {
+            float t = Time.time;
+            mid = GerstnerWaveMath.EvaluateWaterDisplacement(center, t).y;
+            bow = GerstnerWaveMath.EvaluateWaterDisplacement(center + fwd * halfL, t).y;
+            stern = GerstnerWaveMath.EvaluateWaterDisplacement(center - fwd * halfL, t).y;
+            star = GerstnerWaveMath.EvaluateWaterDisplacement(center + right * halfW, t).y;
+            port = GerstnerWaveMath.EvaluateWaterDisplacement(center - right * halfW, t).y;
         }
 
         float wave = (mid + bow + stern + port + star) / 5f;
