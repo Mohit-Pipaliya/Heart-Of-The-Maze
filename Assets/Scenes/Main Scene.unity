@@ -1878,11 +1878,11 @@ MonoBehaviour:
   preset: 0
   resolutionX: 48
   resolutionZ: 48
-  generateVolumeSkirts: 1
-  waveHeight: 0.45
-  waveLength: 22
-  waveSpeed: 1.35
-  waveSteepness: 0.45
+  generateVolumeSkirts: 0
+  waveHeight: 0.22
+  waveLength: 14
+  waveSpeed: 1.4
+  waveSteepness: 0.35
   windDirection: 45
   secondaryWaveScale: 0.45
   secondaryAngleOffset: 38

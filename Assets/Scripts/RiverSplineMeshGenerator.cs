@@ -142,3 +142,4 @@ public class RiverSplineMeshGenerator : MonoBehaviour
         mesh.RecalculateBounds();
     }
 }
+

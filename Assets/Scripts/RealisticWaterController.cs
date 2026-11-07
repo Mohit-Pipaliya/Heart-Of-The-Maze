@@ -37,7 +37,7 @@ public class RealisticWaterController : MonoBehaviour
     public int resolutionZ = 128;
 
     [Tooltip("Include a short lip around the river so the edge has depth without giant side walls")]
-    public bool generateVolumeSkirts = true;
+    public bool generateVolumeSkirts = false;
 
     [Tooltip("How far the side lip drops, in world meters")]
     [Range(0.3f, 4f)]
@@ -79,10 +79,10 @@ public class RealisticWaterController : MonoBehaviour
 
     [Header("Simulation & Performance")]
     [Tooltip("Physically undulate mesh vertices in 3D on CPU so water truly rolls in front of player")]
-    public bool enableCPUVertexWaves = true;
+    public bool enableCPUVertexWaves = false;
 
     [Tooltip("Recalculate mesh normals for realistic sun glints and lighting highlights")]
-    public bool recalculateMeshNormals = true;
+    public bool recalculateMeshNormals = false;
 
     [Tooltip("Keep shader parameters (speed, frequency, scale, scrolling) synchronized with material")]
     public bool syncShaderProperties = true;
@@ -217,13 +217,13 @@ public class RealisticWaterController : MonoBehaviour
         }
         else if (p == WaterPreset.RealisticRiverOcean)
         {
-            waveHeight = 0.95f;
-            waveLength = 13.0f;
-            waveSpeed = 1.65f;
-            waveSteepness = 0.62f;
-            secondaryWaveScale = 0.55f;
-            rippleScale = 0.22f;
-            normalScrollSpeed = 0.85f;
+            waveHeight = 0.22f;
+            waveLength = 14.0f;
+            waveSpeed = 1.4f;
+            waveSteepness = 0.35f;
+            secondaryWaveScale = 0.3f;
+            rippleScale = 0.15f;
+            normalScrollSpeed = 1.8f;
         }
         else if (p == WaterPreset.RoughStormy)
         {
@@ -244,13 +244,17 @@ public class RealisticWaterController : MonoBehaviour
         InitComponents();
         if (_meshFilter == null) return;
 
+        int rx = Mathf.Clamp(resolutionX, 8, 200);
+        int rz = Mathf.Clamp(resolutionZ, 8, 240);
+        int expectedTopVerts = (rx + 1) * (rz + 1);
+
         Mesh current = _meshFilter.sharedMesh;
-        // Check if mesh is primitive cube (24 verts) or needs rebuild
         bool needsRebuild = (current == null) ||
                             (current.vertexCount <= 24) ||
+                            (current.vertexCount != expectedTopVerts && !generateVolumeSkirts) ||
                             (_runtimeMesh == null) ||
-                            (_generatedResX != resolutionX) ||
-                            (_generatedResZ != resolutionZ) ||
+                            (_generatedResX != rx) ||
+                            (_generatedResZ != rz) ||
                             (_generatedSkirts != generateVolumeSkirts);
 
         if (needsRebuild)
@@ -268,18 +272,14 @@ public class RealisticWaterController : MonoBehaviour
         int rx = Mathf.Clamp(resolutionX, 8, 200);
         int rz = Mathf.Clamp(resolutionZ, 8, 240);
 
-        float scaleY = Mathf.Max(0.001f, transform.lossyScale.y);
-        float skirtDrop = Mathf.Clamp(skirtWorldDepth, 0.2f, scaleY) / scaleY;
-        float bottomY = 0.5f - skirtDrop;
+        List<Vector3> verts = new List<Vector3>((rx + 1) * (rz + 1));
+        List<Vector2> uvs = new List<Vector2>((rx + 1) * (rz + 1));
+        List<Vector3> normals = new List<Vector3>((rx + 1) * (rz + 1));
+        List<Vector4> tangents = new List<Vector4>((rx + 1) * (rz + 1));
+        List<Color> colors = new List<Color>((rx + 1) * (rz + 1));
+        List<int> tris = new List<int>(rx * rz * 6);
 
-        List<Vector3> verts = new List<Vector3>();
-        List<Vector2> uvs = new List<Vector2>();
-        List<Vector3> normals = new List<Vector3>();
-        List<Vector4> tangents = new List<Vector4>();
-        List<Color> colors = new List<Color>();
-        List<int> tris = new List<int>();
-
-        // 1. Top Surface Grid
+        // 1. Pristine clean Top Surface Grid (no volume skirts, no side spikes)
         for (int ix = 0; ix <= rx; ix++)
         {
             float u = (float)ix / rx;
@@ -291,7 +291,7 @@ public class RealisticWaterController : MonoBehaviour
                 float z = v - 0.5f;
 
                 verts.Add(new Vector3(x, 0.5f, z));
-                uvs.Add(new Vector2(u * 8f, v * 8f));
+                uvs.Add(new Vector2(u * 8f, v * 20f));
                 normals.Add(Vector3.up);
                 tangents.Add(new Vector4(1f, 0f, 0f, 1f));
                 colors.Add(new Color(0f, 0f, 0f, 0f));
@@ -315,221 +315,23 @@ public class RealisticWaterController : MonoBehaviour
             }
         }
 
-        // 2. Volume Skirts & Bottom (if enabled)
-        List<int> skirtTopIdx = new List<int>();
-        List<int> skirtRefTop = new List<int>();
-
-        if (generateVolumeSkirts)
+        if (_runtimeMesh == null)
         {
-            // South Skirt (Z = -0.5, iz = 0, outward normal -Z)
-            for (int ix = 0; ix < rx; ix++)
-            {
-                int topRefA = ix * (rz + 1) + 0;
-                int topRefB = (ix + 1) * (rz + 1) + 0;
-
-                int vTopA = verts.Count;
-                verts.Add(verts[topRefA]);
-                uvs.Add(uvs[topRefA]);
-                normals.Add(Vector3.back);
-                tangents.Add(new Vector4(1f, 0f, 0f, 1f));
-                colors.Add(new Color(0f, 0f, 0f, 0f));
-                skirtTopIdx.Add(vTopA);
-                skirtRefTop.Add(topRefA);
-
-                int vTopB = verts.Count;
-                verts.Add(verts[topRefB]);
-                uvs.Add(uvs[topRefB]);
-                normals.Add(Vector3.back);
-                tangents.Add(new Vector4(1f, 0f, 0f, 1f));
-                colors.Add(new Color(0f, 0f, 0f, 0f));
-                skirtTopIdx.Add(vTopB);
-                skirtRefTop.Add(topRefB);
-
-                int vBotA = verts.Count;
-                verts.Add(new Vector3(verts[topRefA].x, bottomY, -0.5f));
-                uvs.Add(new Vector2(uvs[topRefA].x, 0f));
-                normals.Add(Vector3.back);
-                tangents.Add(new Vector4(1f, 0f, 0f, 1f));
-                colors.Add(new Color(0f, 0f, 0f, 0f));
-
-                int vBotB = verts.Count;
-                verts.Add(new Vector3(verts[topRefB].x, bottomY, -0.5f));
-                uvs.Add(new Vector2(uvs[topRefB].x, 0f));
-                normals.Add(Vector3.back);
-                tangents.Add(new Vector4(1f, 0f, 0f, 1f));
-                colors.Add(new Color(0f, 0f, 0f, 0f));
-
-                tris.Add(vTopA); tris.Add(vTopB); tris.Add(vBotA);
-                tris.Add(vTopB); tris.Add(vBotB); tris.Add(vBotA);
-            }
-
-            // North Skirt (Z = +0.5, iz = rz, outward normal +Z)
-            for (int ix = 0; ix < rx; ix++)
-            {
-                int topRefA = ix * (rz + 1) + rz;
-                int topRefB = (ix + 1) * (rz + 1) + rz;
-
-                int vTopA = verts.Count;
-                verts.Add(verts[topRefA]);
-                uvs.Add(uvs[topRefA]);
-                normals.Add(Vector3.forward);
-                tangents.Add(new Vector4(-1f, 0f, 0f, 1f));
-                colors.Add(new Color(0f, 0f, 0f, 0f));
-                skirtTopIdx.Add(vTopA);
-                skirtRefTop.Add(topRefA);
-
-                int vTopB = verts.Count;
-                verts.Add(verts[topRefB]);
-                uvs.Add(uvs[topRefB]);
-                normals.Add(Vector3.forward);
-                tangents.Add(new Vector4(-1f, 0f, 0f, 1f));
-                colors.Add(new Color(0f, 0f, 0f, 0f));
-                skirtTopIdx.Add(vTopB);
-                skirtRefTop.Add(topRefB);
-
-                int vBotA = verts.Count;
-                verts.Add(new Vector3(verts[topRefA].x, bottomY, 0.5f));
-                uvs.Add(new Vector2(uvs[topRefA].x, 0f));
-                normals.Add(Vector3.forward);
-                tangents.Add(new Vector4(-1f, 0f, 0f, 1f));
-                colors.Add(new Color(0f, 0f, 0f, 0f));
-
-                int vBotB = verts.Count;
-                verts.Add(new Vector3(verts[topRefB].x, bottomY, 0.5f));
-                uvs.Add(new Vector2(uvs[topRefB].x, 0f));
-                normals.Add(Vector3.forward);
-                tangents.Add(new Vector4(-1f, 0f, 0f, 1f));
-                colors.Add(new Color(0f, 0f, 0f, 0f));
-
-                tris.Add(vTopB); tris.Add(vTopA); tris.Add(vBotB);
-                tris.Add(vTopA); tris.Add(vBotA); tris.Add(vBotB);
-            }
-
-            // West Skirt (X = -0.5, ix = 0, outward normal -X)
-            for (int iz = 0; iz < rz; iz++)
-            {
-                int topRefA = 0 * (rz + 1) + iz;
-                int topRefB = 0 * (rz + 1) + (iz + 1);
-
-                int vTopA = verts.Count;
-                verts.Add(verts[topRefA]);
-                uvs.Add(uvs[topRefA]);
-                normals.Add(Vector3.left);
-                tangents.Add(new Vector4(0f, 0f, 1f, 1f));
-                colors.Add(new Color(0f, 0f, 0f, 0f));
-                skirtTopIdx.Add(vTopA);
-                skirtRefTop.Add(topRefA);
-
-                int vTopB = verts.Count;
-                verts.Add(verts[topRefB]);
-                uvs.Add(uvs[topRefB]);
-                normals.Add(Vector3.left);
-                tangents.Add(new Vector4(0f, 0f, 1f, 1f));
-                colors.Add(new Color(0f, 0f, 0f, 0f));
-                skirtTopIdx.Add(vTopB);
-                skirtRefTop.Add(topRefB);
-
-                int vBotA = verts.Count;
-                verts.Add(new Vector3(-0.5f, bottomY, verts[topRefA].z));
-                uvs.Add(new Vector2(uvs[topRefA].y, 0f));
-                normals.Add(Vector3.left);
-                tangents.Add(new Vector4(0f, 0f, 1f, 1f));
-                colors.Add(new Color(0f, 0f, 0f, 0f));
-
-                int vBotB = verts.Count;
-                verts.Add(new Vector3(-0.5f, bottomY, verts[topRefB].z));
-                uvs.Add(new Vector2(uvs[topRefB].y, 0f));
-                normals.Add(Vector3.left);
-                tangents.Add(new Vector4(0f, 0f, 1f, 1f));
-                colors.Add(new Color(0f, 0f, 0f, 0f));
-
-                tris.Add(vTopB); tris.Add(vTopA); tris.Add(vBotB);
-                tris.Add(vTopA); tris.Add(vBotA); tris.Add(vBotB);
-            }
-
-            // East Skirt (X = +0.5, ix = rx, outward normal +X)
-            for (int iz = 0; iz < rz; iz++)
-            {
-                int topRefA = rx * (rz + 1) + iz;
-                int topRefB = rx * (rz + 1) + (iz + 1);
-
-                int vTopA = verts.Count;
-                verts.Add(verts[topRefA]);
-                uvs.Add(uvs[topRefA]);
-                normals.Add(Vector3.right);
-                tangents.Add(new Vector4(0f, 0f, -1f, 1f));
-                colors.Add(new Color(0f, 0f, 0f, 0f));
-                skirtTopIdx.Add(vTopA);
-                skirtRefTop.Add(topRefA);
-
-                int vTopB = verts.Count;
-                verts.Add(verts[topRefB]);
-                uvs.Add(uvs[topRefB]);
-                normals.Add(Vector3.right);
-                tangents.Add(new Vector4(0f, 0f, -1f, 1f));
-                colors.Add(new Color(0f, 0f, 0f, 0f));
-                skirtTopIdx.Add(vTopB);
-                skirtRefTop.Add(topRefB);
-
-                int vBotA = verts.Count;
-                verts.Add(new Vector3(0.5f, bottomY, verts[topRefA].z));
-                uvs.Add(new Vector2(uvs[topRefA].y, 0f));
-                normals.Add(Vector3.right);
-                tangents.Add(new Vector4(0f, 0f, -1f, 1f));
-                colors.Add(new Color(0f, 0f, 0f, 0f));
-
-                int vBotB = verts.Count;
-                verts.Add(new Vector3(0.5f, bottomY, verts[topRefB].z));
-                uvs.Add(new Vector2(uvs[topRefB].y, 0f));
-                normals.Add(Vector3.right);
-                tangents.Add(new Vector4(0f, 0f, -1f, 1f));
-                colors.Add(new Color(0f, 0f, 0f, 0f));
-
-                tris.Add(vTopA); tris.Add(vTopB); tris.Add(vBotA);
-                tris.Add(vTopB); tris.Add(vBotB); tris.Add(vBotA);
-            }
-
-            int b00 = verts.Count;
-            verts.Add(new Vector3(-0.5f, bottomY, -0.5f));
-            uvs.Add(new Vector2(0f, 0f));
-            normals.Add(Vector3.down);
-            tangents.Add(new Vector4(1f, 0f, 0f, 1f));
-            colors.Add(new Color(0f, 0f, 0f, 0f));
-
-            int b10 = verts.Count;
-            verts.Add(new Vector3(0.5f, bottomY, -0.5f));
-            uvs.Add(new Vector2(1f, 0f));
-            normals.Add(Vector3.down);
-            tangents.Add(new Vector4(1f, 0f, 0f, 1f));
-            colors.Add(new Color(0f, 0f, 0f, 0f));
-
-            int b01 = verts.Count;
-            verts.Add(new Vector3(-0.5f, bottomY, 0.5f));
-            uvs.Add(new Vector2(0f, 1f));
-            normals.Add(Vector3.down);
-            tangents.Add(new Vector4(1f, 0f, 0f, 1f));
-            colors.Add(new Color(0f, 0f, 0f, 0f));
-
-            int b11 = verts.Count;
-            verts.Add(new Vector3(0.5f, bottomY, 0.5f));
-            uvs.Add(new Vector2(1f, 1f));
-            normals.Add(Vector3.down);
-            tangents.Add(new Vector4(1f, 0f, 0f, 1f));
-            colors.Add(new Color(0f, 0f, 0f, 0f));
-
-            tris.Add(b00); tris.Add(b10); tris.Add(b01);
-            tris.Add(b10); tris.Add(b11); tris.Add(b01);
+            _runtimeMesh = new Mesh();
+            _runtimeMesh.name = "RealisticWater_ProceduralGrid";
+        }
+        else
+        {
+            _runtimeMesh.Clear();
         }
 
-        _runtimeMesh = new Mesh();
-        _runtimeMesh.name = "RealisticWater_Mesh";
-        _runtimeMesh.MarkDynamic();
         _runtimeMesh.SetVertices(verts);
         _runtimeMesh.SetUVs(0, uvs);
         _runtimeMesh.SetNormals(normals);
         _runtimeMesh.SetTangents(tangents);
         _runtimeMesh.SetColors(colors);
         _runtimeMesh.SetTriangles(tris, 0);
+        _runtimeMesh.RecalculateBounds();
 
         _baseVertices = verts.ToArray();
         _displacedVertices = new Vector3[_baseVertices.Length];
@@ -537,13 +339,13 @@ public class RealisticWaterController : MonoBehaviour
         _colors = colors.ToArray();
         _baseNormals = normals.ToArray();
 
-        _skirtTopIndices = skirtTopIdx.ToArray();
-        _skirtCorrespondingTop = skirtRefTop.ToArray();
+        _skirtTopIndices = null;
+        _skirtCorrespondingTop = null;
 
         _meshFilter.sharedMesh = _runtimeMesh;
         _generatedResX = rx;
         _generatedResZ = rz;
-        _generatedSkirts = generateVolumeSkirts;
+        _generatedSkirts = false;
     }
 
     // ─── Update Loop (Waves & Animation) ───────────────────────────────────────
@@ -603,17 +405,6 @@ public class RealisticWaterController : MonoBehaviour
             }
         }
 
-        // Animate Skirt Top Edges to seal seamlessly with top wavy vertices
-        if (generateVolumeSkirts && _skirtTopIndices != null)
-        {
-            for (int k = 0; k < _skirtTopIndices.Length; k++)
-            {
-                int skirtIdx = _skirtTopIndices[k];
-                int topIdx = _skirtCorrespondingTop[k];
-                _displacedVertices[skirtIdx] = _displacedVertices[topIdx];
-            }
-        }
-
         _runtimeMesh.vertices = _displacedVertices;
         if (_colors != null && _colors.Length == _displacedVertices.Length)
             _runtimeMesh.colors = _colors;
@@ -643,14 +434,14 @@ public class RealisticWaterController : MonoBehaviour
         if (_waterMaterial.HasProperty(PropWaveScale)) _waterMaterial.SetFloat(PropWaveScale, scaleVal);
         if (_waterMaterial.HasProperty(PropWaveFreq)) _waterMaterial.SetFloat(PropWaveFreq, freqVal);
         if (_waterMaterial.HasProperty(PropScrollSpeed)) _waterMaterial.SetFloat(PropScrollSpeed, normalScrollSpeed);
-        if (_waterMaterial.HasProperty(PropFoamWidth)) _waterMaterial.SetFloat(PropFoamWidth, 0.08f);
+        if (_waterMaterial.HasProperty(PropFoamWidth)) _waterMaterial.SetFloat(PropFoamWidth, 0.02f);
 
         // ShaderGraph reference properties
         if (_waterMaterial.HasProperty(RefWaveSpeed)) _waterMaterial.SetFloat(RefWaveSpeed, speedVal);
         if (_waterMaterial.HasProperty(RefWaveScale)) _waterMaterial.SetFloat(RefWaveScale, scaleVal);
         if (_waterMaterial.HasProperty(RefWaveFreq)) _waterMaterial.SetFloat(RefWaveFreq, freqVal);
         if (_waterMaterial.HasProperty(RefScrollSpeed)) _waterMaterial.SetFloat(RefScrollSpeed, normalScrollSpeed);
-        if (_waterMaterial.HasProperty(RefFoamWidth)) _waterMaterial.SetFloat(RefFoamWidth, 0.08f);
+        if (_waterMaterial.HasProperty(RefFoamWidth)) _waterMaterial.SetFloat(RefFoamWidth, 0.02f);
     }
 
     private void UpdateShaderProperties(float time)

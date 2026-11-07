@@ -161,3 +161,4 @@ public class RealisticBoatBuoyancy : MonoBehaviour
         if (wakeTrailStarboard != null) wakeTrailStarboard.emitting = isMoving;
     }
 }
+

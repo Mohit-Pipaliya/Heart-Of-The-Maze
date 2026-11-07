@@ -742,25 +742,22 @@ public class BoatSystem : MonoBehaviour
         }
 
         float wave = (mid + bow + stern + port + star) / 5f;
-        float follow = Mathf.Lerp(0.28f, 1.35f, speed01);
+        float follow = Mathf.Lerp(0.28f, 1.1f, speed01);
         float rapids = 0f;
         if (speed01 > 0.08f)
         {
-            float amp = Mathf.Max(0.55f, waterBobAmount) * (0.75f + speed01 * 1.35f);
-            rapids = Mathf.Sin(Time.time * (2.6f + speed01 * 3.4f)) * amp;
-            rapids += Mathf.Sin(Time.time * 6.4f + 1.4f) * amp * 0.42f * speed01;
-            rapids += (bow - stern) * 0.35f * speed01;
+            float amp = Mathf.Max(0.25f, waterBobAmount * 0.5f) * (0.6f + speed01 * 0.8f);
+            rapids = Mathf.Sin(Time.time * (2.2f + speed01 * 2.8f)) * amp;
+            rapids += (bow - stern) * 0.2f * speed01;
         }
 
-        if (!_hasWaterRest)
-        {
-            _waterRestY = transform.position.y;
-            _hasWaterRest = true;
-        }
-
-        float targetY = _waterRestY + wave * follow + rapids;
+        // Float at realistic boat waterline: keel submerged, gunwales & seats cleanly above water
+        float baseWaterY = hasWater ? RealisticWaterController.GetWaterHeight(center) : -4.7f;
+        const float boatWaterlineOffset = 0.38f;
+        float targetY = baseWaterY + boatWaterlineOffset + wave * follow + rapids;
+        
         Vector3 p = transform.position;
-        p.y = Mathf.SmoothDamp(p.y, targetY, ref _heaveVel, speed01 > 0.12f ? 0.11f : 0.32f);
+        p.y = Mathf.SmoothDamp(p.y, targetY, ref _heaveVel, speed01 > 0.12f ? 0.12f : 0.28f);
         transform.position = p;
 
         // ── Boat rotation: yaw from _boatYaw, pitch/roll from water surface ──────────
@@ -768,8 +765,8 @@ public class BoatSystem : MonoBehaviour
         float pitchDeg = Mathf.Atan2(bow - stern, halfL * 2f) * Mathf.Rad2Deg;
         // 2. Compute roll (port-to-starboard tilt) in degrees
         float rollDeg  = Mathf.Atan2(star - port, halfW * 2f) * Mathf.Rad2Deg;
-        // 3. Clamp tilt so it stays believable
-        float maxTilt = Mathf.Lerp(6f, 18f, speed01);
+        // 3. Stable, believable tilt (gentle sway, no violent rocking)
+        float maxTilt = Mathf.Lerp(3.5f, 9f, speed01);
         pitchDeg = Mathf.Clamp(pitchDeg, -maxTilt, maxTilt);
         rollDeg  = Mathf.Clamp(rollDeg,  -maxTilt, maxTilt);
         // 4. Build target rotation: yaw first, then pitch and roll in boat-local space
@@ -778,7 +775,7 @@ public class BoatSystem : MonoBehaviour
         // _axisFix stores the original boat-local pose offset (e.g. 270°X on this prefab)
         Quaternion target   = yawRot * tiltRot * _axisFix;
 
-        float tiltFollow = Mathf.Lerp(2.4f, 8f, speed01);
+        float tiltFollow = Mathf.Lerp(2.8f, 7.5f, speed01);
         transform.rotation = Quaternion.Slerp(transform.rotation, target, 1f - Mathf.Exp(-tiltFollow * Time.deltaTime));
 
         if (boatRigidbody != null)

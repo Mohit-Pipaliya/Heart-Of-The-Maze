@@ -49,3 +49,4 @@ public class BoatCameraTarget : MonoBehaviour
         transform.rotation = Quaternion.Euler(0f, _currentYaw, 0f);
     }
 }
+

@@ -50,3 +50,4 @@ Shader "Custom/Water/HullDepthMask"
         }
     }
 }
+

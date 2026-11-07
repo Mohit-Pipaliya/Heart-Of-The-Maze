@@ -115,3 +115,4 @@ public class BoatBoardingController : MonoBehaviour
         if (boatCinemachineCam != null) boatCinemachineCam.Priority = 0;
     }
 }
+
