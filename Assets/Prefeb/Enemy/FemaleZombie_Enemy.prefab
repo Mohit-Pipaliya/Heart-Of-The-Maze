@@ -1,0 +1,288 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1001 &2772127053008855797
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 10
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 10
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 10
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 126.6
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 464.1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_ConstrainProportionsScale
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -7823293702887809713, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 294d7a2f22c684071a03ded109dff4a0, type: 2}
+    - target: {fileID: -6138923895777843317, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 7bc5a2d4abfd043b7b502179bd4b788b, type: 2}
+    - target: {fileID: -5738929356375114689, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 294d7a2f22c684071a03ded109dff4a0, type: 2}
+    - target: {fileID: -3432401550182100168, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.7892462
+      objectReference: {fileID: 0}
+    - target: {fileID: -3432401550182100168, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0.06223701
+      objectReference: {fileID: 0}
+    - target: {fileID: -3432401550182100168, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0.29116833
+      objectReference: {fileID: 0}
+    - target: {fileID: -3432401550182100168, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0.53706414
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_Name
+      value: FemaleZombie_Enemy
+      objectReference: {fileID: 0}
+    - target: {fileID: 1630794972795428178, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: db0161f3c8d574a42a084ee07cbd7dde, type: 2}
+    - target: {fileID: 2321523695958950486, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 294d7a2f22c684071a03ded109dff4a0, type: 2}
+    - target: {fileID: 4123177642777943866, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: fa9fba00452e44d02a2a9e8a6f7715b7, type: 2}
+    - target: {fileID: 5866666021909216657, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_Controller
+      value: 
+      objectReference: {fileID: 9100000, guid: 0c17869c472764db8b83533885bc3c29, type: 2}
+    - target: {fileID: 5866666021909216657, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      propertyPath: m_ApplyRootMotion
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2116072485252499625}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 4258500426232887453}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 5638150462381081559}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 6798922965879167532}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 8584847330829834081}
+  m_SourcePrefab: {fileID: 100100000, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+--- !u!1 &3078767866134847396 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+  m_PrefabInstance: {fileID: 2772127053008855797}
+  m_PrefabAsset: {fileID: 0}
+--- !u!195 &2116072485252499625
+NavMeshAgent:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3078767866134847396}
+  m_Enabled: 1
+  m_AgentTypeID: 0
+  m_Radius: 0.55
+  m_Speed: 1.6
+  m_Acceleration: 9
+  avoidancePriority: 50
+  m_AngularSpeed: 135
+  m_StoppingDistance: 2
+  m_AutoTraverseOffMeshLink: 1
+  m_AutoBraking: 1
+  m_AutoRepath: 1
+  m_Height: 1.8
+  m_BaseOffset: 0
+  m_WalkableMask: 4294967295
+  m_ObstacleAvoidanceType: 4
+--- !u!136 &4258500426232887453
+CapsuleCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3078767866134847396}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 2
+  m_Radius: 0.5
+  m_Height: 1.8
+  m_Direction: 1
+  m_Center: {x: 0, y: 0.9, z: 0}
+--- !u!114 &5638150462381081559
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3078767866134847396}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d88b46e2135d74042ab32a20040088f0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ZombieAI
+  maxHealth: 1000
+  triggerArea: {fileID: 0}
+  detectionRadius: 50
+  loseTargetRadius: 36
+  viewAngle: 118
+  proximityRadius: 2.8
+  eyeHeight: 1.55
+  loseSightDelay: 1.15
+  searchDuration: 7.5
+  senseInterval: 0.12
+  walkSpeed: 7
+  runSpeed: 10
+  slideSpeed: 3
+  wanderRadius: 18
+  wanderWaitMin: 1.5
+  wanderWaitMax: 3.5
+  rotationSpeed: 8
+  lungeSpeed: 6.4
+  attackRange: 13
+  attackDamage: 15
+  attackCooldown: 2
+  attackHitDelay: 0.45
+  heavyStaggerDamage: 140
+  staggerCooldown: 0.8
+  screamDuration: 1.9
+  screamSound: {fileID: 8300000, guid: da5807f60e8f24559bad0249406236a2, type: 3}
+  walkSound: {fileID: 8300000, guid: 99ef62f5b491249ba87bb29a3c8b3776, type: 3}
+  player: {fileID: 0}
+  showFloatingHealthBar: 0
+--- !u!114 &6798922965879167532
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3078767866134847396}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 81b7a2d8e411442f9e4299b0c511e612, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ZombieLocomotion
+  enableGroundSnapping: 1
+  groundLayer:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  raycastOriginHeight: 1.6
+  maxGroundRayDistance: 4
+  groundSnapSpeed: 35
+  groundOffset: 0
+  baseWalkSpeed: 1.3
+  baseRunSpeed: 4.2
+  speedDampTime: 0.15
+  turnDampTime: 0.12
+  enableTurnDeceleration: 1
+  sharpTurnAngleThreshold: 45
+  enableSpeedNoise: 1
+  speedNoiseAmount: 0.22
+  speedNoiseFrequency: 1.2
+--- !u!114 &8584847330829834081
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3078767866134847396}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5b71d60b86250481982c81735151fcd1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ZombieFootIK
+  enableFootIK: 1
+  enableLookAt: 1
+  groundLayer:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  raycastUpDistance: 0.65
+  raycastDownDistance: 0.85
+  footBottomOffset: 0.11
+  pelvisDropMultiplier: 0.85
+  maxPelvisDrop: 0.45
+  pelvisSpeed: 16
+  ikWeightSpeed: 18
+  lookTarget: {fileID: 0}
+  maxLookAngle: 90
+  bodyWeight: 0.25
+  headWeight: 0.85
+  eyesWeight: 1
+  clampWeight: 0.5

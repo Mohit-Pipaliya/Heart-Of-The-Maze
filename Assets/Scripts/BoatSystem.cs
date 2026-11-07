@@ -102,8 +102,17 @@ public class BoatSystem : MonoBehaviour
     [Header("Camera Settings (Boat Cinematic)")]
     public float camDistance = 4.0f;
     public Vector3 camOffset = new Vector3(0f, 1.6f, 0f);
-    public float camPitch    = 14f;
+    public float camPitch    = 18f;
     public float camYaw      = 0f;
+
+    [Tooltip("Camera kitna peeche stern ke, jaise boat ke andar se aage dekh rahe ho")]
+    public float camBehindStern = 1.35f;
+    [Tooltip("Deck ke center se camera kitna upar")]
+    public float camHeightAboveDeck = 1.5f;
+    [Tooltip("Nazar boat ke bow ki taraf kitni aage")]
+    [Range(0.2f, 1f)]
+    public float camLookAhead = 0.72f;
+    public float camLookHeight = 0.2f;
 
     // ─── Private State ─────────────────────────────────────────────────────────
     private bool _isOccupied        = false;
@@ -125,6 +134,13 @@ public class BoatSystem : MonoBehaviour
     private bool  _hasWaterRest = false;
     private float _nextSplashTime;
     private float _nextWaterLapTime;
+    private float _boatYaw;
+    private Quaternion _axisFix = Quaternion.identity;
+    private bool _poseReady;
+    private float _heaveVel;
+    private bool _snapBoatCam;
+    private bool _cameraOnBoat;
+    private Renderer[] _hullRenderers;
 
     private int _hashClimb;
     private int _hashSitDown;
@@ -153,6 +169,8 @@ public class BoatSystem : MonoBehaviour
         _hashUnclimb     = Animator.StringToHash(unclimbTriggerName);
         _hashIsPaddling  = Animator.StringToHash(paddlingBoolName);
         _hashSeatIdle    = Animator.StringToHash(seatIdleBoolName);
+        _hullRenderers = GetComponentsInChildren<Renderer>(true);
+        CaptureBoatAxes();
     }
 
     private void OnDestroy()
@@ -173,10 +191,12 @@ public class BoatSystem : MonoBehaviour
         if (_isOccupied && _runtimeMount != null && boatSeatPoint != null)
         {
             _runtimeMount.position = boatSeatPoint.position;
-            Vector3 bFwd = GetBoatForward();
-            bFwd.y = 0f;
+            Vector3 bFwd = HeadingForward();
             if (bFwd.sqrMagnitude > 0.001f)
-                _runtimeMount.rotation = Quaternion.LookRotation(bFwd.normalized, Vector3.up);
+                _runtimeMount.rotation = Quaternion.LookRotation(bFwd, Vector3.up);
+
+            if (_cameraOnBoat && !_isExiting)
+                UpdateSeatedCamera(false);
 
             if (_playerTransform != null && _playerTransform.parent == _runtimeMount)
             {
@@ -188,32 +208,36 @@ public class BoatSystem : MonoBehaviour
 
     private void Update()
     {
-        if (_isOccupied && _canPaddle)
+        if (_isOccupied)
         {
-            HandleBoatMovement();
-            HandleExitInput();
+            if (_isExiting)
+            {
+                ApplyWaterPose(0f);
+                return;
+            }
+
+            if (_canPaddle)
+            {
+                HandleBoatMovement();
+                HandleExitInput();
+            }
+
+            float speed01 = _canPaddle
+                ? Mathf.Clamp01(Mathf.Abs(_currentSpeed) / Mathf.Max(0.1f, boatForwardSpeed))
+                : 0f;
+            ApplyWaterPose(speed01);
+
+            if (_cameraOnBoat && _snapBoatCam)
+            {
+                UpdateSeatedCamera(true);
+                _snapBoatCam = false;
+            }
             return;
         }
 
         if (!_isOccupied && !_isEntering && !_isExiting)
         {
-            // Idle water wave float (boat gently bobs on water surface while parked)
-            if (RealisticWaterController.Instance != null && RealisticWaterController.Instance.enabled)
-            {
-                float idleWater = RealisticWaterController.GetWaterHeight(transform.position);
-                Vector3 p = transform.position;
-                p.y = Mathf.Lerp(p.y, idleWater - 0.15f, Time.deltaTime * 3f);
-                transform.position = p;
-
-                Vector3 waveNorm = RealisticWaterController.GetWaterNormal(transform.position);
-                Vector3 fwdProj = Vector3.ProjectOnPlane(transform.forward, waveNorm).normalized;
-                if (fwdProj != Vector3.zero)
-                {
-                    Quaternion rot = Quaternion.LookRotation(fwdProj, waveNorm);
-                    transform.rotation = Quaternion.Slerp(transform.rotation, rot, Time.deltaTime * 2f);
-                }
-            }
-
+            ApplyWaterPose(0f);
             HandleProximityCheck();
         }
     }
@@ -402,67 +426,20 @@ public class BoatSystem : MonoBehaviour
                 _playerAnimator.SetBool(_hashIsPaddling, false);
         }
 
-        // Steering (Smooth Turn)
+        // Steering (Smooth Turn) — yaw is applied in ApplyWaterPose so the hull axis stays upright
         float targetTurn = mouseX + (h * 2f);
         _currentTurn = Mathf.Lerp(_currentTurn, targetTurn, Time.deltaTime * turnSmoothing);
-
         if (Mathf.Abs(_currentTurn) > 0.01f)
-        {
-            float turn = _currentTurn * boatTurnSpeed * Time.deltaTime;
-            transform.Rotate(Vector3.up, turn, Space.World);
-
-            if (boatRigidbody != null)
-                boatRigidbody.rotation = transform.rotation;
-        }
+            _boatYaw += _currentTurn * boatTurnSpeed * Time.deltaTime;
 
         // Acceleration
         float targetSpeed = pressing ? (v * boatForwardSpeed) : 0f;
         float accRate = pressing ? accelerationRate : (1f - boatDecelerationSmoothing) * 10f;
         _currentSpeed = Mathf.Lerp(_currentSpeed, targetSpeed, Time.deltaTime * accRate);
 
-        Vector3 boatFwd = GetBoatForward();
+        Vector3 boatFwd = HeadingForward();
         Vector3 deltaMove = boatFwd * _currentSpeed * Time.deltaTime;
         transform.position += deltaMove;
-
-        // Water Bobbing & Wave Buoyancy
-        if (RealisticWaterController.Instance != null && RealisticWaterController.Instance.enabled)
-        {
-            if (!_hasWaterRest)
-            {
-                _waterRestY = transform.position.y;
-                _hasWaterRest = true;
-            }
-
-            float currentWaterSurface = RealisticWaterController.GetWaterHeight(transform.position);
-            Vector3 p = transform.position;
-            // Float smoothly at the water surface, maintaining boat waterline
-            p.y = Mathf.Lerp(p.y, currentWaterSurface - 0.15f, Time.deltaTime * 6f);
-            transform.position = p;
-
-            // Gentle wave pitch and roll tilt aligned with wave surface
-            Vector3 waveNormal = RealisticWaterController.GetWaterNormal(transform.position);
-            Vector3 currentFwd = transform.forward;
-            Vector3 targetFwd = Vector3.ProjectOnPlane(currentFwd, waveNormal).normalized;
-            if (targetFwd != Vector3.zero)
-            {
-                Quaternion targetRot = Quaternion.LookRotation(targetFwd, waveNormal);
-                // Subtle pitch/roll blend so boat feels naturally buoyant
-                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * 4f);
-            }
-        }
-        else
-        {
-            if (!_hasWaterRest)
-            {
-                _waterRestY = transform.position.y;
-                _hasWaterRest = true;
-            }
-
-            float bob = Mathf.Sin(Time.time * waterBobSpeed) * waterBobAmount * 0.08f;
-            Vector3 p = transform.position;
-            p.y = _waterRestY + bob;
-            transform.position = p;
-        }
 
         if (pressing && Time.time >= _nextSplashTime)
         {
@@ -479,18 +456,9 @@ public class BoatSystem : MonoBehaviour
         }
 
         if (boatRigidbody != null)
-            boatRigidbody.position = transform.position;
-
-        // Dynamic Camera — update boat camera distance only while paddling
-        if (Camera.main != null)
         {
-            CameraController cam = Camera.main.GetComponent<CameraController>();
-            if (cam != null)
-            {
-                float speedFactor = Mathf.Abs(_currentSpeed) / Mathf.Max(0.1f, boatForwardSpeed);
-                float dynamicDist = camDistance + (speedFactor * 1.5f);
-                cam.UpdateBoatCamera(dynamicDist, camOffset, camPitch);
-            }
+            boatRigidbody.position = transform.position;
+            boatRigidbody.rotation = transform.rotation;
         }
     }
 
@@ -533,10 +501,8 @@ public class BoatSystem : MonoBehaviour
         Transform seatTarget = boatSeatPoint != null ? boatSeatPoint : transform;
 
         // Guaranteed upright rotation for the boat seat (strictly zero pitch/roll)
-        Vector3 boatFwd = GetBoatForward();
-        boatFwd.y = 0f;
-        if (boatFwd.sqrMagnitude < 0.001f) boatFwd = transform.forward;
-        boatFwd.Normalize();
+        Vector3 boatFwd = HeadingForward();
+        if (boatFwd.sqrMagnitude < 0.001f) boatFwd = Vector3.forward;
         Quaternion uprightSeatRot = Quaternion.LookRotation(boatFwd, Vector3.up);
 
         // 3. Direct snap to boat seat standing up (No climb animation!)
@@ -549,6 +515,11 @@ public class BoatSystem : MonoBehaviour
         _playerTransform.SetParent(_runtimeMount);
         _playerTransform.localPosition = Vector3.zero;
         _playerTransform.localRotation = Quaternion.identity;
+
+        // Camera jumps to the stern view the moment the player sits
+        _cameraOnBoat = true;
+        _snapBoatCam = true;
+        UpdateSeatedCamera(true);
 
         // 5. Play SitDown / Seat animation
         if (_playerAnimator != null)
@@ -568,22 +539,7 @@ public class BoatSystem : MonoBehaviour
 
         _canPaddle  = true;
         _isEntering = false;
-
-        // Switch to dedicated behind-boat camera view
-        if (Camera.main != null)
-        {
-            CameraController cam = Camera.main.GetComponent<CameraController>();
-            if (cam != null)
-            {
-                cam.EnterBoatMode(
-                    transform,
-                    GetBoatForward,
-                    camDistance,
-                    camOffset,
-                    camPitch
-                );
-            }
-        }
+        UpdateSeatedCamera(true);
 
         Debug.Log("<color=#00FF88><b>[BoatSystem]</b></color> Player boarded boat and seated directly!");
     }
@@ -593,6 +549,7 @@ public class BoatSystem : MonoBehaviour
     {
         _isExiting  = true;
         _canPaddle  = false;
+        _cameraOnBoat = false;
 
         if (Camera.main != null)
         {
@@ -703,6 +660,160 @@ public class BoatSystem : MonoBehaviour
                 boatRigidbody.position = transform.position;
             yield return null;
         }
+    }
+
+    private void CaptureBoatAxes()
+    {
+        Vector3 fwd = GetBoatForward();
+        fwd.y = 0f;
+        if (fwd.sqrMagnitude < 0.0001f) fwd = Vector3.forward;
+        fwd.Normalize();
+        _boatYaw = Mathf.Atan2(fwd.x, fwd.z) * Mathf.Rad2Deg;
+        Quaternion flat = Quaternion.LookRotation(fwd, Vector3.up);
+        _axisFix = Quaternion.Inverse(flat) * transform.rotation;
+        _poseReady = true;
+        _waterRestY = transform.position.y;
+        _hasWaterRest = true;
+    }
+
+    private Vector3 HeadingForward()
+    {
+        float rad = _boatYaw * Mathf.Deg2Rad;
+        return new Vector3(Mathf.Sin(rad), 0f, Mathf.Cos(rad));
+    }
+
+    private Bounds CalculateHullBounds()
+    {
+        bool any = false;
+        Bounds b = new Bounds(transform.position, new Vector3(2.2f, 1.2f, 6f));
+        if (_hullRenderers == null || _hullRenderers.Length == 0)
+            _hullRenderers = GetComponentsInChildren<Renderer>(true);
+
+        for (int i = 0; i < _hullRenderers.Length; i++)
+        {
+            Renderer r = _hullRenderers[i];
+            if (r == null || !r.enabled) continue;
+            if (r.bounds.size.sqrMagnitude > 2500f) continue;
+            if (!any)
+            {
+                b = r.bounds;
+                any = true;
+            }
+            else b.Encapsulate(r.bounds);
+        }
+        return b;
+    }
+
+    private static float Support(Vector3 extents, Vector3 dir)
+    {
+        return Mathf.Abs(extents.x * dir.x) + Mathf.Abs(extents.y * dir.y) + Mathf.Abs(extents.z * dir.z);
+    }
+
+    private void ApplyWaterPose(float speed01)
+    {
+        if (!_poseReady) CaptureBoatAxes();
+
+        Vector3 fwd = HeadingForward();
+        Vector3 right = new Vector3(fwd.z, 0f, -fwd.x);
+        Bounds hull = CalculateHullBounds();
+        float halfL = Mathf.Clamp(Support(hull.extents, fwd), 1.3f, 7.5f);
+        float halfW = Mathf.Clamp(Support(hull.extents, right), 0.45f, 2.4f);
+        Vector3 center = transform.position;
+
+        float bow = 0f, stern = 0f, port = 0f, star = 0f, mid = 0f;
+        bool hasWater = RealisticWaterController.Instance != null && RealisticWaterController.Instance.enabled;
+        if (hasWater)
+        {
+            var water = RealisticWaterController.Instance;
+            mid = water.GetWaveOffset(center);
+            bow = water.GetWaveOffset(center + fwd * halfL);
+            stern = water.GetWaveOffset(center - fwd * halfL);
+            star = water.GetWaveOffset(center + right * halfW);
+            port = water.GetWaveOffset(center - right * halfW);
+        }
+
+        float wave = (mid + bow + stern + port + star) / 5f;
+        float follow = Mathf.Lerp(0.28f, 1.35f, speed01);
+        float rapids = 0f;
+        if (speed01 > 0.08f)
+        {
+            float amp = Mathf.Max(0.55f, waterBobAmount) * (0.75f + speed01 * 1.35f);
+            rapids = Mathf.Sin(Time.time * (2.6f + speed01 * 3.4f)) * amp;
+            rapids += Mathf.Sin(Time.time * 6.4f + 1.4f) * amp * 0.42f * speed01;
+            rapids += (bow - stern) * 0.35f * speed01;
+        }
+
+        if (!_hasWaterRest)
+        {
+            _waterRestY = transform.position.y;
+            _hasWaterRest = true;
+        }
+
+        float targetY = _waterRestY + wave * follow + rapids;
+        Vector3 p = transform.position;
+        p.y = Mathf.SmoothDamp(p.y, targetY, ref _heaveVel, speed01 > 0.12f ? 0.11f : 0.32f);
+        transform.position = p;
+
+        // ── Boat rotation: yaw from _boatYaw, pitch/roll from water surface ──────────
+        // 1. Compute pitch (bow-to-stern tilt) in degrees
+        float pitchDeg = Mathf.Atan2(bow - stern, halfL * 2f) * Mathf.Rad2Deg;
+        // 2. Compute roll (port-to-starboard tilt) in degrees
+        float rollDeg  = Mathf.Atan2(star - port, halfW * 2f) * Mathf.Rad2Deg;
+        // 3. Clamp tilt so it stays believable
+        float maxTilt = Mathf.Lerp(6f, 18f, speed01);
+        pitchDeg = Mathf.Clamp(pitchDeg, -maxTilt, maxTilt);
+        rollDeg  = Mathf.Clamp(rollDeg,  -maxTilt, maxTilt);
+        // 4. Build target rotation: yaw first, then pitch and roll in boat-local space
+        Quaternion yawRot   = Quaternion.Euler(0f, _boatYaw, 0f);
+        Quaternion tiltRot  = Quaternion.Euler(pitchDeg, 0f, -rollDeg);
+        // _axisFix stores the original boat-local pose offset (e.g. 270°X on this prefab)
+        Quaternion target   = yawRot * tiltRot * _axisFix;
+
+        float tiltFollow = Mathf.Lerp(2.4f, 8f, speed01);
+        transform.rotation = Quaternion.Slerp(transform.rotation, target, 1f - Mathf.Exp(-tiltFollow * Time.deltaTime));
+
+        if (boatRigidbody != null)
+        {
+            boatRigidbody.position = transform.position;
+            boatRigidbody.rotation = transform.rotation;
+        }
+    }
+
+    private void UpdateSeatedCamera(bool snap)
+    {
+        Camera camGo = Camera.main;
+        if (camGo == null) return;
+        CameraController cam = camGo.GetComponent<CameraController>();
+        if (cam == null) return;
+
+        Vector3 fwd = HeadingForward();
+        Bounds hull = CalculateHullBounds();
+        Vector3 seat = boatSeatPoint != null ? boatSeatPoint.position : transform.position;
+        bool hullTrustworthy = (hull.center - seat).sqrMagnitude < 36f;
+
+        Vector3 camPos;
+        Vector3 look;
+        if (hullTrustworthy)
+        {
+            float reach = Mathf.Clamp(Support(hull.extents, fwd), 1.4f, 8f);
+            Vector3 stern = hull.center - fwd * reach;
+            Vector3 bow = hull.center + fwd * reach;
+            camPos = stern - fwd * camBehindStern;
+            camPos.y = hull.center.y + camHeightAboveDeck;
+            look = Vector3.Lerp(hull.center, bow, camLookAhead);
+            look.y = hull.center.y + camLookHeight;
+        }
+        else
+        {
+            camPos = seat - fwd * (camBehindStern + 2.4f);
+            camPos.y = seat.y + camHeightAboveDeck;
+            look = seat + fwd * 4.6f;
+            look.y = seat.y + camLookHeight;
+        }
+
+        Vector3 dir = look - camPos;
+        if (dir.sqrMagnitude < 0.01f) dir = fwd + Vector3.down * 0.15f;
+        cam.SetBoatFraming(camPos, Quaternion.LookRotation(dir.normalized, Vector3.up), snap);
     }
 
     private Vector3 GetBoatForward()

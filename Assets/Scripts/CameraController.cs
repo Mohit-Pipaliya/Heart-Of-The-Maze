@@ -103,6 +103,10 @@ public class CameraController : MonoBehaviour
     private float _currentBoatYaw = 0f;
     private bool _hasBoatYaw = false;
     private Transform _savedPlayerTarget;
+    private bool _hasBoatPose = false;
+    private bool _snapBoatPose = false;
+    private Vector3 _boatCamPos;
+    private Quaternion _boatCamRot;
 
     public void EnterBoatMode(Transform boat, System.Func<Vector3> getForwardFunc, float dist = 4.8f, Vector3 offset = default, float pitch = 13f)
     {
@@ -138,12 +142,34 @@ public class CameraController : MonoBehaviour
         _boatPitch = pitch;
     }
 
+    /// <summary>
+    /// Places the seated camera. snap = true jumps there on the same frame the player sits.
+    /// </summary>
+    public void SetBoatFraming(Vector3 worldPos, Quaternion worldRot, bool snap)
+    {
+        _isBoatMode = true;
+        _hasBoatPose = true;
+        _boatCamPos = worldPos;
+        _boatCamRot = worldRot;
+        if (snap) _snapBoatPose = true;
+
+        Vector3 look = worldRot * Vector3.forward;
+        look.y = 0f;
+        if (look.sqrMagnitude > 0.0001f)
+            mouseX = Mathf.Atan2(look.x, look.z) * Mathf.Rad2Deg;
+        float pitch = worldRot.eulerAngles.x;
+        if (pitch > 180f) pitch -= 360f;
+        mouseY = pitch;
+    }
+
     public void ExitBoatMode(Transform playerTransform = null)
     {
         _isBoatMode = false;
         _boatTransform = null;
         _boatForwardFunc = null;
         _hasBoatYaw = false;
+        _hasBoatPose = false;
+        _snapBoatPose = false;
 
         Transform newTarget = playerTransform != null ? playerTransform : _savedPlayerTarget;
         if (newTarget != null)
@@ -191,7 +217,7 @@ public class CameraController : MonoBehaviour
     private void LateUpdate()
     {
         // ─── BOAT MODE: dedicated 3rd-person behind-boat camera ───────────────
-        if (_isBoatMode && _boatTransform != null && Application.isPlaying)
+        if (_isBoatMode && Application.isPlaying && (_hasBoatPose || _boatTransform != null))
         {
             RunBoatCamera();
             return;
@@ -293,50 +319,43 @@ public class CameraController : MonoBehaviour
     // ─── Boat Camera Core ────────────────────────────────────────────────────
     private void RunBoatCamera()
     {
-        if (_boatTransform == null) return;
-
-        // Track boat's forward direction and smoothly rotate camera yaw to match
-        Vector3 boatFwd = _boatForwardFunc != null ? _boatForwardFunc() : _boatTransform.forward;
-        boatFwd.y = 0f;
-
-        float boatHeading = 0f;
-        if (boatFwd.sqrMagnitude > 0.001f)
+        if (_hasBoatPose)
         {
-            boatHeading = Mathf.Atan2(boatFwd.x, boatFwd.z) * Mathf.Rad2Deg;
+            if (_snapBoatPose)
+            {
+                currentPosVelocity = Vector3.zero;
+                transform.SetPositionAndRotation(_boatCamPos, _boatCamRot);
+                _snapBoatPose = false;
+                return;
+            }
+
+            transform.position = Vector3.SmoothDamp(transform.position, _boatCamPos, ref currentPosVelocity, 0.045f);
+            transform.rotation = Quaternion.Slerp(transform.rotation, _boatCamRot, Time.deltaTime * 16f);
+            return;
         }
 
-        // On first frame, initialize yaw to boat heading
+        if (_boatTransform == null) return;
+
+        Vector3 boatFwd = _boatForwardFunc != null ? _boatForwardFunc() : _boatTransform.forward;
+        boatFwd.y = 0f;
+        if (boatFwd.sqrMagnitude < 0.001f) boatFwd = Vector3.forward;
+        boatFwd.Normalize();
+
+        float boatHeading = Mathf.Atan2(boatFwd.x, boatFwd.z) * Mathf.Rad2Deg;
         if (!_hasBoatYaw)
         {
             _currentBoatYaw = boatHeading;
             _hasBoatYaw = true;
         }
 
-        // Smooth follow yaw: camera stays behind boat, follows turn gradually
-        // So player sees bow of boat exactly as in the screenshot
-        _currentBoatYaw = Mathf.LerpAngle(_currentBoatYaw, boatHeading, Time.deltaTime * 4.5f);
-
-        // Camera looks from behind the stern (rear) toward the bow (front)
-        // Yaw = boat heading + 180 means we are behind the boat looking forward
-        float camYawBehindBoat = _currentBoatYaw + 180f;
-
-        Quaternion rotation = Quaternion.Euler(_boatPitch, camYawBehindBoat, 0f);
-
-        // Pivot point: slightly above the boat's seat/center
-        Vector3 pivotPos = _boatTransform.position + Vector3.up * _boatOffset.y;
-        // Apply a slight horizontal side offset (from photo, camera is centered)
-        pivotPos += rotation * new Vector3(_boatOffset.x, 0f, 0f);
-
-        // Camera placed directly behind stern at _boatDistance
+        _currentBoatYaw = Mathf.LerpAngle(_currentBoatYaw, boatHeading, Time.deltaTime * 6f);
+        Quaternion rotation = Quaternion.Euler(_boatPitch, _currentBoatYaw, 0f);
+        Vector3 pivotPos = _boatTransform.position - boatFwd * 1.2f + Vector3.up * _boatOffset.y;
         Vector3 desiredPos = pivotPos - (rotation * Vector3.forward * _boatDistance);
 
-        // Smooth camera movement
-        transform.position = Vector3.SmoothDamp(transform.position, desiredPos, ref currentPosVelocity, 0.08f);
-        transform.rotation = Quaternion.Slerp(transform.rotation, rotation, Time.deltaTime * 8f);
-
-        // Also keep mouseX in sync with boat heading so when exiting boat
-        // the camera resumes from a sane behind-player yaw
-        mouseX = boatHeading;
+        transform.position = Vector3.SmoothDamp(transform.position, desiredPos, ref currentPosVelocity, 0.05f);
+        transform.rotation = Quaternion.Slerp(transform.rotation, rotation, Time.deltaTime * 10f);
+        mouseX = _currentBoatYaw;
         mouseY = _boatPitch;
     }
 }
