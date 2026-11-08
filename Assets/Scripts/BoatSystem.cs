@@ -439,14 +439,6 @@ public class BoatSystem : MonoBehaviour
 
         Vector3 boatFwd = HeadingForward();
         Vector3 deltaMove = boatFwd * _currentSpeed * Time.deltaTime;
-
-        // Downward river current drift (Temple Run style downhill flow)
-        if (TempleRunRiver.Instance != null && TempleRunRiver.Instance.enabled)
-        {
-            Vector3 flow = TempleRunRiver.Instance.GetFlowDirection(transform.position);
-            deltaMove += flow * (TempleRunRiver.Instance.currentFlowSpeed * Time.deltaTime);
-        }
-
         transform.position += deltaMove;
 
         if (pressing && Time.time >= _nextSplashTime)
@@ -721,84 +713,27 @@ public class BoatSystem : MonoBehaviour
     {
         if (!_poseReady) CaptureBoatAxes();
 
-        Vector3 fwd = HeadingForward();
-        Vector3 right = new Vector3(fwd.z, 0f, -fwd.x);
-        Bounds hull = CalculateHullBounds();
-        float halfL = Mathf.Clamp(Support(hull.extents, fwd), 1.3f, 7.5f);
-        float halfW = Mathf.Clamp(Support(hull.extents, right), 0.45f, 2.4f);
-        Vector3 center = transform.position;
-
-        bool hasSlopedRiver = TempleRunRiver.Instance != null && TempleRunRiver.Instance.enabled;
-        bool hasWater = RealisticWaterController.Instance != null && RealisticWaterController.Instance.enabled;
-
-        float bow = 0f, stern = 0f, port = 0f, star = 0f, mid = 0f;
-        float baseWaterY = -4.7f;
-
-        if (hasSlopedRiver)
+        if (!_hasWaterRest)
         {
-            var river = TempleRunRiver.Instance;
-            baseWaterY = river.GetWaterHeight(center);
-            float bowY = river.GetWaterHeight(center + fwd * halfL);
-            float sternY = river.GetWaterHeight(center - fwd * halfL);
-            float starY = river.GetWaterHeight(center + right * halfW);
-            float portY = river.GetWaterHeight(center - right * halfW);
-
-            bow = bowY - baseWaterY;
-            stern = sternY - baseWaterY;
-            star = starY - baseWaterY;
-            port = portY - baseWaterY;
-        }
-        else if (hasWater)
-        {
-            var water = RealisticWaterController.Instance;
-            baseWaterY = RealisticWaterController.GetWaterHeight(center);
-            mid = water.GetWaveOffset(center);
-            bow = water.GetWaveOffset(center + fwd * halfL);
-            stern = water.GetWaveOffset(center - fwd * halfL);
-            star = water.GetWaveOffset(center + right * halfW);
-            port = water.GetWaveOffset(center - right * halfW);
-        }
-        else
-        {
-            float t = Time.time;
-            mid = GerstnerWaveMath.EvaluateWaterDisplacement(center, t).y;
-            bow = GerstnerWaveMath.EvaluateWaterDisplacement(center + fwd * halfL, t).y;
-            stern = GerstnerWaveMath.EvaluateWaterDisplacement(center - fwd * halfL, t).y;
-            star = GerstnerWaveMath.EvaluateWaterDisplacement(center + right * halfW, t).y;
-            port = GerstnerWaveMath.EvaluateWaterDisplacement(center - right * halfW, t).y;
+            _waterRestY = transform.position.y;
+            _hasWaterRest = true;
         }
 
-        float wave = (mid + bow + stern + port + star) / 5f;
-        float follow = Mathf.Lerp(0.28f, 1.1f, speed01);
-        float rapids = 0f;
-        if (speed01 > 0.08f)
-        {
-            float amp = Mathf.Max(0.25f, waterBobAmount * 0.5f) * (0.6f + speed01 * 0.8f);
-            rapids = Mathf.Sin(Time.time * (2.2f + speed01 * 2.8f)) * amp;
-            rapids += (bow - stern) * 0.2f * speed01;
-        }
+        // Natural self-contained boat water bobbing
+        float bob = Mathf.Sin(Time.time * waterBobSpeed) * (waterBobAmount * 0.12f);
+        float speedBob = speed01 > 0.08f ? Mathf.Sin(Time.time * (waterBobSpeed * 2.5f)) * (waterBobAmount * 0.15f * speed01) : 0f;
+        float targetY = _waterRestY + bob + speedBob;
 
-        // Float at realistic boat waterline: keel submerged, gunwales & seats cleanly above water
-        const float boatWaterlineOffset = 0.38f;
-        float targetY = baseWaterY + boatWaterlineOffset + (hasSlopedRiver ? 0f : (wave * follow)) + rapids;
-        
         Vector3 p = transform.position;
         p.y = Mathf.SmoothDamp(p.y, targetY, ref _heaveVel, speed01 > 0.12f ? 0.12f : 0.28f);
         transform.position = p;
 
-        // ── Boat rotation: yaw from _boatYaw, pitch/roll from water surface ──────────
-        // 1. Compute pitch (bow-to-stern tilt) in degrees
-        float pitchDeg = Mathf.Atan2(bow - stern, halfL * 2f) * Mathf.Rad2Deg;
-        // 2. Compute roll (port-to-starboard tilt) in degrees
-        float rollDeg  = Mathf.Atan2(star - port, halfW * 2f) * Mathf.Rad2Deg;
-        // 3. Stable, believable tilt (gentle sway, no violent rocking)
-        float maxTilt = Mathf.Lerp(3.5f, 9f, speed01);
-        pitchDeg = Mathf.Clamp(pitchDeg, -maxTilt, maxTilt);
-        rollDeg  = Mathf.Clamp(rollDeg,  -maxTilt, maxTilt);
-        // 4. Build target rotation: yaw first, then pitch and roll in boat-local space
+        // ── Boat rotation: yaw from _boatYaw, gentle natural water sway ──────────
+        float pitchDeg = Mathf.Sin(Time.time * (waterBobSpeed * 0.85f)) * Mathf.Lerp(1.5f, 4.5f, speed01);
+        float rollDeg  = Mathf.Cos(Time.time * (waterBobSpeed * 1.15f)) * Mathf.Lerp(2.0f, 5.0f, speed01);
+        
         Quaternion yawRot   = Quaternion.Euler(0f, _boatYaw, 0f);
         Quaternion tiltRot  = Quaternion.Euler(pitchDeg, 0f, -rollDeg);
-        // _axisFix stores the original boat-local pose offset (e.g. 270°X on this prefab)
         Quaternion target   = yawRot * tiltRot * _axisFix;
 
         float tiltFollow = Mathf.Lerp(2.8f, 7.5f, speed01);
