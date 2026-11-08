@@ -1,48 +1,35 @@
-using System.Collections;
 using UnityEngine;
 using Unity.Cinemachine;
 
 /// <summary>
-/// Controls player boarding and exiting via interaction key (E or B).
-/// - Disables CharacterController and locks player into seat transform.
-/// - Passes driving control to RealisticBoatBuoyancy.
-/// - Transitions between Player Camera and Boat Follow Camera (supporting both Cinemachine & BoatFollowCamera).
-/// - Safe shore/dock dismount with collision check.
+/// Controls player boarding/exiting, CharacterController handoff,
+/// and smooth Cinemachine 3 camera priority transitions.
 /// </summary>
 public class BoatBoardingController : MonoBehaviour
 {
-    [Header("Boat Bindings")]
+    [Header("References")]
     [SerializeField] private RealisticBoatBuoyancy boatBuoyancy;
     [SerializeField] private Transform seatPoint;
     [SerializeField] private Transform dockExitPoint;
 
-    [Header("Cameras (Assign Cinemachine OR BoatFollowCamera)")]
+    [Header("Cinemachine 3 Cameras")]
+    [Tooltip("Normal on-foot player third-person camera.")]
     [SerializeField] private CinemachineCamera playerCinemachineCam;
+    [Tooltip("Behind-boat follow camera.")]
     [SerializeField] private CinemachineCamera boatCinemachineCam;
-    [SerializeField] private BoatFollowCamera standaloneBoatCam;
 
-    [Header("Interaction & Input")]
-    public float interactionDistance = 3.5f;
-    public KeyCode interactionKey = KeyCode.E;
-    public KeyCode alternateKey = KeyCode.B;
-
-    [Header("Animations")]
-    public string sitStateName = "SitDown";
-    public string standStateName = "StandUp";
+    [Header("Prompt & Range")]
+    [SerializeField] private float boardDistance = 3.5f;
+    [SerializeField] private KeyCode interactionKey = KeyCode.E;
 
     private bool _isBoarded = false;
     private CharacterController _playerCC;
     private Transform _playerTransform;
-    private Animator _playerAnimator;
-
-    public bool IsBoarded => _isBoarded;
 
     private void Start()
     {
-        if (boatBuoyancy == null) boatBuoyancy = GetComponent<RealisticBoatBuoyancy>();
         if (boatCinemachineCam != null) boatCinemachineCam.Priority = 0;
         if (playerCinemachineCam != null) playerCinemachineCam.Priority = 10;
-        if (standaloneBoatCam != null) standaloneBoatCam.enabled = false;
         if (boatBuoyancy != null) boatBuoyancy.controlAuthority = 0f;
     }
 
@@ -50,6 +37,7 @@ public class BoatBoardingController : MonoBehaviour
     {
         if (!_isBoarded)
         {
+            // Detect player proximity
             if (_playerTransform == null)
             {
                 var player = GameObject.FindWithTag("Player");
@@ -57,59 +45,39 @@ public class BoatBoardingController : MonoBehaviour
                 {
                     _playerTransform = player.transform;
                     _playerCC = player.GetComponent<CharacterController>();
-                    _playerAnimator = player.GetComponentInChildren<Animator>();
                 }
             }
 
             if (_playerTransform != null)
             {
                 float dist = Vector3.Distance(_playerTransform.position, transform.position);
-                if (dist <= interactionDistance && (Input.GetKeyDown(interactionKey) || Input.GetKeyDown(alternateKey)))
+                if (dist <= boardDistance && Input.GetKeyDown(interactionKey))
                 {
-                    StartCoroutine(BoardRoutine());
+                    BoardBoat();
                 }
             }
         }
         else
         {
-            // Driving inputs (WASD)
+            // Drive boat input
             float throttle = Input.GetAxis("Vertical");   // W / S
             float steer = Input.GetAxis("Horizontal");    // A / D
             if (boatBuoyancy != null) boatBuoyancy.SetPlayerInput(throttle, steer);
 
-            // Exit input
-            if (Input.GetKeyDown(interactionKey) || Input.GetKeyDown(alternateKey) || Input.GetKeyDown(KeyCode.F))
+            // Exit boat
+            if (Input.GetKeyDown(interactionKey))
             {
-                StartCoroutine(ExitRoutine());
+                ExitBoat();
             }
         }
     }
 
-    private IEnumerator BoardRoutine()
+    private void BoardBoat()
     {
         _isBoarded = true;
 
         if (_playerCC != null) _playerCC.enabled = false;
-
-        // Smooth seat transition (0.35s)
-        Vector3 startPos = _playerTransform.position;
-        Quaternion startRot = _playerTransform.rotation;
-        Vector3 targetPos = seatPoint != null ? seatPoint.position : transform.position;
-        Quaternion targetRot = seatPoint != null ? seatPoint.rotation : transform.rotation;
-
-        float elapsed = 0f;
-        while (elapsed < 0.35f)
-        {
-            elapsed += Time.deltaTime;
-            float t = Mathf.SmoothStep(0f, 1f, elapsed / 0.35f);
-            if (_playerTransform != null)
-            {
-                _playerTransform.position = Vector3.Lerp(startPos, targetPos, t);
-                _playerTransform.rotation = Quaternion.Slerp(startRot, targetRot, t);
-            }
-            yield return null;
-        }
-
+        
         // Parent player to boat seat
         if (_playerTransform != null && seatPoint != null)
         {
@@ -118,55 +86,33 @@ public class BoatBoardingController : MonoBehaviour
             _playerTransform.localRotation = Quaternion.identity;
         }
 
-        // Play sit animation if available
-        if (_playerAnimator != null && !string.IsNullOrEmpty(sitStateName))
-        {
-            _playerAnimator.CrossFade(sitStateName, 0.15f);
-        }
-
-        // Hand over control authority to boat
+        // Grant boat control
         if (boatBuoyancy != null) boatBuoyancy.controlAuthority = 1f;
 
-        // Camera activation
+        // Blend Cinemachine 3 cameras
         if (boatCinemachineCam != null) boatCinemachineCam.Priority = 20;
-        if (standaloneBoatCam != null)
-        {
-            standaloneBoatCam.enabled = true;
-            standaloneBoatCam.SetTarget(transform, boatBuoyancy);
-        }
     }
 
-    private IEnumerator ExitRoutine()
+    private void ExitBoat()
     {
         _isBoarded = false;
-
         if (boatBuoyancy != null)
         {
             boatBuoyancy.controlAuthority = 0f;
             boatBuoyancy.SetPlayerInput(0f, 0f);
         }
 
-        // Play stand animation
-        if (_playerAnimator != null && !string.IsNullOrEmpty(standStateName))
-        {
-            _playerAnimator.CrossFade(standStateName, 0.15f);
-        }
-
-        yield return new WaitForSeconds(0.2f);
-
-        // Disembark to safe shore/dock position
+        // Reposition player to safe dock/shore
         if (_playerTransform != null)
         {
             _playerTransform.SetParent(null);
-            Vector3 exitPos = dockExitPoint != null 
-                ? dockExitPoint.position 
-                : transform.position + transform.right * 2.8f + Vector3.up * 0.6f;
+            Vector3 exitPos = dockExitPoint != null ? dockExitPoint.position : transform.position + transform.right * 2.5f + Vector3.up * 0.5f;
             _playerTransform.position = exitPos;
             if (_playerCC != null) _playerCC.enabled = true;
         }
 
         // Blend back to player camera
         if (boatCinemachineCam != null) boatCinemachineCam.Priority = 0;
-        if (standaloneBoatCam != null) standaloneBoatCam.enabled = false;
     }
 }
+

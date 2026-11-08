@@ -1,8 +1,8 @@
 using UnityEngine;
 
 /// <summary>
-/// Unified wave & swell mathematical model shared between C# physics and Shader Graph HLSL.
-/// Includes 4-octave Gerstner waves + large downhill rapid swell ridges.
+/// GerstnerWaveMath provides unified wave evaluation matching GerstnerWaves.hlsl exactly.
+/// This guarantees that boat buoyancy and visual water displacement never drift apart.
 /// </summary>
 public static class GerstnerWaveMath
 {
@@ -24,19 +24,13 @@ public static class GerstnerWaveMath
         }
     }
 
-    // 4-octave Gerstner river waves
     public static readonly WaveData[] DefaultRiverWaves = new WaveData[4]
     {
-        new WaveData(new Vector2(0.0f, 1.0f),    0.16f,  9.5f, 0.40f, 2.2f),
-        new WaveData(new Vector2(0.25f, 0.97f),  0.10f,  5.2f, 0.45f, 2.7f),
-        new WaveData(new Vector2(-0.22f, 0.98f), 0.06f,  2.8f, 0.35f, 3.4f),
-        new WaveData(new Vector2(0.08f, 1.0f),   0.03f,  1.4f, 0.30f, 4.1f)
+        new WaveData(new Vector2(0.0f, 1.0f),   0.18f,  8.0f, 0.45f, 1.6f),
+        new WaveData(new Vector2(0.3f, 0.95f),  0.11f,  4.5f, 0.50f, 2.1f),
+        new WaveData(new Vector2(-0.25f, 0.96f),0.07f,  2.2f, 0.40f, 2.8f),
+        new WaveData(new Vector2(0.1f, 1.0f),   0.035f, 1.1f, 0.35f, 3.4f)
     };
-
-    // Large rolling swell ridge parameters (Temple Run / Whitewater rapids swell)
-    public static float SwellAmplitude = 0.28f;
-    public static float SwellWavelength = 18.0f;
-    public static float SwellSpeed = 3.2f;
 
     public static Vector3 EvaluateWaterDisplacement(Vector3 worldPos, float time, WaveData[] waves = null)
     {
@@ -44,7 +38,6 @@ public static class GerstnerWaveMath
         Vector3 disp = Vector3.zero;
         Vector2 xz = new Vector2(worldPos.x, worldPos.z);
 
-        // 1. 4-wave Gerstner sum
         for (int i = 0; i < waves.Length; i++)
         {
             WaveData w = waves[i];
@@ -61,32 +54,16 @@ public static class GerstnerWaveMath
             disp.z += q * w.amplitude * w.direction.y * cosTheta;
         }
 
-        // 2. Large rolling swell ridges along downstream flow
-        float kSwell = 2f * Mathf.PI / Mathf.Max(1f, SwellWavelength);
-        float swellPhase = kSwell * worldPos.z - (kSwell * SwellSpeed) * time;
-        disp.y += Mathf.Sin(swellPhase) * SwellAmplitude;
-
         return disp;
     }
 
-    public static float SampleWaterHeight(Vector3 worldPos, float time, float baseWaterLevel = 0f, WaveData[] waves = null)
+    public static float SampleWaterHeight(Vector3 worldPos, float time, float baseWaterLevel = -4.7f, WaveData[] waves = null)
     {
-        // If TempleRunRiver is in scene, sample its slope height as the base level
-        if (TempleRunRiver.Instance != null && TempleRunRiver.Instance.enabled)
-        {
-            return TempleRunRiver.Instance.GetWaterHeight(worldPos);
-        }
-
         return baseWaterLevel + EvaluateWaterDisplacement(worldPos, time, waves).y;
     }
 
     public static Vector3 SampleWaterNormal(Vector3 worldPos, float time, WaveData[] waves = null)
     {
-        if (TempleRunRiver.Instance != null && TempleRunRiver.Instance.enabled)
-        {
-            return TempleRunRiver.Instance.GetSurfaceNormal(worldPos);
-        }
-
         waves ??= DefaultRiverWaves;
         Vector3 normal = Vector3.up;
         Vector2 xz = new Vector2(worldPos.x, worldPos.z);
@@ -111,3 +88,4 @@ public static class GerstnerWaveMath
         return normal.normalized;
     }
 }
+
