@@ -72,6 +72,9 @@ public class BoatSystem : MonoBehaviour
     public float waterBobAmount = 0.4f;
     public float waterBobSpeed = 2f;
 
+    [Tooltip("Waterline elevation offset so boat floats cleanly on top of water surface")]
+    public float boatWaterlineOffset = 0.38f;
+
     public enum AxisDirection { Z_Forward, Y_Up, X_Right, Negative_Z, Negative_Y, Negative_X }
     
     [Tooltip("Boat model ka forward axis (Blender models ke liye Negative_Z ya Y_Up)")]
@@ -439,6 +442,14 @@ public class BoatSystem : MonoBehaviour
 
         Vector3 boatFwd = HeadingForward();
         Vector3 deltaMove = boatFwd * _currentSpeed * Time.deltaTime;
+
+        // Fast mountain rapids downstream current drift
+        if (MountainRapidsRiver.Instance != null && MountainRapidsRiver.Instance.enabled)
+        {
+            Vector3 riverCurrent = MountainRapidsRiver.Instance.GetCurrentVelocity(transform.position);
+            deltaMove += riverCurrent * Time.deltaTime;
+        }
+
         transform.position += deltaMove;
 
         if (pressing && Time.time >= _nextSplashTime)
@@ -713,31 +724,71 @@ public class BoatSystem : MonoBehaviour
     {
         if (!_poseReady) CaptureBoatAxes();
 
-        if (!_hasWaterRest)
-        {
-            _waterRestY = transform.position.y;
-            _hasWaterRest = true;
-        }
-
-        // Natural self-contained boat water bobbing
-        float bob = Mathf.Sin(Time.time * waterBobSpeed) * (waterBobAmount * 0.12f);
-        float speedBob = speed01 > 0.08f ? Mathf.Sin(Time.time * (waterBobSpeed * 2.5f)) * (waterBobAmount * 0.15f * speed01) : 0f;
-        float targetY = _waterRestY + bob + speedBob;
-
         Vector3 p = transform.position;
-        p.y = Mathf.SmoothDamp(p.y, targetY, ref _heaveVel, speed01 > 0.12f ? 0.12f : 0.28f);
-        transform.position = p;
+        Vector3 boatFwd = HeadingForward();
+        Vector3 boatRight = new Vector3(boatFwd.z, 0f, -boatFwd.x);
 
-        // ── Boat rotation: yaw from _boatYaw, gentle natural water sway ──────────
-        float pitchDeg = Mathf.Sin(Time.time * (waterBobSpeed * 0.85f)) * Mathf.Lerp(1.5f, 4.5f, speed01);
-        float rollDeg  = Mathf.Cos(Time.time * (waterBobSpeed * 1.15f)) * Mathf.Lerp(2.0f, 5.0f, speed01);
-        
-        Quaternion yawRot   = Quaternion.Euler(0f, _boatYaw, 0f);
-        Quaternion tiltRot  = Quaternion.Euler(pitchDeg, 0f, -rollDeg);
-        Quaternion target   = yawRot * tiltRot * _axisFix;
+        MountainRapidsRiver river = MountainRapidsRiver.Instance;
+        if (river != null && river.enabled)
+        {
+            float halfL = 2.4f;
+            float halfW = 0.9f;
+            Vector3 bowPos = p + boatFwd * halfL;
+            Vector3 sternPos = p - boatFwd * halfL;
+            Vector3 portPos = p - boatRight * halfW;
+            Vector3 starPos = p + boatRight * halfW;
 
-        float tiltFollow = Mathf.Lerp(2.8f, 7.5f, speed01);
-        transform.rotation = Quaternion.Slerp(transform.rotation, target, 1f - Mathf.Exp(-tiltFollow * Time.deltaTime));
+            float waterCenter = river.GetWaterHeight(p);
+            float bowY = river.GetWaterHeight(bowPos);
+            float sternY = river.GetWaterHeight(sternPos);
+            float portY = river.GetWaterHeight(portPos);
+            float starY = river.GetWaterHeight(starPos);
+
+            float targetY = waterCenter + boatWaterlineOffset;
+            p.y = Mathf.SmoothDamp(p.y, targetY, ref _heaveVel, speed01 > 0.12f ? 0.08f : 0.16f);
+            transform.position = p;
+
+            // Pitch & roll following downhill slope and rapids turbulence
+            float pitchDeg = Mathf.Atan2(bowY - sternY, halfL * 2f) * Mathf.Rad2Deg;
+            float rollDeg = Mathf.Atan2(starY - portY, halfW * 2f) * Mathf.Rad2Deg;
+
+            // Dynamic banking lean into turns
+            float bankLean = -_currentTurn * 5.0f * Mathf.Clamp01(Mathf.Abs(_currentSpeed) / 5f);
+            rollDeg += bankLean;
+
+            Quaternion yawRot = Quaternion.Euler(0f, _boatYaw, 0f);
+            Quaternion tiltRot = Quaternion.Euler(pitchDeg, 0f, -rollDeg);
+            Quaternion target = yawRot * tiltRot * _axisFix;
+
+            float tiltFollow = Mathf.Lerp(4.5f, 12f, speed01);
+            transform.rotation = Quaternion.Slerp(transform.rotation, target, 1f - Mathf.Exp(-tiltFollow * Time.deltaTime));
+        }
+        else
+        {
+            if (!_hasWaterRest)
+            {
+                _waterRestY = transform.position.y;
+                _hasWaterRest = true;
+            }
+
+            // Natural self-contained boat water bobbing fallback
+            float bob = Mathf.Sin(Time.time * waterBobSpeed) * (waterBobAmount * 0.12f);
+            float speedBob = speed01 > 0.08f ? Mathf.Sin(Time.time * (waterBobSpeed * 2.5f)) * (waterBobAmount * 0.15f * speed01) : 0f;
+            float targetY = _waterRestY + bob + speedBob;
+
+            p.y = Mathf.SmoothDamp(p.y, targetY, ref _heaveVel, speed01 > 0.12f ? 0.12f : 0.28f);
+            transform.position = p;
+
+            float pitchDeg = Mathf.Sin(Time.time * (waterBobSpeed * 0.85f)) * Mathf.Lerp(1.5f, 4.5f, speed01);
+            float rollDeg = Mathf.Cos(Time.time * (waterBobSpeed * 1.15f)) * Mathf.Lerp(2.0f, 5.0f, speed01);
+
+            Quaternion yawRot = Quaternion.Euler(0f, _boatYaw, 0f);
+            Quaternion tiltRot = Quaternion.Euler(pitchDeg, 0f, -rollDeg);
+            Quaternion target = yawRot * tiltRot * _axisFix;
+
+            float tiltFollow = Mathf.Lerp(2.8f, 7.5f, speed01);
+            transform.rotation = Quaternion.Slerp(transform.rotation, target, 1f - Mathf.Exp(-tiltFollow * Time.deltaTime));
+        }
 
         if (boatRigidbody != null)
         {
