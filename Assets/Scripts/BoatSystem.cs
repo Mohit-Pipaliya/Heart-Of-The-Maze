@@ -76,7 +76,7 @@ public class BoatSystem : MonoBehaviour
     [Header("Realistic Water Wave Physics")]
     [Tooltip("Laher ki unchai / wave amplitude (meters) — jitna zyada, utna bada wave bobbing")]
     [Range(0.05f, 1.5f)]
-    public float waveHeight = 0.45f;
+    public float waveHeight = 0.28f;
 
     [Tooltip("Laher ki raftaar / wave travel speed")]
     [Range(0.2f, 5.0f)]
@@ -88,34 +88,38 @@ public class BoatSystem : MonoBehaviour
 
     [Tooltip("Boat aage-peeche kitni jhukegi laher ke sath (pitch strength)")]
     [Range(0.2f, 3.0f)]
-    public float wavePitchStrength = 1.0f;
+    public float wavePitchStrength = 0.75f;
 
     [Tooltip("Boat daayein-baayein kitni dolega laher ke sath (roll strength)")]
     [Range(0.2f, 3.0f)]
-    public float waveRollStrength = 1.0f;
+    public float waveRollStrength = 0.85f;
 
     [Tooltip("Fast speed me boat ka bow (aage ka hissa) kitna upar uthega (planing angle in degrees)")]
     [Range(0f, 8.0f)]
     public float bowPlaningRise = 3.0f;
 
+    [Tooltip("Bow trim: boat ka aage ka hissa naturally thoda upar rahega taaki laherein andar na ghusein")]
+    [Range(0f, 6.0f)]
+    public float bowTrimAngle = 2.0f;
+
     [Tooltip("Turning ke time boat kitni lean / bank karegi (degrees)")]
     [Range(0f, 15.0f)]
     public float turnBankAngle = 5.5f;
 
-    [Tooltip("Hull buoyancy resistance damping (0.05=responsive, 0.3=heavy weighty boat)")]
-    [Range(0.05f, 0.4f)]
-    public float buoyancyDamping = 0.16f;
+    [Tooltip("Hull buoyancy responsiveness damping (0.05=instant floating on waves, 0.2=sluggish)")]
+    [Range(0.04f, 0.35f)]
+    public float buoyancyDamping = 0.08f;
 
-    [Tooltip("Waterline elevation offset so boat floats cleanly on top of water surface")]
-    public float boatWaterlineOffset = 0.38f;
+    [Tooltip("Waterline elevation offset so boat floats cleanly on top of water surface (0.80m-0.95m keeps boat deck dry)")]
+    public float boatWaterlineOffset = 0.85f;
 
     [Header("No Water Inside Boat (Hull Depth Mask)")]
     [Tooltip("Invisible depth mask jo boat ke andar paani dikhne se rokta hai")]
     public bool enableHullDepthMask = true;
-    [Tooltip("Boat interior cavity size (Width, Height, Length) in meters")]
-    public Vector3 hullMaskSize = new Vector3(1.65f, 0.85f, 4.30f);
+    [Tooltip("Boat interior cavity size (Width, Height, Length) in meters — covers keel to gunwales")]
+    public Vector3 hullMaskSize = new Vector3(1.60f, 1.70f, 4.30f);
     [Tooltip("Interior cavity position offset (X, Y, Z)")]
-    public Vector3 hullMaskOffset = new Vector3(0f, 0.22f, 0.25f);
+    public Vector3 hullMaskOffset = new Vector3(0f, -0.15f, 0.20f);
 
     public enum AxisDirection { Z_Forward, Y_Up, X_Right, Negative_Z, Negative_Y, Negative_X }
     
@@ -189,6 +193,7 @@ public class BoatSystem : MonoBehaviour
     private float _rollVel;
     private bool _snapBoatCam;
     private bool _cameraOnBoat;
+    private bool _hasSnappedWaterline;
     private Renderer[] _hullRenderers;
     private GameObject _hullMaskObj;
 
@@ -746,7 +751,7 @@ public class BoatSystem : MonoBehaviour
         Quaternion flat = Quaternion.LookRotation(fwd, Vector3.up);
         _axisFix = Quaternion.Inverse(flat) * transform.rotation;
         _poseReady = true;
-        _waterRestY = transform.position.y;
+        _waterRestY = GetWaterSurfaceY(transform.position);
         _hasWaterRest = true;
     }
 
@@ -883,20 +888,33 @@ public class BoatSystem : MonoBehaviour
         float targetY = baseSurfaceY + boatWaterlineOffset + centerWave + hydroLift + speedChop;
 
         float damp = Mathf.Lerp(buoyancyDamping, buoyancyDamping * 0.55f, speed01);
-        p.y = Mathf.SmoothDamp(p.y, targetY, ref _heaveVel, damp);
+        if (!_hasSnappedWaterline)
+        {
+            p.y = targetY;
+            _heaveVel = 0f;
+            _smoothedPitch = bowTrimAngle;
+            _smoothedRoll = 0f;
+            _hasSnappedWaterline = true;
+        }
+        else
+        {
+            p.y = Mathf.SmoothDamp(p.y, targetY, ref _heaveVel, damp);
+        }
         transform.position = p;
 
-        // 2. Pitch (Front-to-back wave rocking + bow planing rise)
+        // 2. Pitch (Front-to-back wave rocking + bow planing rise + natural bow trim)
         float wavePitch = Mathf.Atan2(bowWave - sternWave, halfLength * 2f) * Mathf.Rad2Deg * wavePitchStrength;
+        wavePitch = Mathf.Clamp(wavePitch, -4.5f, 5.5f); // Prevent nose from plunging underwater
         float bowRise = speed01 * bowPlaningRise; // Lift nose up when moving fast
-        float targetPitch = wavePitch + bowRise;
-        _smoothedPitch = Mathf.SmoothDampAngle(_smoothedPitch, targetPitch, ref _pitchVel, 0.12f);
+        float targetPitch = wavePitch + bowRise + bowTrimAngle;
+        _smoothedPitch = Mathf.SmoothDampAngle(_smoothedPitch, targetPitch, ref _pitchVel, 0.10f);
 
         // 3. Roll (Left-to-right wave rocking + centrifugal turn banking)
         float waveRoll = Mathf.Atan2(starWave - portWave, halfWidth * 2f) * Mathf.Rad2Deg * waveRollStrength;
+        waveRoll = Mathf.Clamp(waveRoll, -6.0f, 6.0f);
         float bankLean = -_currentTurn * turnBankAngle * speed01; // Lean into turns
         float targetRoll = waveRoll + bankLean;
-        _smoothedRoll = Mathf.SmoothDampAngle(_smoothedRoll, targetRoll, ref _rollVel, 0.14f);
+        _smoothedRoll = Mathf.SmoothDampAngle(_smoothedRoll, targetRoll, ref _rollVel, 0.12f);
 
         // 4. Orientation: Yaw heading + tilt + model axis protection
         Quaternion yawRot = Quaternion.Euler(0f, _boatYaw, 0f);
@@ -1040,14 +1058,14 @@ public class BoatSystem : MonoBehaviour
         if (_hullMaskObj == null) return;
         if (!_hullMaskObj.activeSelf) _hullMaskObj.SetActive(true);
 
-        Vector3 boatRight = new Vector3(boatFwd.z, 0f, -boatFwd.x);
-        Vector3 maskPos = boatPos + boatFwd * hullMaskOffset.z + Vector3.up * hullMaskOffset.y + boatRight * hullMaskOffset.x;
-        _hullMaskObj.transform.position = maskPos;
-        _hullMaskObj.transform.localScale = hullMaskSize;
-
         Quaternion yawRot = Quaternion.Euler(0f, _boatYaw, 0f);
         Quaternion tiltRot = Quaternion.Euler(_smoothedPitch, 0f, -_smoothedRoll);
-        _hullMaskObj.transform.rotation = yawRot * tiltRot;
+        Quaternion maskRot = yawRot * tiltRot;
+
+        Vector3 worldOffset = maskRot * hullMaskOffset;
+        _hullMaskObj.transform.position = boatPos + worldOffset;
+        _hullMaskObj.transform.rotation = maskRot;
+        _hullMaskObj.transform.localScale = hullMaskSize;
     }
 
     private void OnDrawGizmosSelected()
@@ -1081,10 +1099,11 @@ public class BoatSystem : MonoBehaviour
         {
             Gizmos.color = new Color(0.1f, 1f, 0.4f, 0.45f);
             Matrix4x4 oldMat = Gizmos.matrix;
-            Vector3 maskPos = p + boatFwd * hullMaskOffset.z + Vector3.up * hullMaskOffset.y + boatRight * hullMaskOffset.x;
             Quaternion yawRot = Quaternion.Euler(0f, _boatYaw, 0f);
             Quaternion tiltRot = Quaternion.Euler(_smoothedPitch, 0f, -_smoothedRoll);
-            Gizmos.matrix = Matrix4x4.TRS(maskPos, yawRot * tiltRot, hullMaskSize);
+            Quaternion maskRot = yawRot * tiltRot;
+            Vector3 worldOffset = maskRot * hullMaskOffset;
+            Gizmos.matrix = Matrix4x4.TRS(p + worldOffset, maskRot, hullMaskSize);
             Gizmos.DrawWireCube(Vector3.zero, Vector3.one);
             Gizmos.matrix = oldMat;
         }

@@ -21,8 +21,8 @@ Shader "HeartOfTheMaze/RiverWater"
         Tags
         {
             "RenderPipeline" = "UniversalPipeline"
-            "RenderType" = "Opaque"
-            "Queue" = "Geometry"
+            "RenderType" = "Transparent"
+            "Queue" = "Transparent"
             "IgnoreProjector" = "True"
         }
 
