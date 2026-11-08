@@ -1982,6 +1982,7 @@ MonoBehaviour:
   boatNearPoint: {fileID: 2414311346527224196}
   boatNearDownPoint: {fileID: 1542341599051670441}
   boatSeatPoint: {fileID: 4571696412262798534}
+  boatCameraPoint: {fileID: 0}
   enterDistance: 8
   oarPickup: {fileID: 0}
   requireOar: 1

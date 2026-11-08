@@ -34,6 +34,9 @@ public class BoatSystem : MonoBehaviour
     [Tooltip("Boat ki seating — player yahan baithta hai (BoatSeat)")]
     public Transform boatSeatPoint;
 
+    [Tooltip("Boat Camera Point — Jab player boat me baithega to camera is point par aa jayega (Inspector me assign karein)")]
+    public Transform boatCameraPoint;
+
     // ─── Inspector: Proximity & UI ─────────────────────────────────────────────
     [Header("Proximity & Interaction")]
     [Tooltip("Kitni doori (meters) ke andar player aane par Press B prompt dikhega")]
@@ -185,6 +188,12 @@ public class BoatSystem : MonoBehaviour
     {
         if (oarPickup == null)
             oarPickup = OarPickup.Instance ?? FindFirstObjectByType<OarPickup>();
+
+        if (boatCameraPoint == null)
+        {
+            Transform found = transform.Find("BoatCameraPoint") ?? transform.Find("boatCameraPoint");
+            if (found != null) boatCameraPoint = found;
+        }
 
         HideUI();
     }
@@ -804,34 +813,55 @@ public class BoatSystem : MonoBehaviour
         CameraController cam = camGo.GetComponent<CameraController>();
         if (cam == null) return;
 
-        Vector3 fwd = HeadingForward();
-        Bounds hull = CalculateHullBounds();
-        Vector3 seat = boatSeatPoint != null ? boatSeatPoint.position : transform.position;
-        bool hullTrustworthy = (hull.center - seat).sqrMagnitude < 36f;
-
         Vector3 camPos;
-        Vector3 look;
-        if (hullTrustworthy)
+        Quaternion camRot;
+
+        if (boatCameraPoint != null)
         {
-            float reach = Mathf.Clamp(Support(hull.extents, fwd), 1.4f, 8f);
-            Vector3 stern = hull.center - fwd * reach;
-            Vector3 bow = hull.center + fwd * reach;
-            camPos = stern - fwd * camBehindStern;
-            camPos.y = hull.center.y + camHeightAboveDeck;
-            look = Vector3.Lerp(hull.center, bow, camLookAhead);
-            look.y = hull.center.y + camLookHeight;
+            camPos = boatCameraPoint.position;
+            // Agar boatCameraPoint rotated hai to uski rotation le, otherwise boat heading look
+            if (boatCameraPoint.rotation != Quaternion.identity)
+            {
+                camRot = boatCameraPoint.rotation;
+            }
+            else
+            {
+                Vector3 fwd = HeadingForward();
+                camRot = Quaternion.LookRotation(fwd + Vector3.down * 0.1f, Vector3.up);
+            }
         }
         else
         {
-            camPos = seat - fwd * (camBehindStern + 2.4f);
-            camPos.y = seat.y + camHeightAboveDeck;
-            look = seat + fwd * 4.6f;
-            look.y = seat.y + camLookHeight;
+            Vector3 fwd = HeadingForward();
+            Bounds hull = CalculateHullBounds();
+            Vector3 seat = boatSeatPoint != null ? boatSeatPoint.position : transform.position;
+            bool hullTrustworthy = (hull.center - seat).sqrMagnitude < 36f;
+
+            Vector3 look;
+            if (hullTrustworthy)
+            {
+                float reach = Mathf.Clamp(Support(hull.extents, fwd), 1.4f, 8f);
+                Vector3 stern = hull.center - fwd * reach;
+                Vector3 bow = hull.center + fwd * reach;
+                camPos = stern - fwd * camBehindStern;
+                camPos.y = hull.center.y + camHeightAboveDeck;
+                look = Vector3.Lerp(hull.center, bow, camLookAhead);
+                look.y = hull.center.y + camLookHeight;
+            }
+            else
+            {
+                camPos = seat - fwd * (camBehindStern + 2.4f);
+                camPos.y = seat.y + camHeightAboveDeck;
+                look = seat + fwd * 4.6f;
+                look.y = seat.y + camLookHeight;
+            }
+
+            Vector3 dir = look - camPos;
+            if (dir.sqrMagnitude < 0.01f) dir = fwd + Vector3.down * 0.15f;
+            camRot = Quaternion.LookRotation(dir.normalized, Vector3.up);
         }
 
-        Vector3 dir = look - camPos;
-        if (dir.sqrMagnitude < 0.01f) dir = fwd + Vector3.down * 0.15f;
-        cam.SetBoatFraming(camPos, Quaternion.LookRotation(dir.normalized, Vector3.up), snap);
+        cam.SetBoatFraming(camPos, camRot, snap);
     }
 
     private Vector3 GetBoatForward()
@@ -844,6 +874,22 @@ public class BoatSystem : MonoBehaviour
             case AxisDirection.Negative_Y: return -transform.up;
             case AxisDirection.Negative_X: return -transform.right;
             default: return transform.forward;
+        }
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        if (boatCameraPoint != null)
+        {
+            Gizmos.color = Color.cyan;
+            Gizmos.DrawWireSphere(boatCameraPoint.position, 0.25f);
+            Gizmos.DrawRay(boatCameraPoint.position, boatCameraPoint.forward * 1.5f);
+        }
+        else if (boatSeatPoint != null)
+        {
+            Gizmos.color = new Color(0f, 1f, 1f, 0.4f);
+            Vector3 approxCam = boatSeatPoint.position - HeadingForward() * 3.5f + Vector3.up * 1.8f;
+            Gizmos.DrawWireSphere(approxCam, 0.2f);
         }
     }
 }
