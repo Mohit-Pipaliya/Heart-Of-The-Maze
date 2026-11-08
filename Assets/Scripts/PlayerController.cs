@@ -1623,25 +1623,25 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    public float GunUnequipGroundLift => gunUnequipGroundLift;
+    public float GunUnequipGroundLift { get { return gunUnequipGroundLift; } }
 
     // ─── Public Accessors ─────────────────────────────────────────────────────
 
     /// <summary>Returns the player's current health (0–maxHealth).</summary>
-    public int  Health      => _health;
+    public int Health { get { return _health; } }
 
     /// <summary>Returns true if the player is dead.</summary>
-    public bool IsDead      => _isDead;
+    public bool IsDead { get { return _isDead; } }
 
     /// <summary>Returns the active weapon as an integer (0=None, 1=Sword, 2=Gun, 3=Torch).</summary>
-    public int  WeaponIndex => (int)_currentWeapon;
+    public int WeaponIndex { get { return (int)_currentWeapon; } }
 
     /// <summary>Returns true if player currently has any weapon equipped in hand.</summary>
-    public bool IsHoldingWeapon => _currentWeapon != WeaponState.Unarmed;
+    public bool IsHoldingWeapon { get { return _currentWeapon != WeaponState.Unarmed; } }
 
     /// <summary>Returns true if an unequip or equip sequence is currently active.</summary>
-    public bool IsSequenceRunning => _isSequenceRunning;
+    public bool IsSequenceRunning { get { return _isSequenceRunning; } }
 
     /// <summary>Returns true if player is currently in the middle of a sword attack.</summary>
-    public bool IsSwordAttacking => _isSwordAttacking;
+    public bool IsSwordAttacking { get { return _isSwordAttacking; } }
 }

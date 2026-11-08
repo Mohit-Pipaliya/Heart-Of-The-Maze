@@ -109,6 +109,14 @@ public class BoatSystem : MonoBehaviour
     [Tooltip("Waterline elevation offset so boat floats cleanly on top of water surface")]
     public float boatWaterlineOffset = 0.38f;
 
+    [Header("No Water Inside Boat (Hull Depth Mask)")]
+    [Tooltip("Invisible depth mask jo boat ke andar paani dikhne se rokta hai")]
+    public bool enableHullDepthMask = true;
+    [Tooltip("Boat interior cavity size (Width, Height, Length) in meters")]
+    public Vector3 hullMaskSize = new Vector3(1.65f, 0.85f, 4.30f);
+    [Tooltip("Interior cavity position offset (X, Y, Z)")]
+    public Vector3 hullMaskOffset = new Vector3(0f, 0.22f, 0.25f);
+
     public enum AxisDirection { Z_Forward, Y_Up, X_Right, Negative_Z, Negative_Y, Negative_X }
     
     [Tooltip("Boat model ka forward axis (Blender models ke liye Negative_Z ya Y_Up)")]
@@ -182,6 +190,7 @@ public class BoatSystem : MonoBehaviour
     private bool _snapBoatCam;
     private bool _cameraOnBoat;
     private Renderer[] _hullRenderers;
+    private GameObject _hullMaskObj;
 
     private int _hashClimb;
     private int _hashSitDown;
@@ -217,6 +226,23 @@ public class BoatSystem : MonoBehaviour
     private void OnDestroy()
     {
         if (Instance == this) Instance = null;
+        if (_hullMaskObj != null)
+        {
+            Destroy(_hullMaskObj);
+            _hullMaskObj = null;
+        }
+    }
+
+    private void OnDisable()
+    {
+        if (_hullMaskObj != null)
+            _hullMaskObj.SetActive(false);
+    }
+
+    private void OnEnable()
+    {
+        if (_hullMaskObj != null && enableHullDepthMask)
+            _hullMaskObj.SetActive(true);
     }
 
     private void Start()
@@ -230,6 +256,7 @@ public class BoatSystem : MonoBehaviour
             if (found != null) boatCameraPoint = found;
         }
 
+        EnsureHullDepthMask();
         HideUI();
     }
 
@@ -785,13 +812,43 @@ public class BoatSystem : MonoBehaviour
         return w1 + w2 + w3 + w4;
     }
 
+    private Renderer _cachedWaterRenderer;
+
+    private float GetWaterSurfaceY(Vector3 worldPos)
+    {
+        // 1. Raycast downwards & upwards to find water surface under the boat (handles slopes, rivers, rapids)
+        Ray ray = new Ray(worldPos + Vector3.up * 25f, Vector3.down);
+        RaycastHit[] hits = Physics.RaycastAll(ray, 50f, ~0, QueryTriggerInteraction.Collide);
+        for (int i = 0; i < hits.Length; i++)
+        {
+            if (hits[i].collider != null && hits[i].collider.gameObject.name.ToLower().Contains("water"))
+            {
+                return hits[i].point.y;
+            }
+        }
+
+        // 2. Fallback to water renderer bounds.max.y
+        if (_cachedWaterRenderer == null)
+        {
+            GameObject waterGo = GameObject.Find("water") ?? GameObject.Find("Water");
+            if (waterGo != null) _cachedWaterRenderer = waterGo.GetComponent<Renderer>();
+        }
+
+        if (_cachedWaterRenderer != null)
+        {
+            return _cachedWaterRenderer.bounds.max.y;
+        }
+
+        return _waterRestY != 0f ? _waterRestY : -4.70f;
+    }
+
     private void ApplyWaterPose(float speed01)
     {
         if (!_poseReady) CaptureBoatAxes();
 
         if (!_hasWaterRest)
         {
-            _waterRestY = transform.position.y;
+            _waterRestY = GetWaterSurfaceY(transform.position);
             _hasWaterRest = true;
         }
 
@@ -822,7 +879,8 @@ public class BoatSystem : MonoBehaviour
         float hydroLift = speed01 * 0.14f;
         float speedChop = speed01 > 0.05f ? Mathf.Sin(t * 14f) * (0.04f * speed01) : 0f;
 
-        float targetY = _waterRestY + centerWave + hydroLift + speedChop;
+        float baseSurfaceY = GetWaterSurfaceY(p);
+        float targetY = baseSurfaceY + boatWaterlineOffset + centerWave + hydroLift + speedChop;
 
         float damp = Mathf.Lerp(buoyancyDamping, buoyancyDamping * 0.55f, speed01);
         p.y = Mathf.SmoothDamp(p.y, targetY, ref _heaveVel, damp);
@@ -847,6 +905,9 @@ public class BoatSystem : MonoBehaviour
 
         float tiltFollow = Mathf.Lerp(6.0f, 14.0f, speed01);
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 1f - Mathf.Exp(-tiltFollow * Time.deltaTime));
+
+        // 5. Update Hull Depth Mask so zero water renders inside the boat
+        UpdateHullDepthMask(p, boatFwd);
 
         if (boatRigidbody != null)
         {
@@ -926,6 +987,69 @@ public class BoatSystem : MonoBehaviour
         }
     }
 
+    // ─── Hull Depth Mask (Dry Boat Interior) ──────────────────────────────────
+
+    private void EnsureHullDepthMask()
+    {
+        if (_hullMaskObj != null) return;
+
+        _hullMaskObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        _hullMaskObj.name = "Boat_HullDepthMask";
+
+        Collider col = _hullMaskObj.GetComponent<Collider>();
+        if (col != null) Destroy(col);
+
+        _hullMaskObj.transform.localScale = hullMaskSize;
+
+        Material maskMat = null;
+#if UNITY_EDITOR
+        maskMat = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/HullDepthMask.mat");
+#endif
+
+        if (maskMat == null)
+        {
+            Shader maskShader = Shader.Find("Custom/Water/HullDepthMask");
+            if (maskShader != null)
+            {
+                maskMat = new Material(maskShader);
+                maskMat.name = "Runtime_HullDepthMask";
+                maskMat.renderQueue = 2450;
+            }
+        }
+
+        MeshRenderer mr = _hullMaskObj.GetComponent<MeshRenderer>();
+        if (mr != null)
+        {
+            if (maskMat != null) mr.sharedMaterial = maskMat;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+            mr.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+            mr.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
+        }
+    }
+
+    private void UpdateHullDepthMask(Vector3 boatPos, Vector3 boatFwd)
+    {
+        if (!enableHullDepthMask)
+        {
+            if (_hullMaskObj != null && _hullMaskObj.activeSelf) _hullMaskObj.SetActive(false);
+            return;
+        }
+
+        EnsureHullDepthMask();
+        if (_hullMaskObj == null) return;
+        if (!_hullMaskObj.activeSelf) _hullMaskObj.SetActive(true);
+
+        Vector3 boatRight = new Vector3(boatFwd.z, 0f, -boatFwd.x);
+        Vector3 maskPos = boatPos + boatFwd * hullMaskOffset.z + Vector3.up * hullMaskOffset.y + boatRight * hullMaskOffset.x;
+        _hullMaskObj.transform.position = maskPos;
+        _hullMaskObj.transform.localScale = hullMaskSize;
+
+        Quaternion yawRot = Quaternion.Euler(0f, _boatYaw, 0f);
+        Quaternion tiltRot = Quaternion.Euler(_smoothedPitch, 0f, -_smoothedRoll);
+        _hullMaskObj.transform.rotation = yawRot * tiltRot;
+    }
+
     private void OnDrawGizmosSelected()
     {
         if (boatCameraPoint != null)
@@ -941,14 +1065,28 @@ public class BoatSystem : MonoBehaviour
             Gizmos.DrawWireSphere(approxCam, 0.2f);
         }
 
-        // Draw waterline and wave sampling points
-        Gizmos.color = new Color(0f, 0.8f, 1f, 0.6f);
         Vector3 boatFwd = HeadingForward();
         Vector3 boatRight = new Vector3(boatFwd.z, 0f, -boatFwd.x);
         Vector3 p = transform.position;
+
+        // Draw waterline and wave sampling points
+        Gizmos.color = new Color(0f, 0.8f, 1f, 0.6f);
         Gizmos.DrawWireSphere(p + boatFwd * 2.2f, 0.15f); // Bow
         Gizmos.DrawWireSphere(p - boatFwd * 2.2f, 0.15f); // Stern
         Gizmos.DrawWireSphere(p - boatRight * 0.85f, 0.12f); // Port
         Gizmos.DrawWireSphere(p + boatRight * 0.85f, 0.12f); // Starboard
+
+        // Draw Hull Depth Mask (Dry interior volume)
+        if (enableHullDepthMask)
+        {
+            Gizmos.color = new Color(0.1f, 1f, 0.4f, 0.45f);
+            Matrix4x4 oldMat = Gizmos.matrix;
+            Vector3 maskPos = p + boatFwd * hullMaskOffset.z + Vector3.up * hullMaskOffset.y + boatRight * hullMaskOffset.x;
+            Quaternion yawRot = Quaternion.Euler(0f, _boatYaw, 0f);
+            Quaternion tiltRot = Quaternion.Euler(_smoothedPitch, 0f, -_smoothedRoll);
+            Gizmos.matrix = Matrix4x4.TRS(maskPos, yawRot * tiltRot, hullMaskSize);
+            Gizmos.DrawWireCube(Vector3.zero, Vector3.one);
+            Gizmos.matrix = oldMat;
+        }
     }
 }

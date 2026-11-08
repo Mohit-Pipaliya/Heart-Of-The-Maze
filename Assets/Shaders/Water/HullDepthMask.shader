@@ -18,7 +18,7 @@ Shader "Custom/Water/HullDepthMask"
             ZWrite On
             ZTest LEqual
             ColorMask 0 // Do not output any RGB color to the frame buffer
-            Cull Back
+            Cull Off
 
             HLSLPROGRAM
             #pragma vertex vert
