@@ -72,8 +72,39 @@ public class BoatSystem : MonoBehaviour
     [Header("AAA Polish (Physics & Feel)")]
     public float accelerationRate = 2f;
     public float turnSmoothing = 5f;
-    public float waterBobAmount = 0.4f;
-    public float waterBobSpeed = 2f;
+
+    [Header("Realistic Water Wave Physics")]
+    [Tooltip("Laher ki unchai / wave amplitude (meters) — jitna zyada, utna bada wave bobbing")]
+    [Range(0.05f, 1.5f)]
+    public float waveHeight = 0.45f;
+
+    [Tooltip("Laher ki raftaar / wave travel speed")]
+    [Range(0.2f, 5.0f)]
+    public float waveSpeed = 1.6f;
+
+    [Tooltip("Laher ki frequency / density")]
+    [Range(0.2f, 3.0f)]
+    public float waveFrequency = 1.0f;
+
+    [Tooltip("Boat aage-peeche kitni jhukegi laher ke sath (pitch strength)")]
+    [Range(0.2f, 3.0f)]
+    public float wavePitchStrength = 1.0f;
+
+    [Tooltip("Boat daayein-baayein kitni dolega laher ke sath (roll strength)")]
+    [Range(0.2f, 3.0f)]
+    public float waveRollStrength = 1.0f;
+
+    [Tooltip("Fast speed me boat ka bow (aage ka hissa) kitna upar uthega (planing angle in degrees)")]
+    [Range(0f, 8.0f)]
+    public float bowPlaningRise = 3.0f;
+
+    [Tooltip("Turning ke time boat kitni lean / bank karegi (degrees)")]
+    [Range(0f, 15.0f)]
+    public float turnBankAngle = 5.5f;
+
+    [Tooltip("Hull buoyancy resistance damping (0.05=responsive, 0.3=heavy weighty boat)")]
+    [Range(0.05f, 0.4f)]
+    public float buoyancyDamping = 0.16f;
 
     [Tooltip("Waterline elevation offset so boat floats cleanly on top of water surface")]
     public float boatWaterlineOffset = 0.38f;
@@ -144,6 +175,10 @@ public class BoatSystem : MonoBehaviour
     private Quaternion _axisFix = Quaternion.identity;
     private bool _poseReady;
     private float _heaveVel;
+    private float _smoothedPitch;
+    private float _pitchVel;
+    private float _smoothedRoll;
+    private float _rollVel;
     private bool _snapBoatCam;
     private bool _cameraOnBoat;
     private Renderer[] _hullRenderers;
@@ -721,6 +756,35 @@ public class BoatSystem : MonoBehaviour
         return Mathf.Abs(extents.x * dir.x) + Mathf.Abs(extents.y * dir.y) + Mathf.Abs(extents.z * dir.z);
     }
 
+    /// <summary>
+    /// Evaluates rich multi-harmonic procedural ocean/river wave elevation at world coordinates (x, z).
+    /// Combining deep directional swell, diagonal chop, and surface ripples for a completely realistic feel.
+    /// </summary>
+    public float SampleWaveHeight(float x, float z, float t)
+    {
+        float freq = Mathf.Max(0.1f, waveFrequency);
+        float spd = waveSpeed;
+        float h = waveHeight;
+
+        // Wave 1: Primary deep directional swell (major rolling wave)
+        float phase1 = (x * 0.09f + z * 0.42f) * freq - t * (spd * 1.8f);
+        float w1 = Mathf.Sin(phase1) * (h * 0.45f);
+
+        // Wave 2: Secondary diagonal chop (creates natural undulating wave peaks & troughs)
+        float phase2 = (x * 0.32f - z * 0.26f) * freq - t * (spd * 2.5f);
+        float w2 = Mathf.Cos(phase2) * (h * 0.30f);
+
+        // Wave 3: Tertiary wind ripples (fine fluid surface detail)
+        float phase3 = (x * 0.65f + z * 0.55f) * freq - t * (spd * 3.6f);
+        float w3 = Mathf.Sin(phase3) * (h * 0.15f);
+
+        // Wave 4: Dynamic cross-ripple (prevents any repetitive loop)
+        float phase4 = (x * 0.18f + z * 0.85f) * freq - t * (spd * 1.2f);
+        float w4 = Mathf.Cos(phase4) * (h * 0.10f);
+
+        return w1 + w2 + w3 + w4;
+    }
+
     private void ApplyWaterPose(float speed01)
     {
         if (!_poseReady) CaptureBoatAxes();
@@ -732,28 +796,57 @@ public class BoatSystem : MonoBehaviour
         }
 
         Vector3 p = transform.position;
+        Vector3 boatFwd = HeadingForward();
+        Vector3 boatRight = new Vector3(boatFwd.z, 0f, -boatFwd.x);
 
-        // Natural boat water bobbing
-        float bob = Mathf.Sin(Time.time * waterBobSpeed) * (waterBobAmount * 0.12f);
-        float speedBob = speed01 > 0.08f ? Mathf.Sin(Time.time * (waterBobSpeed * 2.5f)) * (waterBobAmount * 0.15f * speed01) : 0f;
-        float targetY = _waterRestY + bob + speedBob;
+        float t = Time.time;
 
-        p.y = Mathf.SmoothDamp(p.y, targetY, ref _heaveVel, speed01 > 0.12f ? 0.10f : 0.22f);
+        // Multi-point hull waterline sampling (Bow, Stern, Port, Starboard)
+        float halfLength = 2.2f;
+        float halfWidth = 0.85f;
+
+        Vector3 bowPos = p + boatFwd * halfLength;
+        Vector3 sternPos = p - boatFwd * halfLength;
+        Vector3 portPos = p - boatRight * halfWidth;
+        Vector3 starPos = p + boatRight * halfWidth;
+
+        float bowWave = SampleWaveHeight(bowPos.x, bowPos.z, t);
+        float sternWave = SampleWaveHeight(sternPos.x, sternPos.z, t);
+        float portWave = SampleWaveHeight(portPos.x, portPos.z, t);
+        float starWave = SampleWaveHeight(starPos.x, starPos.z, t);
+
+        // 1. Heave (Vertical Up & Down Motion)
+        float centerWave = (bowWave + sternWave + portWave + starWave) * 0.25f;
+
+        // Dynamic speed effects: hydro-planing lift + speed chop
+        float hydroLift = speed01 * 0.14f;
+        float speedChop = speed01 > 0.05f ? Mathf.Sin(t * 14f) * (0.04f * speed01) : 0f;
+
+        float targetY = _waterRestY + centerWave + hydroLift + speedChop;
+
+        float damp = Mathf.Lerp(buoyancyDamping, buoyancyDamping * 0.55f, speed01);
+        p.y = Mathf.SmoothDamp(p.y, targetY, ref _heaveVel, damp);
         transform.position = p;
 
-        // Natural water sway & dynamic banking lean
-        float pitchDeg = Mathf.Sin(Time.time * (waterBobSpeed * 0.85f)) * Mathf.Lerp(1.5f, 4.5f, speed01);
-        float rollDeg = Mathf.Cos(Time.time * (waterBobSpeed * 1.15f)) * Mathf.Lerp(2.0f, 5.0f, speed01);
+        // 2. Pitch (Front-to-back wave rocking + bow planing rise)
+        float wavePitch = Mathf.Atan2(bowWave - sternWave, halfLength * 2f) * Mathf.Rad2Deg * wavePitchStrength;
+        float bowRise = speed01 * bowPlaningRise; // Lift nose up when moving fast
+        float targetPitch = wavePitch + bowRise;
+        _smoothedPitch = Mathf.SmoothDampAngle(_smoothedPitch, targetPitch, ref _pitchVel, 0.12f);
 
-        float bankLean = -_currentTurn * 5.0f * Mathf.Clamp01(Mathf.Abs(_currentSpeed) / 5f);
-        rollDeg += bankLean;
+        // 3. Roll (Left-to-right wave rocking + centrifugal turn banking)
+        float waveRoll = Mathf.Atan2(starWave - portWave, halfWidth * 2f) * Mathf.Rad2Deg * waveRollStrength;
+        float bankLean = -_currentTurn * turnBankAngle * speed01; // Lean into turns
+        float targetRoll = waveRoll + bankLean;
+        _smoothedRoll = Mathf.SmoothDampAngle(_smoothedRoll, targetRoll, ref _rollVel, 0.14f);
 
+        // 4. Orientation: Yaw heading + tilt + model axis protection
         Quaternion yawRot = Quaternion.Euler(0f, _boatYaw, 0f);
-        Quaternion tiltRot = Quaternion.Euler(pitchDeg, 0f, -rollDeg);
-        Quaternion target = yawRot * tiltRot * _axisFix;
+        Quaternion tiltRot = Quaternion.Euler(_smoothedPitch, 0f, -_smoothedRoll);
+        Quaternion targetRot = yawRot * tiltRot * _axisFix;
 
-        float tiltFollow = Mathf.Lerp(3.5f, 10f, speed01);
-        transform.rotation = Quaternion.Slerp(transform.rotation, target, 1f - Mathf.Exp(-tiltFollow * Time.deltaTime));
+        float tiltFollow = Mathf.Lerp(6.0f, 14.0f, speed01);
+        transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 1f - Mathf.Exp(-tiltFollow * Time.deltaTime));
 
         if (boatRigidbody != null)
         {
@@ -847,5 +940,15 @@ public class BoatSystem : MonoBehaviour
             Vector3 approxCam = boatSeatPoint.position - HeadingForward() * 3.5f + Vector3.up * 1.8f;
             Gizmos.DrawWireSphere(approxCam, 0.2f);
         }
+
+        // Draw waterline and wave sampling points
+        Gizmos.color = new Color(0f, 0.8f, 1f, 0.6f);
+        Vector3 boatFwd = HeadingForward();
+        Vector3 boatRight = new Vector3(boatFwd.z, 0f, -boatFwd.x);
+        Vector3 p = transform.position;
+        Gizmos.DrawWireSphere(p + boatFwd * 2.2f, 0.15f); // Bow
+        Gizmos.DrawWireSphere(p - boatFwd * 2.2f, 0.15f); // Stern
+        Gizmos.DrawWireSphere(p - boatRight * 0.85f, 0.12f); // Port
+        Gizmos.DrawWireSphere(p + boatRight * 0.85f, 0.12f); // Starboard
     }
 }
