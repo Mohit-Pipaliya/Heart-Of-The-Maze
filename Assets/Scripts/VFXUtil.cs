@@ -592,6 +592,29 @@ public static class VFXUtil
         Burst(pos, n, new Color(1f, 0.8f, 0.35f, 1f), 8, 3f, 8f, 0.03f, 0.07f, 0.05f, 0.12f, true, true, 0.3f, 25f, 0.18f);
         DustPuff(pos, n, new Color(0.7f, 0.66f, 0.55f, 0.45f), 8, 0.85f);
     }
+
+    /// <summary>
+    /// AAA Sword-like slashing cutting arc VFX: curved slashing light blade trail + incandescent sparks.
+    /// Used for sword strikes and zombie claw attacks.
+    /// </summary>
+    public static void SpawnSwordSlashCut(Vector3 pos, Vector3 forward, Vector3 right, bool isZombie = false)
+    {
+        // 1. Slashing flash light
+        Color flashColor = isZombie ? new Color(1.0f, 0.28f, 0.15f) : new Color(0.9f, 0.95f, 1.0f);
+        SpawnFadingLight(pos, flashColor, 3.0f, 5.5f, 0.08f);
+
+        // 2. High-speed curved slash blade trail / burst
+        Color coreColor = isZombie ? new Color(1.6f, 0.45f, 0.15f, 1f) : new Color(3.0f, 3.0f, 3.2f, 1f);
+        Color edgeColor = isZombie ? new Color(0.95f, 0.08f, 0.04f, 0.95f) : new Color(0.2f, 0.6f, 1.4f, 0.9f);
+
+        // Slash arc: fan of stretched particles forming a sharp cutting crescent blade
+        Vector3 slashDir = (forward + right * 0.45f).normalized;
+        Burst(pos, slashDir, coreColor, 18, 7f, 15f, 0.04f, 0.12f, 0.06f, 0.18f, true, true, 0.2f, 40f, 0.35f);
+        Burst(pos, forward, edgeColor, 14, 5f, 12f, 0.05f, 0.15f, 0.08f, 0.22f, true, true, 0.4f, 55f, 0.4f);
+
+        // Incandescent razor cutting sparks
+        Sparks(pos, forward, isZombie ? new Color(6.0f, 2.2f, 0.6f, 1f) : new Color(6.0f, 5.2f, 3.2f, 1f), 12, 20f);
+    }
 }
 
 public class VFXLightFade : MonoBehaviour
