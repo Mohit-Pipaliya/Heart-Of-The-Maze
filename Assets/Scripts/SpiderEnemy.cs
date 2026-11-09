@@ -5,40 +5,148 @@ using UnityEngine.AI;
 [RequireComponent(typeof(Animator))]
 public class SpiderEnemy : MonoBehaviour
 {
-    [Header("Health Settings")]
-    public float maxHealth = 60f;
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  INSPECTOR CONTROLS (All Spider Parameters Fully Tunable In Inspector)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    [Header("─── Health & Durability ─────────────────────────────────────")]
+    [Tooltip("Spider ki total max health")]
+    public float maxHealth = 1500f;
+
+    [SerializeField, Tooltip("Runtime active health (inspector me live dikhta hai)")]
     private float currentHealth;
 
-    [Header("AI Ranges & Territory")]
-    [Tooltip("Yahan ek BoxCollider ya SphereCollider drag karein jo spider ka area define karega. Iske andar spider ghumega aur player ko chase karega.")]
-    public Collider territoryTrigger;
-    
-    public float attackRange = 3.5f;         // Slightly larger attack zone for natural feel
-    public float aggroDistance = 45f;        // Player approaching within this radius triggers chase
-    
-    [Header("Combat Settings")]
-    public float attackCooldown = 2.2f;      // Natural attack cycle
-    public float damageToPlayer = 10f;
-    
-    [Header("Movement Settings")]
-    public float walkSpeed = 1.8f;           // Natural, calm spider patrol speed
-    public float runSpeed = 4.2f;            // Natural chase speed (no supersonic rushing)
-    public float rotationSpeed = 6f;         // Smooth look-at speed during attack
+    [Tooltip("Damage lagne par spider kitne second stun rahega (seconds)")]
+    [Range(0f, 2f)]
+    public float hitStunDuration = 0.45f;
 
-    [Header("References")]
+    [Tooltip("Goli ya talwar lagne par spider kitna peeche hatega (meters)")]
+    [Range(0f, 2f)]
+    public float knockbackDistance = 0.35f;
+
+    [Tooltip("Marne ke baad body kitne second baad gayab hogi (seconds)")]
+    [Range(0.5f, 20f)]
+    public float corpseDespawnDelay = 5.0f;
+
+    [Header("─── AI Ranges & Territory ───────────────────────────────────")]
+    [Tooltip("Kitne paas aane par spider attack shuru karega (meters)")]
+    public float attackRange = 30f;
+
+    [Tooltip("NavMeshAgent player ke kitne paas aake rukega (meters)")]
+    public float stoppingDistance = 8.2f;
+
+    [Tooltip("Player kitni doori pe aane se spider chase shuru karega (meters)")]
+    public float aggroDistance = 45f;
+
+    [Tooltip("Territory Trigger: is collider ke andar spider patrol karega (optional)")]
+    public Collider territoryTrigger;
+
+    [Tooltip("Territory na ho toh spawn point ke aas paas kitne area me ghumega (meters)")]
+    public float patrolRadius = 15f;
+
+    [Header("─── Combat & Attack Damage ──────────────────────────────────")]
+    [Tooltip("Ek attack me player ko kitna damage hoga (HP)")]
+    public float damageToPlayer = 10f;
+
+    [Tooltip("Do attacks ke beech ka cooldown time (seconds)")]
+    [Range(0.1f, 10f)]
+    public float attackCooldown = 2.2f;
+
+    [Tooltip("Attack animation start hone ke kitne second baad damage lage (seconds)")]
+    [Range(0.05f, 2f)]
+    public float damageHitDelay = 0.45f;
+
+    [Tooltip("Attack ke time kitni extra reach me player ho toh damage lage (meters)")]
+    public float damageReachTolerance = 2.5f;
+
+    [Header("─── Movement Speeds & Steering ──────────────────────────────")]
+    [Tooltip("Patrol karte waqt chalne ki speed (units/sec)")]
+    public float walkSpeed = 8f;
+
+    [Tooltip("Player ko chase karte waqt bhagne ki speed (units/sec)")]
+    public float runSpeed = 8f;
+
+    [Tooltip("NavMeshAgent ki acceleration (jitna zyada, utna turant speed pakdega)")]
+    public float acceleration = 15f;
+
+    [Tooltip("Player ki taraf ghoomne / face karne ki speed")]
+    public float rotationSpeed = 8f;
+
+    [Tooltip("NavMeshAgent avoidance radius")]
+    public float agentRadius = 4.8f;
+
+    [Tooltip("NavMeshAgent height")]
+    public float agentHeight = 4.0f;
+
+    [Header("─── Physical Collision & Body Size ──────────────────────────")]
+    [Tooltip("Player spider ke andar na ghus sake")]
+    public bool enableAntiPenetration = true;
+
+    [Tooltip("Spider ke solid capsule collider ka world radius (meters)")]
+    public float bodyColliderRadius = 6.2f;
+
+    [Tooltip("Spider ke solid capsule collider ki world height (meters)")]
+    public float bodyColliderHeight = 6.5f;
+
+    [Tooltip("Spider ke solid capsule collider ka vertical center (meters)")]
+    public float bodyColliderCenterY = 2.8f;
+
+    [Tooltip("Player ko spider se kitni door push karna hai (meters)")]
+    public float safeDistance = 6.8f;
+
+    [Tooltip("Player ko bahar dhakelne ki force (0-1)")]
+    [Range(0.1f, 1f)]
+    public float pushPlayerForce = 0.9f;
+
+    [Header("─── HitBox & Targeting ───────────────────────────────────────")]
+    [Tooltip("Spider ke 3D mesh ke hisaab se bullet hitbox auto-fit karna")]
+    public bool autoFitHitbox = true;
+
+    [Tooltip("Manual HitBox size agar auto-fit off ho")]
+    public Vector3 manualHitboxSize = new Vector3(16f, 5.5f, 16f);
+
+    [Tooltip("Manual HitBox center agar auto-fit off ho")]
+    public Vector3 manualHitboxCenter = new Vector3(0f, 2.5f, 0f);
+
+    [Header("─── Audio & Visual Effects ──────────────────────────────────")]
+    [Tooltip("Attack aur hit sound effects enable/disable")]
+    public bool enableAudio = true;
+
+    [Tooltip("Blood burst aur hit markers enable/disable")]
+    public bool enableVFX = true;
+
+    [Tooltip("Damage lagne par red flash light enable/disable")]
+    public bool enableHitFlash = true;
+
+    [Header("─── Target Reference ─────────────────────────────────────────")]
+    [Tooltip("Player transform reference (agar khali ho toh automatically find karega)")]
     public Transform player;
+
+    [Header("─── Scene View Debug Gizmos ─────────────────────────────────")]
+    [Tooltip("Scene view me ranges ke rings draw karna")]
+    public bool showDebugGizmos = true;
+    public Color attackRangeColor = new Color(1f, 0.2f, 0.2f, 0.6f);
+    public Color stoppingDistanceColor = new Color(0.2f, 1f, 0.4f, 0.6f);
+    public Color aggroDistanceColor = new Color(1f, 0.9f, 0.2f, 0.35f);
+    public Color safeDistanceColor = new Color(0.2f, 0.6f, 1f, 0.45f);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  INTERNAL RUNTIME STATE
+    // ═══════════════════════════════════════════════════════════════════════════
 
     private NavMeshAgent agent;
     private Animator anim;
     private Vector3 startPos;
     private float lastAttackTime;
-    private float _animSpeedTarget = 0f;     // Smooth animator Speed blending
+    private float _animSpeedTarget = 0f;
     private float _animSpeedCurrent = 0f;
-    
+
     private bool isDead = false;
     private bool _isAttacking;
+    private bool _isChasing;
     private float _hitStunUntil;
     private bool _offMeshJumping;
+
     public bool IsDead => isDead;
     public float CurrentHealth => currentHealth;
 
@@ -48,6 +156,44 @@ public class SpiderEnemy : MonoBehaviour
     private int hashHit;
     private int hashDie;
     private int hashJump;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  UNITY LIFECYCLE & LIVE INSPECTOR SYNC
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    private void OnValidate()
+    {
+        // Enforce valid safe ranges without breaking user desires
+        maxHealth = Mathf.Max(1f, maxHealth);
+        attackRange = Mathf.Max(0.5f, attackRange);
+        aggroDistance = Mathf.Max(attackRange, aggroDistance);
+        stoppingDistance = Mathf.Max(0.1f, stoppingDistance);
+        walkSpeed = Mathf.Max(0.1f, walkSpeed);
+        runSpeed = Mathf.Max(0.1f, runSpeed);
+        acceleration = Mathf.Max(0.5f, acceleration);
+        rotationSpeed = Mathf.Max(0.1f, rotationSpeed);
+        damageToPlayer = Mathf.Max(0f, damageToPlayer);
+        attackCooldown = Mathf.Max(0.05f, attackCooldown);
+        damageHitDelay = Mathf.Max(0f, damageHitDelay);
+        hitStunDuration = Mathf.Max(0f, hitStunDuration);
+        knockbackDistance = Mathf.Max(0f, knockbackDistance);
+        corpseDespawnDelay = Mathf.Max(0.1f, corpseDespawnDelay);
+        safeDistance = Mathf.Max(0.5f, safeDistance);
+        bodyColliderRadius = Mathf.Max(0.1f, bodyColliderRadius);
+        bodyColliderHeight = Mathf.Max(0.1f, bodyColliderHeight);
+
+        // Live-sync with NavMeshAgent in Play Mode
+        if (Application.isPlaying && agent != null && agent.enabled)
+        {
+            agent.stoppingDistance = stoppingDistance;
+            agent.acceleration = acceleration;
+            agent.radius = agentRadius;
+            agent.height = agentHeight;
+            agent.speed = _isChasing ? runSpeed : walkSpeed;
+        }
+
+        UpdateCapsuleCollider();
+    }
 
     private void Awake()
     {
@@ -64,26 +210,19 @@ public class SpiderEnemy : MonoBehaviour
             gameObject.layer = enemyLayer;
         }
 
-        // Account for transform lossyScale (Spider prefab is scaled 40x in scene)
+        // Setup CapsuleCollider for physical body collision
+        UpdateCapsuleCollider();
+
+        // Broad HitBox across entire carapace & leg span for 100% reliable bullet hits & crosshairs
+        SetupHitbox(enemyLayer);
+    }
+
+    private void SetupHitbox(int enemyLayer)
+    {
         float sx = Mathf.Max(0.001f, transform.lossyScale.x);
         float sy = Mathf.Max(0.001f, transform.lossyScale.y);
         float sz = Mathf.Max(0.001f, transform.lossyScale.z);
 
-        // Solid physical CapsuleCollider (isTrigger = false) so Player CharacterController
-        // CANNOT walk through or penetrate inside the giant spider body!
-        CapsuleCollider cap = GetComponent<CapsuleCollider>();
-        if (cap == null)
-        {
-            cap = gameObject.AddComponent<CapsuleCollider>();
-        }
-
-        cap.direction = 1; // Y-axis
-        cap.radius = 6.2f / sx; // In world space: 6.2m solid radius
-        cap.height = 6.5f / sy; // In world space: 6.5m height
-        cap.center = new Vector3(0f, 2.8f / sy, 0f);
-        cap.isTrigger = false;
-
-        // Broad HitBox across entire carapace & leg span for 100% reliable bullet hits & crosshairs
         Transform hb = transform.Find("SpiderHitBox");
         if (hb == null)
         {
@@ -92,17 +231,33 @@ public class SpiderEnemy : MonoBehaviour
             if (enemyLayer >= 0) hbObj.layer = enemyLayer;
 
             BoxCollider box = hbObj.AddComponent<BoxCollider>();
-            box.size = new Vector3(16.0f / sx, 5.5f / sy, 16.0f / sz);
-            box.center = new Vector3(0f, 2.5f / sy, 0f);
-            box.isTrigger = false; // Solid PhysX collider so bullets and crosshairs intercept it
+            box.size = new Vector3(manualHitboxSize.x / sx, manualHitboxSize.y / sy, manualHitboxSize.z / sz);
+            box.center = new Vector3(manualHitboxCenter.x / sx, manualHitboxCenter.y / sy, manualHitboxCenter.z / sz);
+            box.isTrigger = false;
         }
     }
 
-    void Start()
+    public void UpdateCapsuleCollider()
     {
-        // Giant Spider realistic combat reach: 10.5m
-        if (attackRange < 8.0f) attackRange = 10.5f;
+        CapsuleCollider cap = GetComponent<CapsuleCollider>();
+        if (cap == null)
+        {
+            cap = gameObject.AddComponent<CapsuleCollider>();
+        }
 
+        float sx = Mathf.Max(0.001f, transform.lossyScale.x);
+        float sy = Mathf.Max(0.001f, transform.lossyScale.y);
+
+        cap.direction = 1; // Y-axis
+        cap.radius = bodyColliderRadius / sx;
+        cap.height = bodyColliderHeight / sy;
+        cap.center = new Vector3(0f, bodyColliderCenterY / sy, 0f);
+        cap.isTrigger = false;
+    }
+
+    private void Start()
+    {
+        // NO HARDCODED OVERWRITES! What the user enters in Inspector stays 100% in game!
         agent = GetComponent<NavMeshAgent>();
         anim = GetComponent<Animator>();
         if (anim != null) anim.applyRootMotion = false;
@@ -119,15 +274,19 @@ public class SpiderEnemy : MonoBehaviour
 
         if (agent != null)
         {
-            agent.stoppingDistance = 8.2f;
-            agent.radius = 4.8f;
-            agent.height = 4.0f;
+            agent.speed = walkSpeed;
+            agent.acceleration = acceleration;
+            agent.stoppingDistance = stoppingDistance;
+            agent.radius = agentRadius;
+            agent.height = agentHeight;
             agent.obstacleAvoidanceType = ObstacleAvoidanceType.HighQualityObstacleAvoidance;
         }
 
-        FitHitboxToBody();
+        if (autoFitHitbox)
+        {
+            FitHitboxToBody();
+        }
 
-        // Solid physical collision ensured between player colliders and spider
         EnsurePlayerCollision();
 
         hashSpeed = Animator.StringToHash("Speed");
@@ -178,17 +337,20 @@ public class SpiderEnemy : MonoBehaviour
         }
     }
 
-    void Update()
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  UPDATE & AI LOGIC
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    private void Update()
     {
         if (isDead) return;
 
         // Active Anti-Penetration: Player can NEVER walk or clip inside spider!
-        if (player != null)
+        if (enableAntiPenetration && player != null)
         {
             Vector3 toPlayer = player.position - transform.position;
             toPlayer.y = 0f;
             float distToPlayer = toPlayer.magnitude;
-            float safeDistance = 6.8f;
 
             if (distToPlayer < safeDistance)
             {
@@ -199,17 +361,17 @@ public class SpiderEnemy : MonoBehaviour
                 CharacterController playerCC = player.GetComponent<CharacterController>();
                 if (playerCC != null && playerCC.enabled)
                 {
-                    playerCC.Move(pushOut * (overlap * 0.9f));
+                    playerCC.Move(pushOut * (overlap * pushPlayerForce));
                 }
                 else
                 {
-                    player.position += pushOut * (overlap * 0.9f);
+                    player.position += pushOut * (overlap * pushPlayerForce);
                 }
 
                 // Push spider slightly away if agent is on NavMesh
                 if (agent != null && agent.enabled && agent.isOnNavMesh)
                 {
-                    agent.Move(-pushOut * (overlap * 0.1f));
+                    agent.Move(-pushOut * (overlap * (1f - pushPlayerForce) * 0.5f));
                 }
             }
         }
@@ -270,16 +432,20 @@ public class SpiderEnemy : MonoBehaviour
 
     private void Patrol()
     {
+        if (agent == null || !agent.enabled) return;
+
+        _isChasing = false;
         agent.isStopped = false;
         agent.speed = walkSpeed;
+        agent.acceleration = acceleration;
+        agent.stoppingDistance = stoppingDistance;
 
         if (!agent.pathPending && agent.remainingDistance < 0.5f)
         {
             Vector3 randomDir;
-            
+
             if (territoryTrigger != null)
             {
-                // Trigger area ke andar ek random jagah chuno
                 Bounds b = territoryTrigger.bounds;
                 randomDir = new Vector3(
                     Random.Range(b.min.x, b.max.x),
@@ -289,10 +455,9 @@ public class SpiderEnemy : MonoBehaviour
             }
             else
             {
-                // Fallback agar koi area assign na kiya ho
-                randomDir = startPos + Random.insideUnitSphere * 15f;
+                randomDir = startPos + Random.insideUnitSphere * patrolRadius;
             }
-            
+
             if (NavMesh.SamplePosition(randomDir, out NavMeshHit hit, 10f, NavMesh.AllAreas))
             {
                 agent.SetDestination(hit.position);
@@ -302,19 +467,26 @@ public class SpiderEnemy : MonoBehaviour
 
     private void ChasePlayer()
     {
-        if (player == null) return;
+        if (player == null || agent == null || !agent.enabled) return;
+
+        _isChasing = true;
         agent.isStopped = false;
         agent.speed = runSpeed;
-        agent.stoppingDistance = 8.2f;
+        agent.acceleration = acceleration;
+        agent.stoppingDistance = stoppingDistance;
         agent.SetDestination(player.position);
     }
 
     private void AttackPlayer()
     {
-        agent.isStopped = true; // Attack ke time ruk jao
-        agent.velocity = Vector3.zero; // Completely arrest momentum so player is not pushed
-        
-        // Player ki taraf smooth rotation (natural head tracking)
+        _isChasing = false;
+        if (agent != null && agent.enabled)
+        {
+            agent.isStopped = true;
+            agent.velocity = Vector3.zero;
+        }
+
+        // Smooth look-at player during attack
         if (player != null)
         {
             Vector3 direction = (player.position - transform.position).normalized;
@@ -334,7 +506,7 @@ public class SpiderEnemy : MonoBehaviour
                 anim.SetTrigger(hashAttack);
             }
             lastAttackTime = Time.time;
-            StartCoroutine(DealDamageAfterDelay(0.45f));
+            StartCoroutine(DealDamageAfterDelay(damageHitDelay));
         }
     }
 
@@ -343,21 +515,27 @@ public class SpiderEnemy : MonoBehaviour
         _isAttacking = true;
         yield return new WaitForSeconds(delay);
 
-        if (!isDead && player != null && Vector3.Distance(transform.position, player.position) <= attackRange + 2.5f)
+        if (!isDead && player != null && Vector3.Distance(transform.position, player.position) <= attackRange + damageReachTolerance)
         {
             PlayerController pc = player.GetComponent<PlayerController>();
             if (pc != null && !pc.IsDead)
             {
                 pc.TakeDamage((int)damageToPlayer);
-                GameAudio.PlayBulletHit(player.position, true);
-                VFXUtil.Burst(player.position + Vector3.up * 1.1f, transform.forward,
-                    new Color(0.8f, 0.08f, 0.05f, 1f), 12, 4f, 10f, 0.06f, 0.16f, 0.15f, 0.3f, true, true, 1.5f, 30f);
+                if (enableAudio) GameAudio.PlayBulletHit(player.position, true);
+                if (enableVFX)
+                {
+                    VFXUtil.Burst(player.position + Vector3.up * 1.1f, transform.forward,
+                        new Color(0.8f, 0.08f, 0.05f, 1f), 12, 4f, 10f, 0.06f, 0.16f, 0.15f, 0.3f, true, true, 1.5f, 30f);
+                }
             }
         }
         _isAttacking = false;
     }
 
-    // Player jab attack kare toh ye function call karega
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  DAMAGE, REACTION & DEATH
+    // ═══════════════════════════════════════════════════════════════════════════
+
     public void TakeDamage(float amount, Vector3 hitPoint = default, Vector3 hitNormal = default)
     {
         if (isDead) return;
@@ -368,22 +546,24 @@ public class SpiderEnemy : MonoBehaviour
         // Instantly aggro and chase player if shot or struck
         if (player != null && agent != null && agent.enabled)
         {
+            _isChasing = true;
             agent.isStopped = false;
+            agent.speed = runSpeed;
             agent.SetDestination(player.position);
         }
 
-        // Visceral Hit Knockback (push spider back away from player on impact so it flinches)
-        if (player != null)
+        // Visceral Hit Knockback
+        if (player != null && knockbackDistance > 0.001f)
         {
             Vector3 pushDir = (transform.position - player.position).normalized;
             pushDir.y = 0f;
             if (agent != null && agent.enabled)
             {
-                agent.Move(pushDir * 0.35f);
+                agent.Move(pushDir * knockbackDistance);
             }
             else
             {
-                transform.position += pushDir * 0.35f;
+                transform.position += pushDir * knockbackDistance;
             }
         }
 
@@ -405,9 +585,12 @@ public class SpiderEnemy : MonoBehaviour
             }
         }
 
-        VFXUtil.SpawnFadingLight(fxPos, new Color(1.0f, 0.04f, 0.02f), 5.0f, 3.5f, 0.08f);
+        if (enableHitFlash)
+        {
+            VFXUtil.SpawnFadingLight(fxPos, new Color(1.0f, 0.04f, 0.02f), 5.0f, 3.5f, 0.08f);
+        }
 
-        _hitStunUntil = Time.time + 0.45f;
+        _hitStunUntil = Time.time + hitStunDuration;
 
         if (currentHealth <= 0)
         {
@@ -423,14 +606,18 @@ public class SpiderEnemy : MonoBehaviour
     private void Die()
     {
         isDead = true;
-        agent.isStopped = true;
-        agent.enabled = false;
+        if (agent != null)
+        {
+            agent.isStopped = true;
+            agent.enabled = false;
+        }
+
         if (anim != null)
         {
             anim.ResetTrigger(hashDie);
             anim.SetTrigger(hashDie);
         }
-        
+
         // Disable colliders so player doesn't collide with dead spider
         Collider[] cols = GetComponentsInChildren<Collider>();
         for (int i = 0; i < cols.Length; i++)
@@ -439,14 +626,44 @@ public class SpiderEnemy : MonoBehaviour
                 cols[i].enabled = false;
         }
 
-        // 5 second baad body gayab kardo
-        Destroy(gameObject, 5f);
+        // Despawn after configurable delay
+        Destroy(gameObject, corpseDespawnDelay);
     }
-    
-    // Editor me Attack Area dekhne ke liye (Visual Debug)
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  SCENE VIEW DEBUG GIZMOS
+    // ═══════════════════════════════════════════════════════════════════════════
+
     private void OnDrawGizmosSelected()
     {
-        Gizmos.color = Color.black;
-        Gizmos.DrawWireSphere(transform.position, attackRange);  // Attack area
+        if (!showDebugGizmos) return;
+
+        Vector3 pos = transform.position;
+
+        // Attack Range (Red Wire Sphere)
+        Gizmos.color = attackRangeColor;
+        Gizmos.DrawWireSphere(pos, attackRange);
+
+        // Stopping Distance (Green Wire Sphere)
+        Gizmos.color = stoppingDistanceColor;
+        Gizmos.DrawWireSphere(pos, stoppingDistance);
+
+        // Aggro Distance (Yellow Wire Sphere)
+        Gizmos.color = aggroDistanceColor;
+        Gizmos.DrawWireSphere(pos, aggroDistance);
+
+        // Anti-Penetration Safe Distance (Blue Wire Sphere)
+        if (enableAntiPenetration)
+        {
+            Gizmos.color = safeDistanceColor;
+            Gizmos.DrawWireSphere(pos, safeDistance);
+        }
+
+        // Territory Trigger bounds if assigned
+        if (territoryTrigger != null)
+        {
+            Gizmos.color = new Color(0.8f, 0.2f, 1f, 0.4f);
+            Gizmos.DrawWireCube(territoryTrigger.bounds.center, territoryTrigger.bounds.size);
+        }
     }
 }
