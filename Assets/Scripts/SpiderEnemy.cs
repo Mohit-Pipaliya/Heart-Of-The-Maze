@@ -72,15 +72,21 @@ public class SpiderEnemy : MonoBehaviour
     [Tooltip("Player ki taraf ghoomne / face karne ki speed")]
     public float rotationSpeed = 8f;
 
-    [Tooltip("NavMeshAgent avoidance radius")]
-    public float agentRadius = 4.8f;
+    [Tooltip("Agar TRUE karenge toh NavMeshAgent ke radius aur height ko script override karegi. FALSE rakhne par NavMeshAgent component ki apni setting use hogi (badhegi nahi).")]
+    public bool overrideAgentDimensions = false;
 
-    [Tooltip("NavMeshAgent height")]
-    public float agentHeight = 4.0f;
+    [Tooltip("NavMeshAgent avoidance radius (sirf tab apply hoga agar overrideAgentDimensions TRUE ho)")]
+    public float agentRadius = 0.5f;
+
+    [Tooltip("NavMeshAgent height (sirf tab apply hoga agar overrideAgentDimensions TRUE ho)")]
+    public float agentHeight = 1.2f;
 
     [Header("─── Physical Collision & Body Size ──────────────────────────")]
     [Tooltip("Player spider ke andar na ghus sake")]
     public bool enableAntiPenetration = true;
+
+    [Tooltip("Agar TRUE karenge toh CapsuleCollider ke size ko script override karegi. FALSE rakhne par aapki apni collider settings use hongi.")]
+    public bool overrideColliderDimensions = false;
 
     [Tooltip("Spider ke solid capsule collider ka world radius (meters)")]
     public float bodyColliderRadius = 6.2f;
@@ -187,12 +193,18 @@ public class SpiderEnemy : MonoBehaviour
         {
             agent.stoppingDistance = stoppingDistance;
             agent.acceleration = acceleration;
-            agent.radius = agentRadius;
-            agent.height = agentHeight;
+            if (overrideAgentDimensions)
+            {
+                agent.radius = agentRadius;
+                agent.height = agentHeight;
+            }
             agent.speed = _isChasing ? runSpeed : walkSpeed;
         }
 
-        UpdateCapsuleCollider();
+        if (overrideColliderDimensions)
+        {
+            UpdateCapsuleCollider();
+        }
     }
 
     private void Awake()
@@ -210,8 +222,11 @@ public class SpiderEnemy : MonoBehaviour
             gameObject.layer = enemyLayer;
         }
 
-        // Setup CapsuleCollider for physical body collision
-        UpdateCapsuleCollider();
+        // Setup CapsuleCollider for physical body collision if enabled
+        if (overrideColliderDimensions)
+        {
+            UpdateCapsuleCollider();
+        }
 
         // Broad HitBox across entire carapace & leg span for 100% reliable bullet hits & crosshairs
         SetupHitbox(enemyLayer);
@@ -277,9 +292,19 @@ public class SpiderEnemy : MonoBehaviour
             agent.speed = walkSpeed;
             agent.acceleration = acceleration;
             agent.stoppingDistance = stoppingDistance;
-            agent.radius = agentRadius;
-            agent.height = agentHeight;
             agent.obstacleAvoidanceType = ObstacleAvoidanceType.HighQualityObstacleAvoidance;
+
+            if (overrideAgentDimensions)
+            {
+                agent.radius = agentRadius;
+                agent.height = agentHeight;
+            }
+            else
+            {
+                // Inspector me jo NavMeshAgent component par values hai vahi rahengi, play karne par badhengi nahi
+                agentRadius = agent.radius;
+                agentHeight = agent.height;
+            }
         }
 
         if (autoFitHitbox)
