@@ -82,47 +82,9 @@ public class ZombieAI : MonoBehaviour
     [Tooltip("Scream animation kitni der tak hold karke player ki taraf dekhega.")]
     public float screamDuration = 1.9f;
 
-    [Header("── Audio Volume & Sound Controls ───────────────────────────")]
-    [Tooltip("Zombie ke sabhi sounds ka master volume multiplier (0.0 = Mute, 1.0 = Normal, 2.0 = Extra Loud)")]
-    [Range(0f, 2f)]
-    public float masterAudioVolume = 1.0f;
-
-    [Tooltip("Zombie ke chillane / scream / roar sound ka volume")]
-    [Range(0f, 1f)]
-    public float screamVolume = 1.0f;
-
-    [Tooltip("Zombie ke chalne / walk footsteps sound ka volume")]
-    [Range(0f, 1f)]
-    public float walkVolume = 0.6f;
-
-    [Tooltip("Zombie ke attack swipe / strike sound ka volume")]
-    [Range(0f, 1f)]
-    public float attackVolume = 1.0f;
-
-    [Tooltip("Zombie ko goli ya talwar lagne par hurt sound ka volume")]
-    [Range(0f, 1f)]
-    public float hurtVolume = 0.9f;
-
-    [Tooltip("Zombie ke marne par death sound ka volume")]
-    [Range(0f, 1f)]
-    public float deathVolume = 1.0f;
-
-    [Header("── Custom Audio Clips (Optional Override) ───────────────────")]
-    [Tooltip("Custom Scream audio (khali chhodne par default 'scream sound zombie' chalega)")]
+    [Header("── Audio Settings ──")]
     public AudioClip screamSound;
-
-    [Tooltip("Custom Walk audio (khali chhodne par default 'Zombie Walking Sound Effect' chalega)")]
     public AudioClip walkSound;
-
-    [Tooltip("Custom Attack audio (khali chhodne par dynamic sword/claw slash whoosh chalega)")]
-    public AudioClip attackSound;
-
-    [Tooltip("Custom Hurt audio (khali chhodne par flesh hit impact chalega)")]
-    public AudioClip hurtSound;
-
-    [Tooltip("Custom Death audio (khali chhodne par guttural death moan chalega)")]
-    public AudioClip deathSound;
-
     private AudioSource _zombieAudio;
     private float _nextWalkSoundTime;
 
@@ -223,106 +185,12 @@ public class ZombieAI : MonoBehaviour
             _zombieAudio.rolloffMode = AudioRolloffMode.Linear;
             _zombieAudio.playOnAwake = false;
         }
-        _zombieAudio.volume = masterAudioVolume;
 
         if (screamSound == null) screamSound = GameAudio.GetClip(GameAudio.SoundType.ZombieScream);
         if (walkSound == null) walkSound = GameAudio.GetClip(GameAudio.SoundType.ZombieWalk);
-        if (attackSound == null) attackSound = GameAudio.GetClip(GameAudio.SoundType.ZombieAttack);
-        if (hurtSound == null) hurtSound = GameAudio.GetClip(GameAudio.SoundType.ZombieHurt);
-        if (deathSound == null) deathSound = GameAudio.GetClip(GameAudio.SoundType.ZombieDeath);
 
         _flankOffset = Random.Range(-1.35f, 1.35f);
         _nextSenseTime = Time.time + Random.Range(0f, senseInterval);
-    }
-
-    private void OnValidate()
-    {
-        masterAudioVolume = Mathf.Clamp(masterAudioVolume, 0f, 2f);
-        screamVolume = Mathf.Clamp01(screamVolume);
-        walkVolume = Mathf.Clamp01(walkVolume);
-        attackVolume = Mathf.Clamp01(attackVolume);
-        hurtVolume = Mathf.Clamp01(hurtVolume);
-        deathVolume = Mathf.Clamp01(deathVolume);
-
-        if (_zombieAudio != null)
-        {
-            _zombieAudio.volume = masterAudioVolume;
-        }
-    }
-
-    public void PlayScreamSound()
-    {
-        float vol = screamVolume * masterAudioVolume;
-        if (vol <= 0.001f) return;
-        if (screamSound != null && _zombieAudio != null && _zombieAudio.isActiveAndEnabled)
-        {
-            _zombieAudio.pitch = Random.Range(0.95f, 1.05f);
-            _zombieAudio.PlayOneShot(screamSound, vol);
-        }
-        else
-        {
-            GameAudio.PlayZombieScream(transform.position, _zombieAudio, vol);
-        }
-    }
-
-    public void PlayWalkSound()
-    {
-        float vol = walkVolume * masterAudioVolume;
-        if (vol <= 0.001f) return;
-        if (walkSound != null && _zombieAudio != null && _zombieAudio.isActiveAndEnabled)
-        {
-            _zombieAudio.pitch = Random.Range(0.92f, 1.08f);
-            _zombieAudio.PlayOneShot(walkSound, vol);
-        }
-        else
-        {
-            GameAudio.PlayZombieWalk(transform.position, _zombieAudio, vol);
-        }
-    }
-
-    public void PlayAttackSound()
-    {
-        float vol = attackVolume * masterAudioVolume;
-        if (vol <= 0.001f) return;
-        if (attackSound != null && _zombieAudio != null && _zombieAudio.isActiveAndEnabled)
-        {
-            _zombieAudio.pitch = Random.Range(0.85f, 1.05f);
-            _zombieAudio.PlayOneShot(attackSound, vol);
-        }
-        else
-        {
-            GameAudio.PlayZombieAttack(transform.position, _zombieAudio, vol);
-        }
-    }
-
-    public void PlayHurtSound()
-    {
-        float vol = hurtVolume * masterAudioVolume;
-        if (vol <= 0.001f) return;
-        if (hurtSound != null && _zombieAudio != null && _zombieAudio.isActiveAndEnabled)
-        {
-            _zombieAudio.pitch = Random.Range(0.9f, 1.15f);
-            _zombieAudio.PlayOneShot(hurtSound, vol);
-        }
-        else
-        {
-            GameAudio.PlayZombieHurt(transform.position, _zombieAudio, vol);
-        }
-    }
-
-    public void PlayDeathSound()
-    {
-        float vol = deathVolume * masterAudioVolume;
-        if (vol <= 0.001f) return;
-        if (deathSound != null && _zombieAudio != null && _zombieAudio.isActiveAndEnabled)
-        {
-            _zombieAudio.pitch = Random.Range(0.72f, 0.88f);
-            _zombieAudio.PlayOneShot(deathSound, vol);
-        }
-        else
-        {
-            GameAudio.PlayZombieDeath(transform.position, _zombieAudio, vol);
-        }
     }
 
     private void OnEnable()
@@ -675,7 +543,7 @@ public class ZombieAI : MonoBehaviour
     {
         if (_agent == null || _agent.velocity.sqrMagnitude < 0.1f || Time.time < _nextWalkSoundTime) return;
         _nextWalkSoundTime = Time.time + Random.Range(3.0f, 5.5f);
-        PlayWalkSound();
+        GameAudio.PlayZombieWalk(transform.position, _zombieAudio);
     }
 
     private void SetNewWanderDestination()
@@ -756,7 +624,7 @@ public class ZombieAI : MonoBehaviour
     private IEnumerator RaadRoutine()
     {
         PlayAnimation("Raad", 0.12f);
-        PlayScreamSound();
+        GameAudio.PlayZombieScream(transform.position, _zombieAudio);
         ZombieSense.Report(transform.position, ZombieSense.Kind.Scream);
 
         float elapsed = 0f;
@@ -998,13 +866,6 @@ public class ZombieAI : MonoBehaviour
             FacePlayer();
             PlayAnimation(_isSliding ? "Slide" : "Attack", 0.08f);
 
-            // 1. Play Zombie Attack Swipe Sound
-            PlayAttackSound();
-
-            // 2. Spawn Sword-like Slashing Blade/Claw VFX Arc in front of zombie
-            Vector3 swipeOrigin = transform.position + Vector3.up * 1.25f + transform.forward * 0.75f;
-            VFXUtil.SpawnSwordSlashCut(swipeOrigin, transform.forward, transform.right, isZombie: true);
-
             float wind = 0f;
             while (wind < attackHitDelay)
             {
@@ -1023,22 +884,11 @@ public class ZombieAI : MonoBehaviour
                 if (pc != null && !pc.IsDead)
                 {
                     pc.TakeDamage((int)attackDamage);
+                    GameAudio.PlayBulletHit(player.position, true);
 
                     Vector3 strikePos = player.position + Vector3.up * 1.1f;
-
-                    // 1. Visceral flesh impact audio with inspector volume scaling
-                    GameAudio.PlaySwordImpact(strikePos, true, attackVolume * masterAudioVolume);
-
-                    // 2. AAA Sword-like Flesh Hit VFX: slicing blood fans, sparks, flesh burst, light flash
-                    VFXUtil.SwordFleshHit(strikePos, transform.forward);
-                    VFXUtil.SpawnSwordSlashCut(strikePos, transform.forward, -transform.right, isZombie: true);
-
-                    // 3. Screen shake on player camera
-                    if (Camera.main != null)
-                    {
-                        CameraController cc = Camera.main.GetComponent<CameraController>();
-                        if (cc != null) cc.AddRecoil(0.28f, Random.Range(-0.15f, 0.15f), 0.035f);
-                    }
+                    VFXUtil.Burst(strikePos, transform.forward, new Color(0.85f, 0.08f, 0.05f, 1f),
+                        14, 4f, 11f, 0.06f, 0.18f, 0.15f, 0.32f, true, true, 1.8f, 35f);
                 }
             }
 
@@ -1069,7 +919,6 @@ public class ZombieAI : MonoBehaviour
         if (_isDead) return;
 
         _currentHealth -= amount;
-        PlayHurtSound();
 
         Vector3 fxPos = hitPoint == default ? (transform.position + Vector3.up * 1.1f) : hitPoint;
         VFXUtil.SpawnFadingLight(fxPos, new Color(1.0f, 0.04f, 0.02f), 4.5f, 3.2f, 0.08f);
@@ -1178,7 +1027,6 @@ public class ZombieAI : MonoBehaviour
         _attackCommitted = false;
 
         StopActiveRoutine();
-        PlayDeathSound();
 
         if (_footIK != null) _footIK.SetIKActive(false);
         if (_locomotion != null) _locomotion.enabled = false;
