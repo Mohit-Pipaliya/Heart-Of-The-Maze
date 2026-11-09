@@ -152,6 +152,7 @@ public class SpiderEnemy : MonoBehaviour
     private bool _isChasing;
     private float _hitStunUntil;
     private bool _offMeshJumping;
+    private SpiderTriggerZone _triggerZone;
 
     public bool IsDead => isDead;
     public float CurrentHealth => currentHealth;
@@ -209,6 +210,8 @@ public class SpiderEnemy : MonoBehaviour
 
     private void Awake()
     {
+        EnsureTriggerZone();
+
         anim = GetComponent<Animator>();
         if (anim != null)
         {
@@ -270,8 +273,86 @@ public class SpiderEnemy : MonoBehaviour
         cap.isTrigger = false;
     }
 
+    /// <summary>
+    /// Territory trigger zone ko dhoondhta hai aur uspar real-time trigger detector attach karta hai.
+    /// </summary>
+    private void EnsureTriggerZone()
+    {
+        if (territoryTrigger == null)
+        {
+            GameObject st = GameObject.Find("SpiderTrigger");
+            if (st != null)
+            {
+                territoryTrigger = st.GetComponent<Collider>();
+            }
+        }
+
+        if (territoryTrigger != null && _triggerZone == null)
+        {
+            _triggerZone = territoryTrigger.GetComponent<SpiderTriggerZone>();
+            if (_triggerZone == null)
+            {
+                _triggerZone = territoryTrigger.gameObject.AddComponent<SpiderTriggerZone>();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Check karta hai ki koi specific world position territory trigger ke andar hai ya nahi.
+    /// BoxCollider rotation, center, scaling aur vertical slope tolerance (+/- 15m) ko accurately handle karta hai.
+    /// </summary>
+    public bool IsPointInTerritory(Vector3 worldPoint)
+    {
+        if (territoryTrigger == null) return true;
+
+        if (territoryTrigger is BoxCollider box)
+        {
+            Vector3 localPoint = box.transform.InverseTransformPoint(worldPoint);
+            Vector3 halfSize = box.size * 0.5f;
+            Vector3 center = box.center;
+
+            bool inX = Mathf.Abs(localPoint.x - center.x) <= (halfSize.x + 0.5f);
+            bool inZ = Mathf.Abs(localPoint.z - center.z) <= (halfSize.z + 0.5f);
+            bool inY = Mathf.Abs(localPoint.y - center.y) <= (halfSize.y + 15.0f);
+
+            return inX && inZ && inY;
+        }
+
+        Bounds b = territoryTrigger.bounds;
+        b.Expand(new Vector3(1f, 30f, 1f));
+        return b.Contains(worldPoint);
+    }
+
+    /// <summary>
+    /// Check karta hai ki player territory area me moujood hai ya nahi.
+    /// Physics Trigger events aur spatial coordinates dono use karta hai.
+    /// </summary>
+    public bool IsPlayerInTerritory()
+    {
+        if (territoryTrigger == null || player == null) return false;
+
+        // 1. Direct Trigger physics check
+        if (_triggerZone != null && _triggerZone.IsPlayerInside)
+            return true;
+
+        // 2. Spatial coordinate check (feet aur center)
+        Vector3 feet = player.position;
+        Vector3 center = feet + Vector3.up * 1.0f;
+        if (IsPointInTerritory(feet) || IsPointInTerritory(center))
+            return true;
+
+        // 3. ClosestPoint check
+        Vector3 closest = territoryTrigger.ClosestPoint(center);
+        if ((closest - center).sqrMagnitude < 0.25f)
+            return true;
+
+        return false;
+    }
+
     private void Start()
     {
+        EnsureTriggerZone();
+
         // NO HARDCODED OVERWRITES! What the user enters in Inspector stays 100% in game!
         agent = GetComponent<NavMeshAgent>();
         anim = GetComponent<Animator>();
@@ -418,18 +499,35 @@ public class SpiderEnemy : MonoBehaviour
             return;
         }
 
-        // Distance aur territory check
+        // ─── Territory & Aggro Decision ─────────────────────────────────
         float distanceToPlayer = player != null ? Vector3.Distance(transform.position, player.position) : Mathf.Infinity;
-        bool isPlayerInTerritory = territoryTrigger != null && player != null && territoryTrigger.bounds.Contains(player.position);
-        bool shouldChase = isPlayerInTerritory || (distanceToPlayer <= aggroDistance);
+        bool playerInTerritory = IsPlayerInTerritory();
 
-        if (distanceToPlayer <= attackRange)
+        // Niyam:
+        // 1. Agar player trigger area me enter kare, spider ko chahe dikhe ya na dikhe,
+        //    spider turant usko dhundhte hue uske paas jayega aur attack karega.
+        // 2. Agar player trigger area se bahar nikal jaye, toh spider chase karna bandh kar dega aur attack nahi karega.
+        bool shouldTargetPlayer;
+        if (territoryTrigger != null)
         {
-            AttackPlayer();
+            shouldTargetPlayer = playerInTerritory;
         }
-        else if (shouldChase)
+        else
         {
-            ChasePlayer();
+            // Fallback agar territoryTrigger assign na ho
+            shouldTargetPlayer = (distanceToPlayer <= aggroDistance);
+        }
+
+        if (shouldTargetPlayer)
+        {
+            if (distanceToPlayer <= attackRange)
+            {
+                AttackPlayer();
+            }
+            else
+            {
+                ChasePlayer();
+            }
         }
         else
         {
@@ -463,27 +561,33 @@ public class SpiderEnemy : MonoBehaviour
         agent.isStopped = false;
         agent.speed = walkSpeed;
         agent.acceleration = acceleration;
-        agent.stoppingDistance = stoppingDistance;
+        agent.stoppingDistance = 1.5f;
 
-        if (!agent.pathPending && agent.remainingDistance < 0.5f)
+        bool reachedDest = !agent.pathPending && (!agent.hasPath || agent.remainingDistance <= agent.stoppingDistance + 0.5f);
+        bool spiderInsideTerritory = territoryTrigger == null || IsPointInTerritory(transform.position);
+
+        if (reachedDest || !spiderInsideTerritory)
         {
-            Vector3 randomDir;
+            Vector3 targetPoint;
 
             if (territoryTrigger != null)
             {
                 Bounds b = territoryTrigger.bounds;
-                randomDir = new Vector3(
-                    Random.Range(b.min.x, b.max.x),
-                    transform.position.y,
-                    Random.Range(b.min.z, b.max.z)
+                float marginX = Mathf.Min(6f, b.extents.x * 0.3f);
+                float marginZ = Mathf.Min(6f, b.extents.z * 0.3f);
+
+                targetPoint = new Vector3(
+                    Random.Range(b.min.x + marginX, b.max.x - marginX),
+                    b.center.y,
+                    Random.Range(b.min.z + marginZ, b.max.z - marginZ)
                 );
             }
             else
             {
-                randomDir = startPos + Random.insideUnitSphere * patrolRadius;
+                targetPoint = startPos + Random.insideUnitSphere * patrolRadius;
             }
 
-            if (NavMesh.SamplePosition(randomDir, out NavMeshHit hit, 10f, NavMesh.AllAreas))
+            if (NavMesh.SamplePosition(targetPoint, out NavMeshHit hit, 35f, NavMesh.AllAreas))
             {
                 agent.SetDestination(hit.position);
             }
@@ -498,7 +602,8 @@ public class SpiderEnemy : MonoBehaviour
         agent.isStopped = false;
         agent.speed = runSpeed;
         agent.acceleration = acceleration;
-        agent.stoppingDistance = stoppingDistance;
+        // Stopping distance must allow spider to close in to attack range
+        agent.stoppingDistance = Mathf.Min(stoppingDistance, Mathf.Max(1.5f, attackRange * 0.75f));
         agent.SetDestination(player.position);
     }
 
@@ -542,15 +647,19 @@ public class SpiderEnemy : MonoBehaviour
 
         if (!isDead && player != null && Vector3.Distance(transform.position, player.position) <= attackRange + damageReachTolerance)
         {
-            PlayerController pc = player.GetComponent<PlayerController>();
-            if (pc != null && !pc.IsDead)
+            // Player must still be inside territory if territory trigger is assigned
+            if (territoryTrigger == null || IsPlayerInTerritory())
             {
-                pc.TakeDamage((int)damageToPlayer);
-                if (enableAudio) GameAudio.PlayBulletHit(player.position, true);
-                if (enableVFX)
+                PlayerController pc = player.GetComponent<PlayerController>();
+                if (pc != null && !pc.IsDead)
                 {
-                    VFXUtil.Burst(player.position + Vector3.up * 1.1f, transform.forward,
-                        new Color(0.8f, 0.08f, 0.05f, 1f), 12, 4f, 10f, 0.06f, 0.16f, 0.15f, 0.3f, true, true, 1.5f, 30f);
+                    pc.TakeDamage((int)damageToPlayer);
+                    if (enableAudio) GameAudio.PlayBulletHit(player.position, true);
+                    if (enableVFX)
+                    {
+                        VFXUtil.Burst(player.position + Vector3.up * 1.1f, transform.forward,
+                            new Color(0.8f, 0.08f, 0.05f, 1f), 12, 4f, 10f, 0.06f, 0.16f, 0.15f, 0.3f, true, true, 1.5f, 30f);
+                    }
                 }
             }
         }
@@ -568,8 +677,9 @@ public class SpiderEnemy : MonoBehaviour
         currentHealth -= amount;
         Debug.Log($"<color=#FF2222><b>[Spider Hit!]</b></color> Damage: {amount} | HP: {Mathf.Max(0f, currentHealth)}/{maxHealth}");
 
-        // Instantly aggro and chase player if shot or struck
-        if (player != null && agent != null && agent.enabled)
+        // Instantly aggro and chase player if shot or struck, but only if player is in territory
+        bool canAggro = territoryTrigger == null || IsPlayerInTerritory();
+        if (canAggro && player != null && agent != null && agent.enabled)
         {
             _isChasing = true;
             agent.isStopped = false;
@@ -690,5 +800,59 @@ public class SpiderEnemy : MonoBehaviour
             Gizmos.color = new Color(0.8f, 0.2f, 1f, 0.4f);
             Gizmos.DrawWireCube(territoryTrigger.bounds.center, territoryTrigger.bounds.size);
         }
+    }
+}
+
+/// <summary>
+/// SpiderTrigger collider par automatically attach hota hai aur player presence ko track karta hai.
+/// </summary>
+public class SpiderTriggerZone : MonoBehaviour
+{
+    private readonly System.Collections.Generic.HashSet<Collider> _collidersInside = new System.Collections.Generic.HashSet<Collider>();
+
+    public bool IsPlayerInside
+    {
+        get
+        {
+            _collidersInside.RemoveWhere(c => c == null || !c.enabled || !c.gameObject.activeInHierarchy);
+            return _collidersInside.Count > 0;
+        }
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (IsPlayer(other))
+        {
+            _collidersInside.Add(other);
+        }
+    }
+
+    private void OnTriggerStay(Collider other)
+    {
+        if (IsPlayer(other))
+        {
+            _collidersInside.Add(other);
+        }
+    }
+
+    private void OnTriggerExit(Collider other)
+    {
+        if (IsPlayer(other))
+        {
+            _collidersInside.Remove(other);
+        }
+    }
+
+    private bool IsPlayer(Collider col)
+    {
+        if (col == null) return false;
+        if (col.CompareTag("Player")) return true;
+        if (col.GetComponent<PlayerController>() != null || col.GetComponentInParent<PlayerController>() != null) return true;
+        return false;
+    }
+
+    private void OnDisable()
+    {
+        _collidersInside.Clear();
     }
 }
