@@ -301,9 +301,7 @@ public class DoubleSlidingDoor : MonoBehaviour
 
     private void OnValidate()
     {
-        slideDistance = Mathf.Max(0f, slideDistance);
-        leftSlideDistance = Mathf.Max(0f, leftSlideDistance);
-        rightSlideDistance = Mathf.Max(0f, rightSlideDistance);
+        // Negative (minus) numbers allow kiye gaye hain taaki opposite side slide kar sakein
         triggerDistance = Mathf.Max(0.5f, triggerDistance);
         openSpeed = Mathf.Max(0.1f, openSpeed);
 
