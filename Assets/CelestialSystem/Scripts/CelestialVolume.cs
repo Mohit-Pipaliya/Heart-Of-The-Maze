@@ -137,6 +137,8 @@ namespace CelestialSystem
                 ApplyOutsideEnvironment();
             else
                 RestoreInsideEnvironment();
+
+            UpdateStencilState();
         }
 
         private void Update()
@@ -183,6 +185,15 @@ namespace CelestialSystem
                 RestoreInsideEnvironment();
             else if (!inside && Visibility <= 0f)
                 ApplyOutsideEnvironment();
+
+            UpdateStencilState();
+        }
+
+        private void UpdateStencilState()
+        {
+            bool isStencilMode = (visibilityMode == VisibilityMode.StencilWindowMode);
+            StencilWindowRendererFeature.StencilModeEnabled = isStencilMode && (volumeCollider != null);
+            StencilWindowRendererFeature.ActiveBoxCollider  = isStencilMode ? volumeCollider : null;
         }
 
         // ───────────────────────────────────────────────────────────────
@@ -328,8 +339,17 @@ namespace CelestialSystem
             RebuildCaches();
         }
 
+        private void OnDisable()
+        {
+            StencilWindowRendererFeature.StencilModeEnabled = false;
+            StencilWindowRendererFeature.ActiveBoxCollider  = null;
+        }
+
         private void OnDestroy()
         {
+            StencilWindowRendererFeature.StencilModeEnabled = false;
+            StencilWindowRendererFeature.ActiveBoxCollider  = null;
+
             // Restore RenderSettings to avoid leaving the scene dirty
             if (_renderSettingsSaved)
                 RestoreInsideEnvironment();

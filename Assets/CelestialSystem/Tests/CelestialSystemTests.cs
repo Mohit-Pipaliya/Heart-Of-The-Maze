@@ -236,5 +236,45 @@ namespace CelestialSystem.Tests
                 Assert.AreEqual(1f, mag, 0.001f, $"StarDomeRotation not normalised at t={t}");
             }
         }
+
+        // ═══════════════════════════════════════════════════════════════
+        //  11. Phase 2: SunController Intensity Curve Bounds
+        // ═══════════════════════════════════════════════════════════════
+        [Test]
+        public void SunController_IntensityCurve_NonNegativeAndClamped()
+        {
+            var go = new GameObject("SunTest");
+            var sun = go.AddComponent<SunController>();
+
+            // Test normalized altitude evaluations: 0 (-10°), 0.1 (0° horizon), 1.0 (90° zenith)
+            float intensityAtNight  = sun.intensityByAltitude.Evaluate(0.0f);
+            float intensityAtZenith = sun.intensityByAltitude.Evaluate(1.0f);
+
+            Assert.AreEqual(0.0f, intensityAtNight, 0.001f, "Sun intensity at night (-10°) should evaluate to 0.");
+            Assert.Greater(intensityAtZenith, 0.5f, "Sun intensity at zenith (90°) should be high.");
+
+            Object.DestroyImmediate(go);
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        //  12. Phase 2: Shaders can be found by name
+        // ═══════════════════════════════════════════════════════════════
+        [Test]
+        public void Phase2_Shaders_Exist()
+        {
+            string[] shaderNames = {
+                "CelestialSystem/SunDisk",
+                "CelestialSystem/SkyGradient",
+                "CelestialSystem/GodRays",
+                "CelestialSystem/StencilWrite"
+            };
+
+            foreach (string sName in shaderNames)
+            {
+                Shader s = Shader.Find(sName);
+                Assert.IsNotNull(s, $"Shader '{sName}' should be found in project.");
+            }
+        }
     }
 }
+
