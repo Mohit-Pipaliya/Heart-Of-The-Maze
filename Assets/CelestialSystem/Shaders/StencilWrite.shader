@@ -63,3 +63,4 @@ Shader "CelestialSystem/StencilWrite"
     }
     FallBack Off
 }
+

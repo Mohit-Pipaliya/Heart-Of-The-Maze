@@ -176,3 +176,4 @@ Shader "CelestialSystem/SunDisk"
     }
     FallBack Off
 }
+

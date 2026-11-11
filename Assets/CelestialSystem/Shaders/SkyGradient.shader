@@ -189,3 +189,4 @@ Shader "CelestialSystem/SkyGradient"
     }
     FallBack Off
 }
+

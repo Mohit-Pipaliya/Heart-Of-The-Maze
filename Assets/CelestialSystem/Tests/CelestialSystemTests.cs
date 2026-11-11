@@ -275,6 +275,41 @@ namespace CelestialSystem.Tests
                 Assert.IsNotNull(s, $"Shader '{sName}' should be found in project.");
             }
         }
+
+        // ═══════════════════════════════════════════════════════════════
+        //  13. Phase 3: Moon illumination across all phases
+        // ═══════════════════════════════════════════════════════════════
+        [Test]
+        public void Phase3_MoonIllumination_MonotonicAndBounded()
+        {
+            float newMoon   = CelestialMath.MoonIlluminationFraction(0f);
+            float quarter   = CelestialMath.MoonIlluminationFraction(90f);
+            float fullMoon  = CelestialMath.MoonIlluminationFraction(180f);
+            float lastQ     = CelestialMath.MoonIlluminationFraction(270f);
+
+            Assert.AreEqual(0.0f, newMoon,  0.001f, "New moon fraction must be 0");
+            Assert.AreEqual(0.5f, quarter,  0.001f, "First quarter fraction must be 0.5");
+            Assert.AreEqual(1.0f, fullMoon, 0.001f, "Full moon fraction must be 1.0");
+            Assert.AreEqual(0.5f, lastQ,    0.001f, "Last quarter fraction must be 0.5");
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        //  14. Phase 3: Moon and StarDome Shaders Exist
+        // ═══════════════════════════════════════════════════════════════
+        [Test]
+        public void Phase3_Shaders_Exist()
+        {
+            string[] shaderNames = {
+                "CelestialSystem/Moon",
+                "CelestialSystem/StarDome"
+            };
+
+            foreach (string sName in shaderNames)
+            {
+                Shader s = Shader.Find(sName);
+                Assert.IsNotNull(s, $"Shader '{sName}' should be found in project.");
+            }
+        }
     }
 }
 
