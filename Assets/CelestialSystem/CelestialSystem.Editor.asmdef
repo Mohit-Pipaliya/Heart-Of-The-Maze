@@ -1,0 +1,18 @@
+{
+    "name": "CelestialSystem.Editor",
+    "rootNamespace": "CelestialSystem.Editor",
+    "references": [
+        "CelestialSystem"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,16 @@
+{
+    "name": "CelestialSystem",
+    "rootNamespace": "CelestialSystem",
+    "references": [
+        "GUID:d8b63eda-9627-4c4e-9e90-5a9f7f0d6b4f"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
