@@ -310,6 +310,51 @@ namespace CelestialSystem.Tests
                 Assert.IsNotNull(s, $"Shader '{sName}' should be found in project.");
             }
         }
+
+        // ═══════════════════════════════════════════════════════════════
+        //  15. Phase 4: Clouds Shader Exists
+        // ═══════════════════════════════════════════════════════════════
+        [Test]
+        public void Phase4_Shaders_Exist()
+        {
+            Shader s = Shader.Find("CelestialSystem/Clouds");
+            Assert.IsNotNull(s, "Shader 'CelestialSystem/Clouds' should be found in project.");
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        //  16. Phase 4: QualityManager applies presets cleanly
+        // ═══════════════════════════════════════════════════════════════
+        [Test]
+        public void Phase4_QualityManager_AppliesPresets()
+        {
+            var go = new GameObject("QM_Test");
+            var qm = go.AddComponent<QualityManager>();
+
+            qm.ApplyQualityPreset(QualityManager.QualityLevel.Low);
+            Assert.AreEqual(QualityManager.QualityLevel.Low, qm.CurrentQuality);
+
+            qm.ApplyQualityPreset(QualityManager.QualityLevel.High);
+            Assert.AreEqual(QualityManager.QualityLevel.High, qm.CurrentQuality);
+
+            Object.DestroyImmediate(go);
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        //  17. Phase 4: TimeOfDayGrading presets have valid values
+        // ═══════════════════════════════════════════════════════════════
+        [Test]
+        public void Phase4_TimeOfDayGrading_PresetsValid()
+        {
+            var dawn  = TimeOfDayGrading.ProfileSettings.CreateDefaultDawn();
+            var day   = TimeOfDayGrading.ProfileSettings.CreateDefaultDay();
+            var dusk  = TimeOfDayGrading.ProfileSettings.CreateDefaultDusk();
+            var night = TimeOfDayGrading.ProfileSettings.CreateDefaultNight();
+
+            // Bloom should be highest at night to catch stars & moon
+            Assert.Greater(night.bloomIntensity, day.bloomIntensity, "Night bloom should be higher than day bloom.");
+            // Exposure should be lower at night
+            Assert.Less(night.postExposure, day.postExposure, "Night exposure should be lower than day exposure.");
+        }
     }
 }
 

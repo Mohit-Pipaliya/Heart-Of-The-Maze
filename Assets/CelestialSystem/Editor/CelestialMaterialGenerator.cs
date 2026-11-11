@@ -27,6 +27,7 @@ namespace CelestialSystem.Editor
             EnsureMaterial("M_StencilWrite.mat", "CelestialSystem/StencilWrite");
             EnsureMaterial("M_Moon.mat", "CelestialSystem/Moon", AssignMoonTextures);
             EnsureMaterial("M_StarDome.mat", "CelestialSystem/StarDome", AssignStarDomeTextures);
+            EnsureMaterial("M_Clouds.mat", "CelestialSystem/Clouds", AssignCloudTextures);
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
@@ -72,6 +73,12 @@ namespace CelestialSystem.Editor
         {
             Texture2D mw = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/CelestialSystem/Textures_Placeholders/MilkyWay_Panorama.png");
             if (mw != null) mat.SetTexture("_MilkyWayTex", mw);
+        }
+
+        private static void AssignCloudTextures(Material mat)
+        {
+            Texture2D noise = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/CelestialSystem/Textures_Placeholders/Cloud_Noise.png");
+            if (noise != null) mat.SetTexture("_CloudTex", noise);
         }
     }
 }
