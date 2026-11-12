@@ -69,7 +69,10 @@ namespace CelestialSystem
         [Range(100f, 5000f)] public float astronomicalDistance = 800f;
 
         [Tooltip("Uniform scale applied to the sun disk mesh.")]
-        [Range(10f, 600f)] public float diskScale = 220f;
+        [Range(10f, 600f)] public float diskScale = 140f;
+
+        [Tooltip("Optional custom 3D model prefab (e.g. Assets/Prefeb/Sun.prefab). If assigned or found, used instead of primitive.")]
+        public GameObject customSunPrefab;
 
         // ───────────────────────────────────────────────────────────────
         //  Inspector — God Rays & Lens Flare
@@ -97,6 +100,7 @@ namespace CelestialSystem
         private static readonly int PropSunAltitude    = Shader.PropertyToID("_SunAltitude");
         private static readonly int PropVisibility     = Shader.PropertyToID("_Visibility");
         private static readonly int PropBaseColor      = Shader.PropertyToID("_BaseColor");
+        private static readonly int PropEmissionColor  = Shader.PropertyToID("_EmissionColor");
 
         private MaterialPropertyBlock _mpb;
         private Camera _cachedCamera;
@@ -142,6 +146,36 @@ namespace CelestialSystem
                         l.enabled = false;
                         Debug.Log($"[SunController] Disabled conflicting scene directional light '{l.name}'.");
                     }
+                }
+            }
+
+            if (customSunPrefab == null)
+            {
+#if UNITY_EDITOR
+                customSunPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefeb/Sun.prefab");
+                if (customSunPrefab == null)
+                    customSunPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Model/sun/source/UnstableStar.fbx");
+#endif
+            }
+
+            if (customSunPrefab != null)
+            {
+                Transform primitiveDisk = transform.Find("Sun_Disk");
+                if (primitiveDisk != null)
+                    primitiveDisk.gameObject.SetActive(false);
+
+                Transform existingModel = transform.Find("Sun_3DModel");
+                if (existingModel == null)
+                {
+                    GameObject inst = Instantiate(customSunPrefab, transform);
+                    inst.name = "Sun_3DModel";
+                    foreach (Collider c in inst.GetComponentsInChildren<Collider>())
+                        Destroy(c);
+                    sunDiskRenderer = inst.GetComponentInChildren<Renderer>();
+                }
+                else
+                {
+                    sunDiskRenderer = existingModel.GetComponentInChildren<Renderer>();
                 }
             }
 
@@ -240,6 +274,12 @@ namespace CelestialSystem
                 sunDiskRenderer.GetPropertyBlock(_mpb);
                 _mpb.SetFloat(PropSunAltitude, altitude);
                 _mpb.SetFloat(PropVisibility, visibility);
+
+                float altFactor = Mathf.Clamp01((altitude + 4f) / 14f);
+                Color sunCol = (sunLight != null) ? sunLight.color : Color.white;
+                Color sunEmission = sunCol * (2.2f * altFactor * visibility);
+                _mpb.SetColor(PropEmissionColor, sunEmission);
+
                 sunDiskRenderer.SetPropertyBlock(_mpb);
             }
 

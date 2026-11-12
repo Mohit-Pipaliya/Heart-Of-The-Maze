@@ -56,18 +56,23 @@ namespace CelestialSystem
         [Range(100f, 5000f)] public float astronomicalDistance = 780f;
 
         [Tooltip("Base scale of the moon mesh.")]
-        [Range(5f, 400f)] public float baseMoonScale = 140f;
+        [Range(5f, 400f)] public float baseMoonScale = 90f;
 
         [Tooltip("Apparent size multiplier when near the horizon (Moon Illusion).")]
-        [Range(1f, 2f)] public float horizonIllusionMultiplier = 1.35f;
+        [Range(1f, 2f)] public float horizonIllusionMultiplier = 1.25f;
+
+        [Header("── 3D Model Prefab ──────────────────────────")]
+        [Tooltip("Optional custom 3D model prefab (e.g. Assets/Prefeb/Moon.prefab). If assigned or found, used instead of primitive.")]
+        public GameObject customMoonPrefab;
 
         // ───────────────────────────────────────────────────────────────
         //  Cached Shader Property IDs (Zero Alloc)
         // ───────────────────────────────────────────────────────────────
-        private static readonly int PropSunDirection = Shader.PropertyToID("_SunDirection");
-        private static readonly int PropMoonAltitude = Shader.PropertyToID("_MoonAltitude");
-        private static readonly int PropPhaseAngle   = Shader.PropertyToID("_PhaseAngle");
-        private static readonly int PropVisibility   = Shader.PropertyToID("_Visibility");
+        private static readonly int PropSunDirection   = Shader.PropertyToID("_SunDirection");
+        private static readonly int PropMoonAltitude   = Shader.PropertyToID("_MoonAltitude");
+        private static readonly int PropPhaseAngle     = Shader.PropertyToID("_PhaseAngle");
+        private static readonly int PropVisibility     = Shader.PropertyToID("_Visibility");
+        private static readonly int PropEmissionColor  = Shader.PropertyToID("_EmissionColor");
 
         private MaterialPropertyBlock _mpb;
         private Camera _cachedCamera;
@@ -93,6 +98,36 @@ namespace CelestialSystem
 
             if (moonLight == null)
                 moonLight = GetComponentInChildren<Light>();
+
+            if (customMoonPrefab == null)
+            {
+#if UNITY_EDITOR
+                customMoonPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefeb/Moon.prefab");
+                if (customMoonPrefab == null)
+                    customMoonPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Model/moon/source/Moon.fbx");
+#endif
+            }
+
+            if (customMoonPrefab != null)
+            {
+                Transform primitiveMesh = transform.Find("Moon_Mesh");
+                if (primitiveMesh != null)
+                    primitiveMesh.gameObject.SetActive(false);
+
+                Transform existingModel = transform.Find("Moon_3DModel");
+                if (existingModel == null)
+                {
+                    GameObject inst = Instantiate(customMoonPrefab, transform);
+                    inst.name = "Moon_3DModel";
+                    foreach (Collider c in inst.GetComponentsInChildren<Collider>())
+                        Destroy(c);
+                    moonRenderer = inst.GetComponentInChildren<Renderer>();
+                }
+                else
+                {
+                    moonRenderer = existingModel.GetComponentInChildren<Renderer>();
+                }
+            }
 
             if (moonRenderer == null)
                 moonRenderer = GetComponentInChildren<Renderer>();
@@ -193,6 +228,13 @@ namespace CelestialSystem
                 _mpb.SetFloat(PropMoonAltitude, altitude);
                 _mpb.SetFloat(PropPhaseAngle, phaseAngle);
                 _mpb.SetFloat(PropVisibility, visibility);
+
+                // Modulate emission brightness for standard URP Lit lunar surface
+                float altFactor = Mathf.Clamp01((altitude + 4f) / 14f);
+                float emissionScale = Mathf.Lerp(0.35f, 1.0f, illumFraction) * altFactor * visibility;
+                Color dynamicEmission = moonlightColor * emissionScale;
+                _mpb.SetColor(PropEmissionColor, dynamicEmission);
+
                 moonRenderer.SetPropertyBlock(_mpb);
             }
         }

@@ -100,14 +100,14 @@ namespace CelestialSystem.Editor
                 sunDiskObj = (GameObject)PrefabUtility.InstantiatePrefab(sunPrefabSource);
                 sunDiskObj.name = "Sun_3DModel";
                 sunDiskObj.transform.SetParent(sunRoot.transform, false);
-                sunDiskObj.transform.localScale = Vector3.one * 220f;
+                sunDiskObj.transform.localScale = Vector3.one * 140f;
             }
             else
             {
                 sunDiskObj = GameObject.CreatePrimitive(PrimitiveType.Quad);
                 sunDiskObj.name = "Sun_Disk";
                 sunDiskObj.transform.SetParent(sunRoot.transform, false);
-                sunDiskObj.transform.localScale = Vector3.one * 220f;
+                sunDiskObj.transform.localScale = Vector3.one * 140f;
             }
 
             foreach (Collider c in sunDiskObj.GetComponentsInChildren<Collider>())
@@ -122,7 +122,7 @@ namespace CelestialSystem.Editor
             sunCtrl.celestialVolume = volume;
             sunCtrl.sunLight = sunLight;
             sunCtrl.sunDiskRenderer = sunDiskRend;
-            sunCtrl.diskScale = 220f;
+            sunCtrl.diskScale = 140f;
 
             // 5. Moon Hierarchy
             GameObject moonRoot = new GameObject("Moon_Rig");
@@ -146,21 +146,21 @@ namespace CelestialSystem.Editor
                 moonMeshObj = (GameObject)PrefabUtility.InstantiatePrefab(moonPrefabSource);
                 moonMeshObj.name = "Moon_3DModel";
                 moonMeshObj.transform.SetParent(moonRoot.transform, false);
-                moonMeshObj.transform.localScale = Vector3.one * 140f;
+                moonMeshObj.transform.localScale = Vector3.one * 90f;
             }
             else
             {
                 moonMeshObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 moonMeshObj.name = "Moon_Mesh";
                 moonMeshObj.transform.SetParent(moonRoot.transform, false);
-                moonMeshObj.transform.localScale = Vector3.one * 140f;
+                moonMeshObj.transform.localScale = Vector3.one * 90f;
             }
 
             foreach (Collider c in moonMeshObj.GetComponentsInChildren<Collider>())
                 Object.DestroyImmediate(c);
 
             Renderer moonRend = moonMeshObj.GetComponentInChildren<Renderer>();
-            if (moonRend != null && moonMat != null)
+            if (moonRend != null && moonPrefabSource == null && moonMat != null)
                 moonRend.sharedMaterial = moonMat;
 
             MoonController moonCtrl = moonRoot.AddComponent<MoonController>();
@@ -169,7 +169,7 @@ namespace CelestialSystem.Editor
             moonCtrl.sunController = sunCtrl;
             moonCtrl.moonLight = moonLight;
             moonCtrl.moonRenderer = moonRend;
-            moonCtrl.baseMoonScale = 140f;
+            moonCtrl.baseMoonScale = 90f;
 
             // 6. Sky Dome
             GameObject skyDomeObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);

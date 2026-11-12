@@ -29,32 +29,33 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _CirrusOpacity: 0.35
-    - _CirrusTiling: 4.2
-    - _Coverage: 0.46
-    - _Density: 2.4
-    - _HorizonFadeAngle: 10
+    - _CirrusOpacity: 0.22
+    - _CirrusTiling: 1
+    - _Coverage: 0.42
+    - _Density: 1.8
+    - _HorizonFadeAngle: 8
     - _MoonIntensity: 0.2
-    - _SilverLiningExponent: 12
-    - _SilverLiningIntensity: 4.5
-    - _Softness: 0.22
+    - _SilverLiningExponent: 14
+    - _SilverLiningIntensity: 2.8
+    - _Softness: 0.28
     - _StencilComp: 8
     - _StencilRef: 0
     - _SunAltitude: 45
     - _SunIntensity: 1
-    - _Tiling: 1.85
-    - _TurbulenceSpeed: 0.06
+    - _Tiling: 1.1
+    - _TurbulenceSpeed: 0.04
     - _Visibility: 1
-    - _WindSpeed: 0.04
+    - _WindSpeed: 0.03
     m_Colors:
-    - _BaseColor: {r: 1, g: 0.98, b: 0.95, a: 1}
+    - _BaseColor: {r: 1, g: 0.99, b: 0.97, a: 1}
+    - _CirrusColor: {r: 0.95, g: 0.98, b: 1, a: 1}
     - _MoonColor: {r: 0.7, g: 0.82, b: 1, a: 1}
     - _MoonDirection: {r: 0, g: -1, b: 0, a: 0}
-    - _NightCloudColor: {r: 0.05, g: 0.08, b: 0.16, a: 1}
-    - _ShadowColor: {r: 0.28, g: 0.32, b: 0.45, a: 1}
+    - _NightCloudColor: {r: 0.12, g: 0.16, b: 0.25, a: 1}
+    - _ShadowColor: {r: 0.78, g: 0.84, b: 0.92, a: 1}
     - _SunColor: {r: 1, g: 0.95, b: 0.85, a: 1}
     - _SunDirection: {r: 0, g: 1, b: 0, a: 0}
-    - _SunsetColor: {r: 1, g: 0.48, b: 0.25, a: 1}
+    - _SunsetColor: {r: 1, g: 0.58, b: 0.35, a: 1}
     - _WindDirection: {r: 1, g: 0, b: 0.35, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

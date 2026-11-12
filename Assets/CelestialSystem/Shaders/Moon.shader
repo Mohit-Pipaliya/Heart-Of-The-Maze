@@ -11,7 +11,7 @@ Shader "CelestialSystem/Moon"
         _MoonColor ("Moon Daylight/Zenith Color", Color) = (0.94, 0.96, 1.0, 1.0)
         _HorizonMoonColor ("Moon Horizon Color (Illusion)", Color) = (1.0, 0.70, 0.38, 1.0)
         _Roughness ("Oren-Nayar Roughness", Range(0.0, 1.0)) = 0.85
-        _EmissionMultiplier ("Lit Emission Brightness", Range(0.5, 12.0)) = 4.0
+        _EmissionMultiplier ("Lit Emission Brightness", Range(0.2, 5.0)) = 1.0
 
         [Header(Phase and Earthshine)]
         _TerminatorSoftness ("Terminator Softness", Range(0.01, 0.5)) = 0.12
@@ -20,7 +20,7 @@ Shader "CelestialSystem/Moon"
 
         [Header(Atmospheric Halo and Bloom)]
         [HDR] _HaloColor ("Atmospheric Lunar Halo Color", Color) = (0.78, 0.88, 1.0, 1.0)
-        _HaloIntensity ("Halo Brightness", Range(0.0, 5.0)) = 2.2
+        _HaloIntensity ("Halo Brightness", Range(0.0, 5.0)) = 0.6
         _HaloSize ("Halo Radius Falloff", Range(0.05, 1.0)) = 0.25
 
         [Header(Horizon Dynamics)]
@@ -53,7 +53,7 @@ Shader "CelestialSystem/Moon"
             Pass Keep
         }
 
-        Blend One One // Additive HDR emission
+        Blend SrcAlpha OneMinusSrcAlpha
         Cull Back
         ZWrite Off
         ZTest LEqual
@@ -192,7 +192,7 @@ Shader "CelestialSystem/Moon"
 
                 half3 finalColor = (finalSurface + haloEmission) * totalVis;
 
-                return half4(finalColor, 1.0);
+                return half4(finalColor, totalVis);
             }
             ENDHLSL
         }

@@ -51,24 +51,24 @@ namespace CelestialSystem
         //  Inspector — Cloud Appearance & Wind
         // ───────────────────────────────────────────────────────────────
         [Header("── Morphology & Wind (AAA Dynamic Atmosphere) ──")]
-        [Tooltip("Cloud coverage (0 = clear sky, 0.45 = scattered cumulus, 0.85 = overcast).")]
-        [Range(0f, 1f)] public float cloudCoverage = 0.46f;
+        [Tooltip("Cloud coverage (0 = clear sky, 0.42 = scattered cumulus, 0.85 = overcast).")]
+        [Range(0f, 1f)] public float cloudCoverage = 0.42f;
 
         [Tooltip("Cloud opacity density.")]
-        [Range(0.5f, 5f)] public float cloudDensity = 2.4f;
+        [Range(0.5f, 5f)] public float cloudDensity = 1.8f;
 
         [Tooltip("Wind speed multiplier (controls how fast clouds drift).")]
-        [Range(0f, 0.3f)] public float windSpeed = 0.04f;
+        [Range(0f, 0.3f)] public float windSpeed = 0.03f;
 
         [Tooltip("Wind direction angle in degrees (compass yaw heading: 0=N, 90=E, 180=S, 270=W).")]
         [Range(0f, 360f)] public float windDirectionAngle = 55f;
 
         [Tooltip("Micro-turbulence boiling speed (clouds dynamically morph and billow as they travel).")]
-        [Range(0f, 0.3f)] public float turbulenceSpeed = 0.06f;
+        [Range(0f, 0.3f)] public float turbulenceSpeed = 0.04f;
 
         [Header("── High-Altitude Cirrus Layer ──────────────")]
         [Tooltip("Visibility of high-altitude wispy cirrus cloud ribbons.")]
-        [Range(0f, 1f)] public float cirrusOpacity = 0.35f;
+        [Range(0f, 1f)] public float cirrusOpacity = 0.22f;
 
         // ───────────────────────────────────────────────────────────────
         //  Public Read-Only Wind API (consumed by AmbientVFX & grass/trees)

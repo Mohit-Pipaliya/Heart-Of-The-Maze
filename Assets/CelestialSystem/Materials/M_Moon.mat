@@ -35,8 +35,8 @@ Material:
     m_Floats:
     - _BumpScale: 1
     - _EarthshineIntensity: 0.15
-    - _EmissionMultiplier: 4
-    - _HaloIntensity: 2.2
+    - _EmissionMultiplier: 1
+    - _HaloIntensity: 0.6
     - _HaloSize: 0.25
     - _HorizonExpansion: 1.35
     - _MoonAltitude: 45
