@@ -90,13 +90,32 @@ namespace CelestialSystem.Editor
             sunLight.intensity = 1.25f;
             sunLight.color = new Color(1.0f, 0.96f, 0.90f);
 
-            GameObject sunDiskObj = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            sunDiskObj.name = "Sun_Disk";
-            sunDiskObj.transform.SetParent(sunRoot.transform, false);
-            sunDiskObj.transform.localScale = Vector3.one * 220f;
-            Object.DestroyImmediate(sunDiskObj.GetComponent<Collider>());
-            Renderer sunDiskRend = sunDiskObj.GetComponent<Renderer>();
-            if (sunDiskMat != null) sunDiskRend.sharedMaterial = sunDiskMat;
+            GameObject sunPrefabSource = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefeb/Sun.prefab");
+            if (sunPrefabSource == null)
+                sunPrefabSource = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Model/sun/source/UnstableStar.fbx");
+
+            GameObject sunDiskObj = null;
+            if (sunPrefabSource != null)
+            {
+                sunDiskObj = (GameObject)PrefabUtility.InstantiatePrefab(sunPrefabSource);
+                sunDiskObj.name = "Sun_3DModel";
+                sunDiskObj.transform.SetParent(sunRoot.transform, false);
+                sunDiskObj.transform.localScale = Vector3.one * 220f;
+            }
+            else
+            {
+                sunDiskObj = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                sunDiskObj.name = "Sun_Disk";
+                sunDiskObj.transform.SetParent(sunRoot.transform, false);
+                sunDiskObj.transform.localScale = Vector3.one * 220f;
+            }
+
+            foreach (Collider c in sunDiskObj.GetComponentsInChildren<Collider>())
+                Object.DestroyImmediate(c);
+
+            Renderer sunDiskRend = sunDiskObj.GetComponentInChildren<Renderer>();
+            if (sunDiskRend != null && sunPrefabSource == null && sunDiskMat != null)
+                sunDiskRend.sharedMaterial = sunDiskMat;
 
             SunController sunCtrl = sunRoot.AddComponent<SunController>();
             sunCtrl.dayNightCycle = cycle;
@@ -117,13 +136,32 @@ namespace CelestialSystem.Editor
             moonLight.intensity = 0.15f;
             moonLight.color = new Color(0.72f, 0.84f, 1.0f);
 
-            GameObject moonMeshObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            moonMeshObj.name = "Moon_Mesh";
-            moonMeshObj.transform.SetParent(moonRoot.transform, false);
-            moonMeshObj.transform.localScale = Vector3.one * 140f;
-            Object.DestroyImmediate(moonMeshObj.GetComponent<Collider>());
-            Renderer moonRend = moonMeshObj.GetComponent<Renderer>();
-            if (moonMat != null) moonRend.sharedMaterial = moonMat;
+            GameObject moonPrefabSource = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefeb/Moon.prefab");
+            if (moonPrefabSource == null)
+                moonPrefabSource = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Model/moon/source/Moon.fbx");
+
+            GameObject moonMeshObj = null;
+            if (moonPrefabSource != null)
+            {
+                moonMeshObj = (GameObject)PrefabUtility.InstantiatePrefab(moonPrefabSource);
+                moonMeshObj.name = "Moon_3DModel";
+                moonMeshObj.transform.SetParent(moonRoot.transform, false);
+                moonMeshObj.transform.localScale = Vector3.one * 140f;
+            }
+            else
+            {
+                moonMeshObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                moonMeshObj.name = "Moon_Mesh";
+                moonMeshObj.transform.SetParent(moonRoot.transform, false);
+                moonMeshObj.transform.localScale = Vector3.one * 140f;
+            }
+
+            foreach (Collider c in moonMeshObj.GetComponentsInChildren<Collider>())
+                Object.DestroyImmediate(c);
+
+            Renderer moonRend = moonMeshObj.GetComponentInChildren<Renderer>();
+            if (moonRend != null && moonMat != null)
+                moonRend.sharedMaterial = moonMat;
 
             MoonController moonCtrl = moonRoot.AddComponent<MoonController>();
             moonCtrl.dayNightCycle = cycle;
