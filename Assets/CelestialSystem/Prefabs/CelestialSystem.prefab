@@ -9990,7 +9990,7 @@ Light:
   serializedVersion: 12
   m_Type: 1
   m_Color: {r: 0.72, g: 0.84, b: 1, a: 1}
-  m_Intensity: 1.2
+  m_Intensity: 0.15
   m_Range: 10
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -10267,7 +10267,7 @@ Light:
   serializedVersion: 12
   m_Type: 1
   m_Color: {r: 1, g: 0.96, b: 0.9, a: 1}
-  m_Intensity: 100000
+  m_Intensity: 1.25
   m_Range: 10
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -10609,9 +10609,9 @@ MonoBehaviour:
   sunController: {fileID: 6145232551165021172}
   moonLight: {fileID: 1806297750509121242}
   moonRenderer: {fileID: 6895076467726027275}
-  maxMoonlightIntensity: 1.8
+  maxMoonlightIntensity: 0.15
   moonlightColor: {r: 0.72, g: 0.84, b: 1, a: 1}
-  moonlightShadowStrength: 0.65
+  moonlightShadowStrength: 0.35
   astronomicalDistance: 780
   baseMoonScale: 50
   horizonIllusionMultiplier: 1.35
@@ -10666,7 +10666,7 @@ MonoBehaviour:
   sunLight: {fileID: 3106465206295655221}
   sunDiskRenderer: {fileID: 62686968369856271}
   lensFlare: {fileID: 0}
-  maxLightIntensity: 100000
+  maxLightIntensity: 1.25
   intensityByAltitude:
     serializedVersion: 2
     m_Curve:
@@ -10739,7 +10739,7 @@ MonoBehaviour:
     m_ColorSpace: -1
     m_NumColorKeys: 2
     m_NumAlphaKeys: 2
-  shadowStrength: 1
+  shadowStrength: 0.85
   shadowFadeAltitude: 5
   astronomicalDistance: 800
   diskScale: 80

@@ -40,13 +40,13 @@ namespace CelestialSystem
         // ───────────────────────────────────────────────────────────────
         [Header("── Moonlight Settings ───────────────────────")]
         [Tooltip("Peak moonlight intensity at full moon at zenith.")]
-        [Range(0f, 10f)] public float maxMoonlightIntensity = 1.8f;
+        [Range(0f, 1f)] public float maxMoonlightIntensity = 0.15f;
 
         [Tooltip("Light color of the moon.")]
         public Color moonlightColor = new Color(0.72f, 0.84f, 1.0f, 1.0f);
 
         [Tooltip("Shadow strength when casting moonlight shadows.")]
-        [Range(0f, 1f)] public float moonlightShadowStrength = 0.65f;
+        [Range(0f, 1f)] public float moonlightShadowStrength = 0.35f;
 
         // ───────────────────────────────────────────────────────────────
         //  Inspector — Moon Mesh Visuals
@@ -142,7 +142,7 @@ namespace CelestialSystem
                 if (sunController != null && sunController.sunLight != null)
                 {
                     sunCastingShadows = sunController.sunLight.shadows != LightShadows.None &&
-                                        sunController.sunLight.intensity > 1.0f;
+                                        sunController.sunLight.intensity > 0.05f;
                 }
                 else
                 {

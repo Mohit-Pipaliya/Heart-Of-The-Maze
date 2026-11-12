@@ -82,7 +82,7 @@ namespace CelestialSystem.Editor
             Light sunLight = sunLightObj.AddComponent<Light>();
             sunLight.type = LightType.Directional;
             sunLight.shadows = LightShadows.Soft;
-            sunLight.intensity = 100000f;
+            sunLight.intensity = 1.25f;
             sunLight.color = new Color(1.0f, 0.96f, 0.90f);
 
             GameObject sunDiskObj = GameObject.CreatePrimitive(PrimitiveType.Quad);
@@ -108,7 +108,7 @@ namespace CelestialSystem.Editor
             Light moonLight = moonLightObj.AddComponent<Light>();
             moonLight.type = LightType.Directional;
             moonLight.shadows = LightShadows.Soft;
-            moonLight.intensity = 1.2f;
+            moonLight.intensity = 0.15f;
             moonLight.color = new Color(0.72f, 0.84f, 1.0f);
 
             GameObject moonMeshObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);

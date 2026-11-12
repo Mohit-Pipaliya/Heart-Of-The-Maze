@@ -38,50 +38,50 @@ namespace CelestialSystem
 
             public static ProfileSettings CreateDefaultDawn() => new ProfileSettings
             {
-                postExposure = 0.2f,
-                contrast = 14f,
-                colorFilter = new Color(1.0f, 0.91f, 0.82f),
-                saturation = 12f,
-                shadowTint = new Vector4(0.92f, 0.85f, 0.98f, 0f),
-                highlightTint = new Vector4(1.0f, 0.92f, 0.80f, 0f),
-                bloomIntensity = 0.9f,
-                vignetteIntensity = 0.24f
+                postExposure = 0.05f,
+                contrast = 8f,
+                colorFilter = new Color(1.0f, 0.94f, 0.88f),
+                saturation = 6f,
+                shadowTint = new Vector4(0.95f, 0.92f, 0.98f, 0f),
+                highlightTint = new Vector4(1.0f, 0.95f, 0.90f, 0f),
+                bloomIntensity = 0.35f,
+                vignetteIntensity = 0.20f
             };
 
             public static ProfileSettings CreateDefaultDay() => new ProfileSettings
             {
                 postExposure = 0.0f,
-                contrast = 18f,
+                contrast = 10f,
                 colorFilter = new Color(1.0f, 1.0f, 1.0f),
-                saturation = 8f,
-                shadowTint = new Vector4(0.94f, 0.96f, 1.0f, 0f),
-                highlightTint = new Vector4(1.0f, 0.98f, 0.95f, 0f),
-                bloomIntensity = 0.5f,
-                vignetteIntensity = 0.20f
+                saturation = 4f,
+                shadowTint = new Vector4(0.96f, 0.98f, 1.0f, 0f),
+                highlightTint = new Vector4(1.0f, 0.99f, 0.97f, 0f),
+                bloomIntensity = 0.25f,
+                vignetteIntensity = 0.18f
             };
 
             public static ProfileSettings CreateDefaultDusk() => new ProfileSettings
             {
-                postExposure = -0.15f,
-                contrast = 24f,
-                colorFilter = new Color(1.0f, 0.82f, 0.68f),
-                saturation = 16f,
-                shadowTint = new Vector4(0.85f, 0.72f, 0.94f, 0f),
-                highlightTint = new Vector4(1.0f, 0.78f, 0.65f, 0f),
-                bloomIntensity = 1.3f,
-                vignetteIntensity = 0.28f
+                postExposure = -0.10f,
+                contrast = 14f,
+                colorFilter = new Color(1.0f, 0.88f, 0.78f),
+                saturation = 8f,
+                shadowTint = new Vector4(0.90f, 0.82f, 0.95f, 0f),
+                highlightTint = new Vector4(1.0f, 0.85f, 0.75f, 0f),
+                bloomIntensity = 0.45f,
+                vignetteIntensity = 0.24f
             };
 
             public static ProfileSettings CreateDefaultNight() => new ProfileSettings
             {
-                postExposure = -0.55f,
-                contrast = 26f,
-                colorFilter = new Color(0.76f, 0.85f, 1.0f),
-                saturation = -10f,
-                shadowTint = new Vector4(0.68f, 0.78f, 0.96f, 0f),
-                highlightTint = new Vector4(0.82f, 0.90f, 1.0f, 0f),
-                bloomIntensity = 1.8f,
-                vignetteIntensity = 0.34f
+                postExposure = -0.35f,
+                contrast = 16f,
+                colorFilter = new Color(0.82f, 0.90f, 1.0f),
+                saturation = -8f,
+                shadowTint = new Vector4(0.75f, 0.85f, 0.98f, 0f),
+                highlightTint = new Vector4(0.88f, 0.94f, 1.0f, 0f),
+                bloomIntensity = 0.65f,
+                vignetteIntensity = 0.30f
             };
         }
 
@@ -177,6 +177,11 @@ namespace CelestialSystem
             _colorAdjustments.saturation.overrideState   = true;
 
             _bloom.intensity.overrideState = true;
+            _bloom.threshold.overrideState = true;
+            _bloom.threshold.value         = 1.15f; // Only bright light sources bloom, preventing walls from glowing
+            _bloom.scatter.overrideState   = true;
+            _bloom.scatter.value           = 0.60f;
+
             _vignette.intensity.overrideState = true;
 
             _shadowsMidtones.shadows.overrideState    = true;

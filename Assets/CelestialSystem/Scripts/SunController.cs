@@ -40,14 +40,14 @@ namespace CelestialSystem
         //  Inspector — Lighting & Color
         // ───────────────────────────────────────────────────────────────
         [Header("── Sun Light Intensity & Lux ────────────────")]
-        [Tooltip("Peak sun intensity at solar noon (Lux or light intensity units).")]
-        [Range(0f, 150000f)] public float maxLightIntensity = 100000f;
+        [Tooltip("Peak sun intensity at solar noon (Standard units: 1.0 - 2.0).")]
+        [Range(0f, 5f)] public float maxLightIntensity = 1.25f;
 
         [Tooltip("Intensity curve as a function of Sun Altitude (-10° to 90°). X=0 is -10°, X=1 is 90°.")]
         public AnimationCurve intensityByAltitude = new AnimationCurve(
             new Keyframe(0.0f,  0.0f,   0.0f, 0.0f),  // -10°
             new Keyframe(0.10f, 0.0f,   0.0f, 1.5f),  // 0° horizon
-            new Keyframe(0.25f, 0.35f,  2.0f, 2.0f),  // ~15° early morning
+            new Keyframe(0.25f, 0.45f,  1.5f, 1.5f),  // ~15° early morning
             new Keyframe(1.0f,  1.0f,   0.0f, 0.0f)   // 90° zenith
         );
 
@@ -56,7 +56,7 @@ namespace CelestialSystem
 
         [Header("── Shadows ─────────────────────────────────")]
         [Tooltip("Base shadow strength at noon.")]
-        [Range(0f, 1f)] public float shadowStrength = 1.0f;
+        [Range(0f, 1f)] public float shadowStrength = 0.85f;
 
         [Tooltip("Altitude (in degrees) below which shadow strength starts smoothly fading to 0.")]
         [Range(0f, 15f)] public float shadowFadeAltitude = 5.0f;
@@ -117,6 +117,30 @@ namespace CelestialSystem
 
             if (sunLight == null)
                 sunLight = GetComponentInChildren<Light>();
+
+            // Coordinate with existing scene directional lights to avoid 2 suns shining at once
+            Light[] allSceneLights = FindObjectsByType<Light>(FindObjectsSortMode.None);
+            foreach (Light l in allSceneLights)
+            {
+                if (l != null && l.type == LightType.Directional && l != sunLight)
+                {
+                    // Check if it belongs to MoonController
+                    MoonController moonCtrl = FindFirstObjectByType<MoonController>();
+                    if (moonCtrl != null && l == moonCtrl.moonLight) continue;
+
+                    if (sunLight == null)
+                    {
+                        sunLight = l;
+                        Debug.Log($"[SunController] Adopted existing scene directional light '{l.name}'.");
+                    }
+                    else
+                    {
+                        // Disable duplicate directional light to prevent double lighting and blown-out scenes
+                        l.enabled = false;
+                        Debug.Log($"[SunController] Disabled conflicting scene directional light '{l.name}'.");
+                    }
+                }
+            }
 
             if (sunDiskRenderer == null)
                 sunDiskRenderer = GetComponentInChildren<Renderer>();

@@ -90,6 +90,9 @@ namespace CelestialSystem
         private AmbientMode _originalAmbientMode;
         private Light     _originalSunSource;
         private bool      _renderSettingsSaved;
+        private CameraClearFlags _originalCameraClearFlags;
+        private Color     _originalCameraBgColor;
+        private bool      _cameraSettingsSaved;
 
         // Track last-known inside state to detect teleports (one-frame jump)
         private bool _wasInsideLastFrame;
@@ -124,6 +127,8 @@ namespace CelestialSystem
             // Resolve camera fallback (Camera.main may not exist in Awake)
             if (playerCamera == null)
                 playerCamera = Camera.main;
+
+            SaveCameraSettings(playerCamera);
 
             // Handle case where camera starts inside or outside (no fade on first frame)
             bool startInside = IsPointInBox(GetCameraPosition());
@@ -369,6 +374,14 @@ namespace CelestialSystem
         // ───────────────────────────────────────────────────────────────
         //  RenderSettings save / restore
         // ───────────────────────────────────────────────────────────────
+        private void SaveCameraSettings(Camera cam)
+        {
+            if (_cameraSettingsSaved || cam == null) return;
+            _originalCameraClearFlags = cam.clearFlags;
+            _originalCameraBgColor    = cam.backgroundColor;
+            _cameraSettingsSaved      = true;
+        }
+
         private void SaveRenderSettings()
         {
             if (_renderSettingsSaved) return;
@@ -381,11 +394,19 @@ namespace CelestialSystem
 
         private void RestoreInsideEnvironment()
         {
-            if (!_renderSettingsSaved) return;
-            RenderSettings.skybox       = _originalSkybox;
-            RenderSettings.ambientLight = _originalAmbientColor;
-            RenderSettings.ambientMode  = _originalAmbientMode;
-            RenderSettings.sun          = _originalSunSource;
+            if (_renderSettingsSaved)
+            {
+                RenderSettings.skybox       = _originalSkybox;
+                RenderSettings.ambientLight = _originalAmbientColor;
+                RenderSettings.ambientMode  = _originalAmbientMode;
+                RenderSettings.sun          = _originalSunSource;
+            }
+
+            if (_cameraSettingsSaved && playerCamera != null)
+            {
+                playerCamera.clearFlags     = _originalCameraClearFlags;
+                playerCamera.backgroundColor = _originalCameraBgColor;
+            }
         }
 
         private void ApplyOutsideEnvironment()
@@ -402,7 +423,8 @@ namespace CelestialSystem
                 RenderSettings.skybox = null;
                 if (playerCamera != null)
                 {
-                    playerCamera.clearFlags  = CameraClearFlags.SolidColor;
+                    SaveCameraSettings(playerCamera);
+                    playerCamera.clearFlags      = CameraClearFlags.SolidColor;
                     playerCamera.backgroundColor = outsideSkyColor;
                 }
             }
