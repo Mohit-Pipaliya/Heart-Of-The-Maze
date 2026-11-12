@@ -69,7 +69,7 @@ namespace CelestialSystem
         [Range(100f, 5000f)] public float astronomicalDistance = 800f;
 
         [Tooltip("Uniform scale applied to the sun disk mesh.")]
-        [Range(10f, 300f)] public float diskScale = 80f;
+        [Range(10f, 600f)] public float diskScale = 220f;
 
         // ───────────────────────────────────────────────────────────────
         //  Inspector — God Rays & Lens Flare
@@ -231,7 +231,9 @@ namespace CelestialSystem
                 float effectiveDist = Mathf.Min(astronomicalDistance, far * 0.78f);
                 diskT.position = camPos + sunDir * effectiveDist;
                 // Face camera directly
-                diskT.forward  = -sunDir;
+                Vector3 toCam = camPos - diskT.position;
+                if (toCam.sqrMagnitude > 0.001f)
+                    diskT.rotation = Quaternion.LookRotation(toCam);
                 diskT.localScale = Vector3.one * diskScale;
 
                 // Update Material Property Block (zero allocation)

@@ -5,21 +5,21 @@ Shader "CelestialSystem/SunDisk"
         [Header(Base Appearance)]
         [HDR] _BaseColor ("Sun Color (Noon)", Color) = (1.0, 0.98, 0.92, 1.0)
         [HDR] _HorizonReddeningColor ("Sun Color (Sunset/Dawn)", Color) = (1.0, 0.38, 0.12, 1.0)
-        _DiskSize ("Disk Angular Radius", Range(0.05, 0.5)) = 0.22
-        _SoftEdge ("Soft Edge Width", Range(0.005, 0.1)) = 0.02
+        _DiskSize ("Disk Angular Radius", Range(0.05, 0.6)) = 0.35
+        _SoftEdge ("Soft Edge Width", Range(0.005, 0.1)) = 0.03
 
         [Header(Limb Darkening)]
         _LimbDarkening ("Limb Darkening Factor", Range(0.0, 1.0)) = 0.65
         _LimbDarkeningPower ("Limb Darkening Exponent", Range(0.5, 3.0)) = 1.0
 
         [Header(Corona and Halo)]
-        _CoronaIntensity ("Corona Brightness", Range(0.0, 5.0)) = 2.0
-        _CoronaSize ("Corona Radius Factor", Range(0.05, 0.5)) = 0.25
-        _OuterHaloIntensity ("Outer Halo Brightness", Range(0.0, 3.0)) = 0.6
-        _OuterHaloSize ("Outer Halo Radius Factor", Range(0.05, 0.6)) = 0.35
+        _CoronaIntensity ("Corona Brightness", Range(0.0, 8.0)) = 3.5
+        _CoronaSize ("Corona Radius Factor", Range(0.05, 0.6)) = 0.32
+        _OuterHaloIntensity ("Outer Halo Brightness", Range(0.0, 5.0)) = 1.2
+        _OuterHaloSize ("Outer Halo Radius Factor", Range(0.05, 0.8)) = 0.50
 
         [Header(Atmospheric FX)]
-        _EmissionMultiplier ("HDR Emission Multiplier", Range(1.0, 20.0)) = 3.5
+        _EmissionMultiplier ("HDR Emission Multiplier", Range(1.0, 50.0)) = 16.0
         _HorizonExpansion ("Horizon Size Expansion Factor", Range(1.0, 2.0)) = 1.35
         _FlickerSpeed ("Corona Shimmer Speed", Range(0.0, 20.0)) = 4.0
         _FlickerIntensity ("Corona Shimmer Amount", Range(0.0, 0.2)) = 0.04
@@ -171,7 +171,7 @@ Shader "CelestialSystem/SunDisk"
                 float borderFade = smoothstep(1.0, 0.70, r);
 
                 // Combine disk and corona
-                float totalIntensity = (diskBrightness + innerCorona + outerHalo) * borderFade;
+                float totalIntensity = (diskBrightness * 2.2 + innerCorona + outerHalo) * borderFade;
 
                 // HDR emission output
                 half3 finalColor = sunColor * (totalIntensity * _EmissionMultiplier * totalVis);

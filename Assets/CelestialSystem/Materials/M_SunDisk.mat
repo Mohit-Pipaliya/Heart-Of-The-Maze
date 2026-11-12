@@ -25,18 +25,18 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
-    - _CoronaIntensity: 3
-    - _CoronaSize: 0.3
-    - _DiskSize: 0.04
-    - _EmissionMultiplier: 20
+    - _CoronaIntensity: 3.5
+    - _CoronaSize: 0.32
+    - _DiskSize: 0.35
+    - _EmissionMultiplier: 16
     - _FlickerIntensity: 0.04
     - _FlickerSpeed: 4
     - _HorizonExpansion: 1.35
     - _LimbDarkening: 0.65
     - _LimbDarkeningPower: 1
-    - _OuterHaloIntensity: 0.8
-    - _OuterHaloSize: 0.85
-    - _SoftEdge: 0.008
+    - _OuterHaloIntensity: 1.2
+    - _OuterHaloSize: 0.50
+    - _SoftEdge: 0.03
     - _StencilComp: 8
     - _StencilRef: 0
     - _SunAltitude: 45

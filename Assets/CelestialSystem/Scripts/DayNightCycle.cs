@@ -18,6 +18,7 @@ namespace CelestialSystem
         // ───────────────────────────────────────────────────────────────
         public enum StartPhase { Day, Night }
         public enum MoonPhaseMode { Auto, Manual }
+        public enum MoonTrackingMode { NightOrbit, AstronomicalRealtime }
 
         // ───────────────────────────────────────────────────────────────
         //  Inspector — Time
@@ -52,7 +53,7 @@ namespace CelestialSystem
         // ───────────────────────────────────────────────────────────────
         [Header("── Calendar & Seasons ───────────────────────")]
         [Tooltip("Day of year (1-365). Affects solar declination and moon phase.")]
-        [Range(1, 365)] public int dayOfYear = 172;   // near summer solstice
+        [Range(1, 365)] public int dayOfYear = 80;   // Near spring equinox for a picturesque 48° sun arc
 
         [Tooltip("Automatically advance the day-of-year counter after each full day.")]
         public bool autoAdvanceDays = true;
@@ -61,8 +62,8 @@ namespace CelestialSystem
         //  Inspector — Astronomy
         // ───────────────────────────────────────────────────────────────
         [Header("── Astronomy ───────────────────────────────")]
-        [Tooltip("Observer latitude in degrees. Affects sun/moon arc height. +90=North Pole, -90=South Pole.")]
-        [Range(-89.9f, 89.9f)] public float latitude = 25f;
+        [Tooltip("Observer latitude in degrees. 42° gives a dramatic, visible 48° sun arc across the player's view.")]
+        [Range(-89.9f, 89.9f)] public float latitude = 42f;
 
         [Tooltip("World-space yaw of the East compass direction (degrees). " +
                  "Default 0 means +X axis is East, +Z axis is North.")]
@@ -72,6 +73,10 @@ namespace CelestialSystem
         //  Inspector — Moon
         // ───────────────────────────────────────────────────────────────
         [Header("── Moon ────────────────────────────────────")]
+        [Tooltip("NightOrbit: Guarantees Moon rises at sunset and stays up all night (Standard AAA Game). " +
+                 "AstronomicalRealtime: Pure astronomical simulation where moon rises at different hours.")]
+        public MoonTrackingMode moonTrackingMode = MoonTrackingMode.NightOrbit;
+
         [Tooltip("Auto: moon phase advances over synodic cycle. Manual: set phase below.")]
         public MoonPhaseMode moonPhaseMode = MoonPhaseMode.Auto;
 
@@ -79,8 +84,8 @@ namespace CelestialSystem
         [Range(1f, 60f)] public float synodicPeriodDays = 29.53f;
 
         [Tooltip("Current day within the synodic month (0 = new moon, ~14.76 = full moon). " +
-                 "Auto mode drives this automatically.")]
-        [Range(0f, 29.53f)] public float moonCycleDay = 7f;
+                 "Defaults to 14.76 (Full Moon) for breathtaking night illumination.")]
+        [Range(0f, 29.53f)] public float moonCycleDay = 14.76f;
 
         [Tooltip("Orbital inclination of moon relative to ecliptic (degrees). ~5° is realistic.")]
         [Range(0f, 10f)] public float moonInclination = 5f;
@@ -273,8 +278,17 @@ namespace CelestialSystem
             }
 
             // Moon direction
-            MoonWorldDirection = CelestialMath.MoonDirection(
-                latitude, dayOfYear, hourAngle, MoonPhaseAngle, moonInclination, eastDirectionYaw);
+            if (moonTrackingMode == MoonTrackingMode.NightOrbit)
+            {
+                // In NightOrbit mode, moon is opposed to the sun (rises in East at sunset, climbs to zenith at midnight, sets in West at sunrise)
+                MoonWorldDirection = CelestialMath.MoonDirection(
+                    latitude, dayOfYear, hourAngle, 180f, moonInclination, eastDirectionYaw);
+            }
+            else
+            {
+                MoonWorldDirection = CelestialMath.MoonDirection(
+                    latitude, dayOfYear, hourAngle, MoonPhaseAngle, moonInclination, eastDirectionYaw);
+            }
             CelestialMath.DirectionToAzimuthAltitude(MoonWorldDirection, eastDirectionYaw,
                 out float ma, out float malt);
             MoonAzimuth  = ma;

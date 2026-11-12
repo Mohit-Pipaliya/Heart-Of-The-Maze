@@ -58,6 +58,10 @@ namespace CelestialSystem.Editor
             box.center = new Vector3(0f, 25f, 0f);
 
             DayNightCycle cycle = root.AddComponent<DayNightCycle>();
+            cycle.dayOfYear = 80;
+            cycle.latitude = 42f;
+            cycle.moonTrackingMode = DayNightCycle.MoonTrackingMode.NightOrbit;
+            cycle.moonCycleDay = 14.76f;
             CelestialVolume volume = root.AddComponent<CelestialVolume>();
             volume.volumeCollider = box;
             volume.autoEncompassScene = true;
@@ -89,7 +93,7 @@ namespace CelestialSystem.Editor
             GameObject sunDiskObj = GameObject.CreatePrimitive(PrimitiveType.Quad);
             sunDiskObj.name = "Sun_Disk";
             sunDiskObj.transform.SetParent(sunRoot.transform, false);
-            sunDiskObj.transform.localScale = Vector3.one * 80f;
+            sunDiskObj.transform.localScale = Vector3.one * 220f;
             Object.DestroyImmediate(sunDiskObj.GetComponent<Collider>());
             Renderer sunDiskRend = sunDiskObj.GetComponent<Renderer>();
             if (sunDiskMat != null) sunDiskRend.sharedMaterial = sunDiskMat;
@@ -99,6 +103,7 @@ namespace CelestialSystem.Editor
             sunCtrl.celestialVolume = volume;
             sunCtrl.sunLight = sunLight;
             sunCtrl.sunDiskRenderer = sunDiskRend;
+            sunCtrl.diskScale = 220f;
 
             // 5. Moon Hierarchy
             GameObject moonRoot = new GameObject("Moon_Rig");
@@ -115,7 +120,7 @@ namespace CelestialSystem.Editor
             GameObject moonMeshObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             moonMeshObj.name = "Moon_Mesh";
             moonMeshObj.transform.SetParent(moonRoot.transform, false);
-            moonMeshObj.transform.localScale = Vector3.one * 50f;
+            moonMeshObj.transform.localScale = Vector3.one * 140f;
             Object.DestroyImmediate(moonMeshObj.GetComponent<Collider>());
             Renderer moonRend = moonMeshObj.GetComponent<Renderer>();
             if (moonMat != null) moonRend.sharedMaterial = moonMat;
@@ -126,6 +131,7 @@ namespace CelestialSystem.Editor
             moonCtrl.sunController = sunCtrl;
             moonCtrl.moonLight = moonLight;
             moonCtrl.moonRenderer = moonRend;
+            moonCtrl.baseMoonScale = 140f;
 
             // 6. Sky Dome
             GameObject skyDomeObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);

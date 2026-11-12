@@ -56,7 +56,7 @@ namespace CelestialSystem
         [Range(100f, 5000f)] public float astronomicalDistance = 780f;
 
         [Tooltip("Base scale of the moon mesh.")]
-        [Range(5f, 200f)] public float baseMoonScale = 50f;
+        [Range(5f, 400f)] public float baseMoonScale = 140f;
 
         [Tooltip("Apparent size multiplier when near the horizon (Moon Illusion).")]
         [Range(1f, 2f)] public float horizonIllusionMultiplier = 1.35f;
@@ -183,7 +183,9 @@ namespace CelestialSystem
                 moonT.localScale = Vector3.one * (baseMoonScale * scaleMultiplier);
 
                 // Align moon surface toward camera
-                moonT.forward = -moonDir;
+                Vector3 toCam = camPos - moonT.position;
+                if (toCam.sqrMagnitude > 0.001f)
+                    moonT.rotation = Quaternion.LookRotation(toCam);
 
                 // Push properties to MaterialPropertyBlock
                 moonRenderer.GetPropertyBlock(_mpb);

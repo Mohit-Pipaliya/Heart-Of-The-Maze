@@ -10412,13 +10412,14 @@ MonoBehaviour:
   startPhase: 0
   timeScale: 1
   pause: 0
-  dayOfYear: 172
+  dayOfYear: 80
   autoAdvanceDays: 1
-  latitude: 25
+  latitude: 42
   eastDirectionYaw: 0
+  moonTrackingMode: 0
   moonPhaseMode: 0
   synodicPeriodDays: 29.53
-  moonCycleDay: 7
+  moonCycleDay: 14.76
   moonInclination: 5
   OnSunrise:
     m_PersistentCalls:
@@ -10620,7 +10621,7 @@ MonoBehaviour:
   moonlightColor: {r: 0.72, g: 0.84, b: 1, a: 1}
   moonlightShadowStrength: 0.35
   astronomicalDistance: 780
-  baseMoonScale: 50
+  baseMoonScale: 140
   horizonIllusionMultiplier: 1.35
 --- !u!1 &6936406414262902178
 GameObject:
@@ -10749,7 +10750,7 @@ MonoBehaviour:
   shadowStrength: 0.85
   shadowFadeAltitude: 5
   astronomicalDistance: 800
-  diskScale: 80
+  diskScale: 220
   enableGodRays: 1
   godRaysStrength: 1
   baseLensFlareIntensity: 1
