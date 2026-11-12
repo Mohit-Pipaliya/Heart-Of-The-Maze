@@ -196,6 +196,97 @@ namespace CelestialSystem
             StencilWindowRendererFeature.ActiveBoxCollider  = isStencilMode ? volumeCollider : null;
         }
 
+        /// <summary>
+        /// Automatically calculates the combined bounding box of all active Terrains in the scene
+        /// and sizes the BoxCollider to encompass them with horizontal and vertical clearance.
+        /// Falls back to scene geometry if no Unity Terrain is found.
+        /// </summary>
+        /// <param name="horizontalPadding">Extra distance around the borders (meters).</param>
+        /// <param name="heightPadding">Extra clearance above highest peak (meters).</param>
+        /// <returns>True if bounds were calculated and applied.</returns>
+        public bool FitToAllTerrains(float horizontalPadding = 30f, float heightPadding = 250f)
+        {
+            if (volumeCollider == null)
+                volumeCollider = GetComponent<BoxCollider>();
+
+            if (volumeCollider == null)
+                volumeCollider = gameObject.AddComponent<BoxCollider>();
+
+            Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+            Vector3 max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+            bool foundBounds = false;
+
+            // 1. Try finding Unity Terrains
+            Terrain[] terrains = Terrain.activeTerrains;
+            if (terrains != null && terrains.Length > 0)
+            {
+                foreach (Terrain t in terrains)
+                {
+                    if (t == null || t.terrainData == null) continue;
+                    Vector3 tPos = t.transform.position;
+                    Vector3 tSize = t.terrainData.size;
+
+                    min = Vector3.Min(min, tPos);
+                    max = Vector3.Max(max, tPos + tSize);
+                    foundBounds = true;
+                }
+            }
+
+            // 2. Fallback to scene geometry if no active terrains found
+            if (!foundBounds)
+            {
+                Renderer[] allRends = FindObjectsByType<Renderer>(FindObjectsSortMode.None);
+                foreach (Renderer r in allRends)
+                {
+                    if (r == null || !r.enabled) continue;
+                    if (r.transform.IsChildOf(transform)) continue; // ignore celestial dome meshes
+
+                    Bounds b = r.bounds;
+                    if (b.size.sqrMagnitude < 0.1f) continue;
+
+                    min = Vector3.Min(min, b.min);
+                    max = Vector3.Max(max, b.max);
+                    foundBounds = true;
+                }
+            }
+
+            if (!foundBounds)
+            {
+                Debug.LogWarning("[CelestialVolume] No terrains or scene renderers found to fit bounds to.");
+                return false;
+            }
+
+            // Apply padding
+            min.x -= horizontalPadding;
+            min.z -= horizontalPadding;
+            min.y -= 25f; // underground margin for dips and caves
+
+            max.x += horizontalPadding;
+            max.z += horizontalPadding;
+            max.y += heightPadding; // sky clearance
+
+            Vector3 worldCenter = (min + max) * 0.5f;
+            Vector3 worldSize   = max - min;
+
+            Transform tCol = volumeCollider.transform;
+            Vector3 localCenter = tCol.InverseTransformPoint(worldCenter);
+            Vector3 lossy = tCol.lossyScale;
+
+            volumeCollider.center = localCenter;
+            volumeCollider.size = new Vector3(
+                lossy.x != 0 ? worldSize.x / Mathf.Abs(lossy.x) : worldSize.x,
+                lossy.y != 0 ? worldSize.y / Mathf.Abs(lossy.y) : worldSize.y,
+                lossy.z != 0 ? worldSize.z / Mathf.Abs(lossy.z) : worldSize.z
+            );
+
+            if (playerCamera == null)
+                playerCamera = Camera.main;
+
+            Debug.Log($"[CelestialVolume] Successfully fitted BoxCollider to scene terrains/geometry. " +
+                      $"Center: {worldCenter}, Size: {worldSize}");
+            return true;
+        }
+
         // ───────────────────────────────────────────────────────────────
         //  Box test (rotated/scaled safe)
         // ───────────────────────────────────────────────────────────────
