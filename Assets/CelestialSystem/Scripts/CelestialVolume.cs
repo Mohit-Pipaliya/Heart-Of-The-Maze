@@ -39,6 +39,10 @@ namespace CelestialSystem
         [Tooltip("Seconds to fade out when camera leaves the box.")]
         [Min(0f)] public float fadeOutTime = 1.5f;
 
+        [Header("── Auto-Coverage ────────────────────────────")]
+        [Tooltip("When enabled, if the camera starts outside the volume, automatically expands the BoxCollider to encompass scene terrains and camera.")]
+        public bool autoEncompassScene = true;
+
         [Header("── Mode ────────────────────────────────────")]
         [Tooltip("FadeMode: fade by camera-inside-box. StencilWindowMode: render sky only inside stencil mask.")]
         public VisibilityMode visibilityMode = VisibilityMode.FadeMode;
@@ -132,6 +136,23 @@ namespace CelestialSystem
 
             // Handle case where camera starts inside or outside (no fade on first frame)
             bool startInside = IsPointInBox(GetCameraPosition());
+            if (!startInside && autoEncompassScene)
+            {
+                FitToAllTerrains(horizontalPadding: 60f, heightPadding: 400f);
+                if (volumeCollider != null && playerCamera != null)
+                {
+                    Vector3 camPos = playerCamera.transform.position;
+                    if (!IsPointInBox(camPos))
+                    {
+                        Bounds b = volumeCollider.bounds;
+                        b.Encapsulate(camPos);
+                        volumeCollider.center = volumeCollider.transform.InverseTransformPoint(b.center);
+                        volumeCollider.size = b.size;
+                    }
+                }
+                startInside = IsPointInBox(GetCameraPosition());
+            }
+
             Visibility = startInside ? 1f : 0f;
             IsInside   = startInside;
             _wasInsideLastFrame = startInside;

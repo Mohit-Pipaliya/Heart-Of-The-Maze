@@ -4944,11 +4944,14 @@ MonoBehaviour:
   sunController: {fileID: 6145232551165021172}
   moonController: {fileID: 6445972348458290177}
   cloudRenderer: {fileID: 5231801614106586864}
-  cloudRadius: 1200
-  cloudCoverage: 0.48
-  cloudDensity: 1.8
-  windSpeed: 0.03
-  windDirectionAngle: 45
+  cloudRadius: 850
+  autoAdaptToFarClip: 1
+  cloudCoverage: 0.46
+  cloudDensity: 2.4
+  windSpeed: 0.04
+  windDirectionAngle: 55
+  turbulenceSpeed: 0.06
+  cirrusOpacity: 0.35
 --- !u!1 &1629170315252256623
 GameObject:
   m_ObjectHideFlags: 0
@@ -5105,8 +5108,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: CelestialSystem::CelestialSystem.AmbientVFXController
   dayNightCycle: {fileID: 523898099082141609}
   celestialVolume: {fileID: 2055214154828789169}
+  cloudController: {fileID: 1267152395015667619}
   dayDustParticles: {fileID: 2335669404488649772}
   nightFireflyParticles: {fileID: 8108469755828920720}
+  enableWindPhysics: 1
+  windSpeedFactor: 6
   enableDayDust: 1
   dayDustSpawnRate: 45
   enableNightFireflies: 1
@@ -10442,6 +10448,7 @@ MonoBehaviour:
   playerCamera: {fileID: 0}
   fadeInTime: 2
   fadeOutTime: 1.5
+  autoEncompassScene: 1
   visibilityMode: 0
   celestialRenderers:
   - {fileID: 62686968369856271}

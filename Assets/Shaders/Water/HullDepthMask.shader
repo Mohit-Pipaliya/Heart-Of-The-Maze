@@ -18,6 +18,7 @@ Shader "Custom/Water/HullDepthMask"
             Tags { "LightMode" = "UniversalForward" }
             ZWrite On
             ZTest LEqual
+            Blend Zero One
             ColorMask 0
             Cull Off
 
@@ -94,6 +95,7 @@ Shader "Custom/Water/HullDepthMask"
             Tags { "LightMode" = "SRPDefaultUnlit" }
             ZWrite On
             ZTest LEqual
+            Blend Zero One
             ColorMask 0
             Cull Off
 

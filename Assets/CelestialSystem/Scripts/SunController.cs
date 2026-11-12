@@ -226,8 +226,10 @@ namespace CelestialSystem
                 Transform diskT = sunDiskRenderer.transform;
                 Vector3 camPos  = _cachedCamera.transform.position;
 
-                // Place sun disk at astronomical distance along sunDir
-                diskT.position = camPos + sunDir * astronomicalDistance;
+                // Place sun disk at astronomical distance along sunDir (safely inside far clip plane)
+                float far = _cachedCamera != null ? _cachedCamera.farClipPlane : 1000f;
+                float effectiveDist = Mathf.Min(astronomicalDistance, far * 0.78f);
+                diskT.position = camPos + sunDir * effectiveDist;
                 // Face camera directly
                 diskT.forward  = -sunDir;
                 diskT.localScale = Vector3.one * diskScale;

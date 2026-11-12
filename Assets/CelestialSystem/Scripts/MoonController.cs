@@ -172,8 +172,10 @@ namespace CelestialSystem
                 Transform moonT = moonRenderer.transform;
                 Vector3 camPos  = _cachedCamera.transform.position;
 
-                // Position on celestial sphere
-                moonT.position = camPos + moonDir * astronomicalDistance;
+                // Position on celestial sphere (safely inside far clip plane)
+                float far = _cachedCamera != null ? _cachedCamera.farClipPlane : 1000f;
+                float effectiveDist = Mathf.Min(astronomicalDistance, far * 0.76f);
+                moonT.position = camPos + moonDir * effectiveDist;
 
                 // Apparent size enlargement near horizon (Moon Illusion)
                 float horizonFactor = Mathf.Clamp01((16f - altitude) / 16f);

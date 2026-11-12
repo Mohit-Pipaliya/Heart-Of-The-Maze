@@ -60,6 +60,7 @@ namespace CelestialSystem.Editor
             DayNightCycle cycle = root.AddComponent<DayNightCycle>();
             CelestialVolume volume = root.AddComponent<CelestialVolume>();
             volume.volumeCollider = box;
+            volume.autoEncompassScene = true;
 
             CompassGizmo compass = root.AddComponent<CompassGizmo>();
             Volume uVolume = root.AddComponent<Volume>();
@@ -184,6 +185,8 @@ namespace CelestialSystem.Editor
             AmbientVFXController ambientVFX = vfxObj.AddComponent<AmbientVFXController>();
             ambientVFX.dayNightCycle = cycle;
             ambientVFX.celestialVolume = volume;
+            ambientVFX.cloudController = cloudCtrl;
+            ambientVFX.enableWindPhysics = true;
             ambientVFX.dayDustParticles = dayDustPS;
             ambientVFX.nightFireflyParticles = firefliesPS;
 

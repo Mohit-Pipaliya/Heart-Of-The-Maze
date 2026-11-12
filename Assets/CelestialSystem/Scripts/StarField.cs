@@ -90,8 +90,10 @@ namespace CelestialSystem
             // Center dome on camera & apply astronomical celestial pole rotation
             if (_cachedCamera != null)
             {
+                float far = _cachedCamera.farClipPlane;
+                float effectiveRadius = Mathf.Min(domeRadius, far * 0.90f);
                 transform.position = _cachedCamera.transform.position;
-                transform.localScale = Vector3.one * domeRadius;
+                transform.localScale = Vector3.one * (effectiveRadius * 2.0f);
             }
 
             // Rotate around the celestial pole (East to West rotation)

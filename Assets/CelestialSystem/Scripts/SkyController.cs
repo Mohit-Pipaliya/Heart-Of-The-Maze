@@ -82,11 +82,13 @@ namespace CelestialSystem
 
             ResolveCamera();
 
-            // Center dome on camera
+            // Center dome on camera & fit safely inside far clip plane
             if (followCamera && _cachedCamera != null)
             {
+                float far = _cachedCamera.farClipPlane;
+                float effectiveRadius = Mathf.Min(domeRadius, far * 0.92f);
                 transform.position = _cachedCamera.transform.position;
-                transform.localScale = Vector3.one * domeRadius;
+                transform.localScale = Vector3.one * (effectiveRadius * 2.0f);
             }
 
             // Push properties to renderer via MaterialPropertyBlock
