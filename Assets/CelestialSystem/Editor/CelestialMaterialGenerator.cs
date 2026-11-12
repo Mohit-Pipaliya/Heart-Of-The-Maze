@@ -12,6 +12,18 @@ namespace CelestialSystem.Editor
     {
         private const string MaterialsPath = "Assets/CelestialSystem/Materials";
 
+        [InitializeOnLoadMethod]
+        private static void AutoEnsureMaterialsOnLoad()
+        {
+            EditorApplication.delayCall += () =>
+            {
+                if (!File.Exists(Path.Combine(MaterialsPath, "M_SunDisk.mat")))
+                {
+                    GenerateDefaultMaterials();
+                }
+            };
+        }
+
         [MenuItem("Window/Celestial System/Generate Default Materials", priority = 100)]
         public static void GenerateDefaultMaterials()
         {
