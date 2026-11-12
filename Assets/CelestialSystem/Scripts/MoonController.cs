@@ -77,6 +77,9 @@ namespace CelestialSystem
         // ───────────────────────────────────────────────────────────────
         private void Awake()
         {
+            if (maxMoonlightIntensity > 2f)
+                maxMoonlightIntensity = 0.15f;
+
             _mpb = new MaterialPropertyBlock();
 
             if (dayNightCycle == null)
@@ -188,6 +191,12 @@ namespace CelestialSystem
                 _mpb.SetFloat(PropVisibility, visibility);
                 moonRenderer.SetPropertyBlock(_mpb);
             }
+        }
+
+        private void OnValidate()
+        {
+            if (maxMoonlightIntensity > 2f)
+                maxMoonlightIntensity = 0.15f;
         }
 
         private void ResolveCamera()

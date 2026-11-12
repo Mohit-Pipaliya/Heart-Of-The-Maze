@@ -106,6 +106,9 @@ namespace CelestialSystem
         // ───────────────────────────────────────────────────────────────
         private void Awake()
         {
+            if (maxLightIntensity > 10f)
+                maxLightIntensity = 1.25f;
+
             _mpb = new MaterialPropertyBlock();
 
             // Auto-resolve references if unassigned
@@ -327,6 +330,12 @@ namespace CelestialSystem
         // ───────────────────────────────────────────────────────────────
         //  Default Gradients Setup
         // ───────────────────────────────────────────────────────────────
+        private void OnValidate()
+        {
+            if (maxLightIntensity > 10f)
+                maxLightIntensity = 1.25f;
+        }
+
         private void InitDefaultGradients()
         {
             if (lightColorByAltitude == null || lightColorByAltitude.colorKeys.Length == 0)
