@@ -139,3 +139,4 @@ Use this checklist to verify production readiness:
 - [x] **God Rays**: Confirm volumetric rays radiate from the Sun when looking towards it, and fade offscreen without graphical glitches.
 - [x] **Cloud Silver Lining**: Look towards the Sun or Moon behind clouds; confirm cloud rims glow with forward-scattering light.
 - [x] **Zero GC Allocations**: Open Unity Profiler $\to$ CPU Usage $\to$ verify zero GC allocations per frame from `CelestialSystem` scripts during Update.
+

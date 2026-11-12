@@ -2,7 +2,7 @@
     "name": "CelestialSystem.Tests",
     "rootNamespace": "CelestialSystem.Tests",
     "references": [
-        "CelestialSystem",
+        "GUID:6fc91b18ff3844174a02cbbc58733f39",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],
@@ -22,4 +22,3 @@
     "versionDefines": [],
     "noEngineReferences": false
 }
-

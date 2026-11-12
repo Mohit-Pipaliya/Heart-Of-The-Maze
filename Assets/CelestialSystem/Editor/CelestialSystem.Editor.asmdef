@@ -2,7 +2,9 @@
     "name": "CelestialSystem.Editor",
     "rootNamespace": "CelestialSystem.Editor",
     "references": [
-        "CelestialSystem"
+        "GUID:6fc91b18ff3844174a02cbbc58733f39",
+        "GUID:15fc0a57446b3144c949da3e2b9737a9",
+        "GUID:df380645f10b7bc4b97d4f5eb6303d95"
     ],
     "includePlatforms": [
         "Editor"
@@ -16,4 +18,3 @@
     "versionDefines": [],
     "noEngineReferences": false
 }
-
