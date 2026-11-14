@@ -1,14 +1,9 @@
 fileFormatVersion: 2
-guid: a56cef2af51934b7792b0c99c943a1ab
+guid: 08d1de491d202435c9be0ed46986d1d4
 ModelImporter:
   serializedVersion: 24200
   internalIDToNameTable: []
-  externalObjects:
-  - first:
-      type: UnityEngine:Material
-      assembly: UnityEngine.CoreModule
-      name: BONE_STAND_MAT
-    second: {fileID: 2100000, guid: c87cd8c1b239845df9ced16b4fe72fbc, type: 2}
+  externalObjects: {}
   materials:
     materialImportMode: 2
     materialName: 0
