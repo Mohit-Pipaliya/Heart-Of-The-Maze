@@ -279,6 +279,13 @@ namespace MazeSystem
                 if (manager.NightDoorsClosed)
                     yield break;
 
+                // Failsafe: if doors haven't closed after 3 seconds, force instant close so maze is sealed
+                if (elapsed > 3.0f)
+                {
+                    manager.SetActiveDoorInstant(false);
+                    yield break;
+                }
+
                 elapsed += doorRetryInterval;
                 yield return new WaitForSeconds(doorRetryInterval);
             }

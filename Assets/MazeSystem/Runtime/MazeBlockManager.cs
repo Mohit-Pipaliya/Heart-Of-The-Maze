@@ -71,8 +71,8 @@ namespace MazeSystem
 
         [Header("── 7. Swap Rules ────────────────────────────")]
         [SerializeField] private bool restoreOriginalLayoutAfterEachCycle;
-        [Tooltip("Wait for the player to leave the active block before closing its door. Prevents trapping the player.")]
-        [SerializeField] private bool delayNightWhilePlayerInside = true;
+        [Tooltip("When false, night entrance door closes immediately at nightfall without waiting for player.")]
+        [SerializeField] private bool delayNightWhilePlayerInside = false;
 
         [Header("── 8. Visible Night Swap ────────────────────")]
         [Tooltip("Keep the entrance open and let the player watch the maze slide at night. Falls back to hidden swap while player is inside.")]
@@ -121,7 +121,7 @@ namespace MazeSystem
         public float DoorFacingTolerance => doorFacingTolerance;
         public bool VerboseLogging => verboseLogging;
         public bool RestoreOriginalLayoutAfterEachCycle => restoreOriginalLayoutAfterEachCycle;
-        public bool DelayNightWhilePlayerInside => delayNightWhilePlayerInside;
+        public bool DelayNightWhilePlayerInside { get => delayNightWhilePlayerInside; set => delayNightWhilePlayerInside = value; }
         public bool RevealSwapToPlayer => revealSwapToPlayer;
         public float SwapRevealFogCoverage => swapRevealFogCoverage;
         public float SwapRevealSlideDuration => swapRevealSlideDuration;

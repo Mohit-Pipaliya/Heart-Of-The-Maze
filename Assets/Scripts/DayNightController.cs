@@ -228,18 +228,32 @@ public class DayNightController : MonoBehaviour
             UpdateCelestialState();
 
             // Immediate startup synchronization for the Maze Main Door
-            if (IsDay)
-            {
-                NotifyMazeSystemDay();
-            }
-            else
-            {
-                NotifyMazeSystemNight();
-            }
+            SyncDoorsWithTime();
+            StartCoroutine(StartupDoorSyncRoutine());
         }
         catch (Exception ex)
         {
             Debug.LogWarning("[DayNightController] Start init notice: " + ex.Message);
+        }
+    }
+
+    private System.Collections.IEnumerator StartupDoorSyncRoutine()
+    {
+        yield return null; // Wait 1 frame so all Awake and Start in scene execute
+        SyncDoorsWithTime();
+        yield return new WaitForSeconds(0.25f);
+        SyncDoorsWithTime();
+    }
+
+    public void SyncDoorsWithTime()
+    {
+        if (IsDay)
+        {
+            NotifyMazeSystemDay();
+        }
+        else
+        {
+            NotifyMazeSystemNight();
         }
     }
 
@@ -276,6 +290,13 @@ public class DayNightController : MonoBehaviour
             EnsureCameraFrustum();
             EnsureGlowHalos();
             UpdateCelestialState();
+
+            bool currentIsDay = IsDay;
+            if (currentIsDay != _previousWasDay)
+            {
+                _previousWasDay = currentIsDay;
+                SyncDoorsWithTime();
+            }
         }
         catch (Exception ex)
         {
@@ -371,7 +392,10 @@ public class DayNightController : MonoBehaviour
         var mazeManager = FindFirstObjectByType<MazeSystem.MazeBlockManager>();
         if (mazeManager != null)
         {
+            mazeManager.AutoAdvanceDayNight = false;
+            mazeManager.DelayNightWhilePlayerInside = false;
             mazeManager.TriggerDay();
+            mazeManager.OpenActiveDoor();
         }
 
         // 2. Direct activation of active MazeMainDoor
@@ -408,7 +432,10 @@ public class DayNightController : MonoBehaviour
         var mazeManager = FindFirstObjectByType<MazeSystem.MazeBlockManager>();
         if (mazeManager != null)
         {
+            mazeManager.AutoAdvanceDayNight = false;
+            mazeManager.DelayNightWhilePlayerInside = false;
             mazeManager.TriggerNight();
+            mazeManager.CloseActiveDoor();
         }
 
         // 2. Direct closure of active MazeMainDoor

@@ -51,6 +51,13 @@ public class DoubleSlidingDoor : MonoBehaviour, IMazeDoor
     [Tooltip("Door open hai ya closed (Inspector me live toggle karke test kar sakte hain)")]
     public bool isOpen = false;
 
+    [Header("─── Day / Night Integration ────────────────────────────")]
+    [Tooltip("When true, door is synchronized with Day/Night cycle: OPEN all day, CLOSED and locked all night.")]
+    public bool controlledByDayNight = true;
+
+    [Tooltip("When true at night, proximity trigger will NOT open the door.")]
+    public bool lockAtNight = true;
+
     [Header("─── Player Auto Trigger ────────────────────────────────")]
     [Tooltip("Player paas aane par automatically khule")]
     public bool openOnApproach = true;
@@ -206,8 +213,28 @@ public class DoubleSlidingDoor : MonoBehaviour, IMazeDoor
 
     private void Update()
     {
-        // 1. Player Proximity Check
-        if (openOnApproach)
+        // 1. Day / Night Automatic Gate Control
+        var dnc = DayNightController.Instance ?? UnityEngine.Object.FindFirstObjectByType<DayNightController>();
+        if (controlledByDayNight && dnc != null)
+        {
+            if (dnc.IsDay)
+            {
+                // Day: Door MUST be OPEN and STAY OPEN for the player!
+                if (!isOpen)
+                {
+                    OpenDoor();
+                }
+            }
+            else
+            {
+                // Night: Door MUST be CLOSED and LOCKED to seal the maze!
+                if (isOpen)
+                {
+                    CloseDoor();
+                }
+            }
+        }
+        else if (openOnApproach)
         {
             if (_playerTransform == null) FindPlayer();
 
@@ -315,6 +342,10 @@ public class DoubleSlidingDoor : MonoBehaviour, IMazeDoor
     private void OnTriggerEnter(Collider other)
     {
         if (!openOnApproach) return;
+        var dnc = DayNightController.Instance ?? UnityEngine.Object.FindFirstObjectByType<DayNightController>();
+        if (controlledByDayNight && dnc != null && !dnc.IsDay && lockAtNight)
+            return; // Locked at night!
+
         if (other.CompareTag("Player") || other.GetComponent<PlayerController>() != null)
         {
             _lastPlayerNearTime = Time.time;
