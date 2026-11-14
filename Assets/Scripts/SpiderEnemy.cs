@@ -370,6 +370,14 @@ public class SpiderEnemy : MonoBehaviour
 
         if (agent != null)
         {
+            if (!agent.isOnNavMesh)
+            {
+                if (UnityEngine.AI.NavMesh.SamplePosition(transform.position, out UnityEngine.AI.NavMeshHit hit, 25f, UnityEngine.AI.NavMesh.AllAreas))
+                {
+                    agent.Warp(hit.position);
+                }
+            }
+
             agent.speed = walkSpeed;
             agent.acceleration = acceleration;
             agent.stoppingDistance = stoppingDistance;

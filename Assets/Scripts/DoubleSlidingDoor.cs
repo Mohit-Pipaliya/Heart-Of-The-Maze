@@ -1,12 +1,15 @@
+using System;
 using UnityEngine;
+using MazeSystem;
 
 /// <summary>
 /// Normal Double Sliding Door Mechanism.
 /// Jab gate khulta hai toh Left Door ek taraf aur Right Door uski opposite taraf slide hota hai.
 /// Inspector me Axis (X, Y, Z) aur Slide Distance set karne ka aasan option hai.
+/// Implements IMazeDoor for full seamless Shifting Maze integration.
 /// </summary>
 [SelectionBase]
-public class DoubleSlidingDoor : MonoBehaviour
+public class DoubleSlidingDoor : MonoBehaviour, IMazeDoor
 {
     public enum DoorAxis
     {
@@ -65,6 +68,36 @@ public class DoubleSlidingDoor : MonoBehaviour
     public AudioClip openSound;
     public AudioClip closeSound;
     [Range(0f, 1f)] public float soundVolume = 0.8f;
+
+    // ─── IMazeDoor Implementation ───
+    public bool IsOpen => isOpen && _currentProgress >= 0.99f;
+    public bool IsClosed => !isOpen && _currentProgress <= 0.01f;
+    public bool IsMoving => Mathf.Abs(_currentProgress - (isOpen ? 1f : 0f)) > 0.01f;
+    public bool IsOccupied
+    {
+        get
+        {
+            if (_playerTransform == null) FindPlayer();
+            if (_playerTransform != null)
+                return Vector3.Distance(transform.position, _playerTransform.position) <= triggerDistance;
+            return false;
+        }
+    }
+
+    public event Action OnOpened;
+    public event Action OnClosed;
+
+    public void Open() => OpenDoor();
+    public void Close() => CloseDoor();
+    public void SetStateInstant(bool open)
+    {
+        Initialize();
+        isOpen = open;
+        _currentProgress = open ? 1f : 0f;
+        ApplyProgress(_currentProgress);
+        if (open) OnOpened?.Invoke();
+        else OnClosed?.Invoke();
+    }
 
     // ─── Private State ───
     private Vector3 _leftClosedPos;
@@ -167,7 +200,7 @@ public class DoubleSlidingDoor : MonoBehaviour
             return;
         }
 
-        PlayerController pc = Object.FindFirstObjectByType<PlayerController>();
+        PlayerController pc = UnityEngine.Object.FindFirstObjectByType<PlayerController>();
         if (pc != null) _playerTransform = pc.transform;
     }
 
@@ -232,21 +265,33 @@ public class DoubleSlidingDoor : MonoBehaviour
     [ContextMenu("Open Door")]
     public void OpenDoor()
     {
-        if (isOpen) return;
+        if (isOpen && _currentProgress >= 0.99f) return;
         Initialize();
         CalculateOpenPositions();
         isOpen = true;
         PlayAudio(openSound);
+        if (!Application.isPlaying)
+        {
+            _currentProgress = 1f;
+            ApplyProgress(1f);
+        }
+        OnOpened?.Invoke();
     }
 
     [ContextMenu("Close Door")]
     public void CloseDoor()
     {
-        if (!isOpen) return;
+        if (!isOpen && _currentProgress <= 0.01f) return;
         Initialize();
         CalculateOpenPositions();
         isOpen = false;
         PlayAudio(closeSound);
+        if (!Application.isPlaying)
+        {
+            _currentProgress = 0f;
+            ApplyProgress(0f);
+        }
+        OnClosed?.Invoke();
     }
 
     [ContextMenu("Toggle Door")]

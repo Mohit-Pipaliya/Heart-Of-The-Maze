@@ -251,6 +251,14 @@ public class ZombieAI : MonoBehaviour
         _currentState = State.Wander;
         if (_agent != null && _agent.enabled)
         {
+            if (!_agent.isOnNavMesh)
+            {
+                if (UnityEngine.AI.NavMesh.SamplePosition(transform.position, out UnityEngine.AI.NavMeshHit hit, 25f, UnityEngine.AI.NavMesh.AllAreas))
+                {
+                    _agent.Warp(hit.position);
+                }
+            }
+
             _agent.speed = walkSpeed;
             _agent.stoppingDistance = 1.2f;
         }

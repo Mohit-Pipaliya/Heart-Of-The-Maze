@@ -145,6 +145,17 @@ public class ZombieLocomotion : MonoBehaviour
         _speedMultiplier = Random.Range(0.88f, 1.12f);
     }
 
+    private void Start()
+    {
+        if (_agent != null && !_agent.isOnNavMesh)
+        {
+            if (UnityEngine.AI.NavMesh.SamplePosition(transform.position, out UnityEngine.AI.NavMeshHit hit, 25f, UnityEngine.AI.NavMesh.AllAreas))
+            {
+                _agent.Warp(hit.position);
+            }
+        }
+    }
+
     private void OnEnable()
     {
         // Object Pooling Reset
