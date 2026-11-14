@@ -32,12 +32,12 @@ Material:
     m_Floats:
     - _CloudCoverage: 0.52
     - _CloudDensity: 1.35
-    - _CloudSoftness: 0.35
-    - _SilverLiningIntensity: 2.2
-    - _SilverLiningPower: 6
+    - _CloudSoftness: 0.32
+    - _SilverLiningIntensity: 2
+    - _SilverLiningPower: 4
     - _Tiling: 0.65
-    - _WindSpeedX: 0.002
-    - _WindSpeedY: 0.001
+    - _WindSpeedX: 0.003
+    - _WindSpeedY: 0.0015
     m_Colors:
     - _CloudColor: {r: 1, g: 1, b: 1, a: 0.95}
     - _CloudShadowColor: {r: 0.42, g: 0.45, b: 0.55, a: 1}

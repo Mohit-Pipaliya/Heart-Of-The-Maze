@@ -25,12 +25,18 @@ public class DoubleSlidingDoor : MonoBehaviour, IMazeDoor
     [Tooltip("Right door ka Transform (empty chhodne par auto-find kar lega)")]
     public Transform rightDoor;
 
+    [SerializeField, HideInInspector] private Transform door1;
+    [SerializeField, HideInInspector] private Transform door2;
+
     [Header("─── Sliding Controls ───────────────────────────────────")]
     [Tooltip("Kis axis par doors slide honge")]
     public DoorAxis slideAxis = DoorAxis.Z_Axis;
 
-    [Tooltip("Doors kitna door slide honge (dono opposite side me slide honge)")]
-    public float slideDistance = 1.5f;
+    [Tooltip("Doors kitne meters slide honge (dono opposite side me slide honge)")]
+    public float slideDistance = 1.3f;
+
+    [Tooltip("Parent scale compensate karein taaki door exact meters me slide ho aur hawa me bahar na nikal jaye")]
+    public bool compensateParentScale = true;
 
     [Tooltip("Agar doors ulti direction me khul rahe ho toh tick karein")]
     public bool invertDirection = false;
@@ -39,10 +45,10 @@ public class DoubleSlidingDoor : MonoBehaviour, IMazeDoor
     public bool separateDistances = false;
 
     [Tooltip("Left door ka alag slide distance (sirf tab jab separateDistances tick ho)")]
-    public float leftSlideDistance = 1.5f;
+    public float leftSlideDistance = 1.3f;
 
     [Tooltip("Right door ka alag slide distance (sirf tab jab separateDistances tick ho)")]
-    public float rightSlideDistance = 1.5f;
+    public float rightSlideDistance = 1.3f;
 
     [Header("─── Speed & Animation ──────────────────────────────────")]
     [Tooltip("Door open / close hone ki speed")]
@@ -50,6 +56,13 @@ public class DoubleSlidingDoor : MonoBehaviour, IMazeDoor
 
     [Tooltip("Door open hai ya closed (Inspector me live toggle karke test kar sakte hain)")]
     public bool isOpen = false;
+
+    [Header("─── Day / Night Integration ────────────────────────────")]
+    [Tooltip("When true, door is synchronized with Day/Night cycle. Leave FALSE for inner maze puzzle doors so only Glade entrance opens!")]
+    public bool controlledByDayNight = false;
+
+    [Tooltip("When true at night, proximity trigger will NOT open the door.")]
+    public bool lockAtNight = false;
 
     [Header("─── Player Auto Trigger ────────────────────────────────")]
     [Tooltip("Player paas aane par automatically khule")]
@@ -100,10 +113,10 @@ public class DoubleSlidingDoor : MonoBehaviour, IMazeDoor
     }
 
     // ─── Private State ───
-    private Vector3 _leftClosedPos;
-    private Vector3 _rightClosedPos;
-    private Vector3 _leftOpenPos;
-    private Vector3 _rightOpenPos;
+    private Vector3 _leftClosedPos = Vector3.zero;
+    private Vector3 _rightClosedPos = Vector3.zero;
+    private Vector3 _leftOpenPos = Vector3.zero;
+    private Vector3 _rightOpenPos = Vector3.zero;
 
     private float _currentProgress = 0f; // 0 = Closed, 1 = Open
     private AudioSource _audioSource;
@@ -114,11 +127,15 @@ public class DoubleSlidingDoor : MonoBehaviour, IMazeDoor
     private void Reset()
     {
         AutoFindDoors();
+        ResetDoorsToClosed();
     }
 
     [ContextMenu("Auto Find Left & Right Doors")]
     public void AutoFindDoors()
     {
+        if (leftDoor == null && door1 != null) leftDoor = door1;
+        if (rightDoor == null && door2 != null) rightDoor = door2;
+
         if (leftDoor == null)
         {
             leftDoor = transform.Find("Left Door") ?? transform.Find("LeftDoor") ?? transform.Find("Left");
@@ -160,8 +177,8 @@ public class DoubleSlidingDoor : MonoBehaviour, IMazeDoor
         if (_initialized) return;
         AutoFindDoors();
 
-        if (leftDoor != null) _leftClosedPos = leftDoor.localPosition;
-        if (rightDoor != null) _rightClosedPos = rightDoor.localPosition;
+        _leftClosedPos = Vector3.zero;
+        _rightClosedPos = Vector3.zero;
 
         CalculateOpenPositions();
         _initialized = true;
@@ -180,8 +197,21 @@ public class DoubleSlidingDoor : MonoBehaviour, IMazeDoor
 
         if (invertDirection) baseDir = -baseDir;
 
-        float distLeft = separateDistances ? leftSlideDistance : slideDistance;
-        float distRight = separateDistances ? rightSlideDistance : slideDistance;
+        float scaleFactor = 1f;
+        if (compensateParentScale)
+        {
+            switch (slideAxis)
+            {
+                case DoorAxis.X_Axis: scaleFactor = Mathf.Abs(transform.lossyScale.x); break;
+                case DoorAxis.Y_Axis: scaleFactor = Mathf.Abs(transform.lossyScale.y); break;
+                case DoorAxis.Z_Axis:
+                default: scaleFactor = Mathf.Abs(transform.lossyScale.z); break;
+            }
+            if (scaleFactor < 0.001f) scaleFactor = 1f;
+        }
+
+        float distLeft = (separateDistances ? leftSlideDistance : slideDistance) / scaleFactor;
+        float distRight = (separateDistances ? rightSlideDistance : slideDistance) / scaleFactor;
 
         // Normal double door: Left door goes in -direction, Right door goes in +direction
         Vector3 leftDir = -baseDir;
@@ -206,7 +236,23 @@ public class DoubleSlidingDoor : MonoBehaviour, IMazeDoor
 
     private void Update()
     {
-        if (openOnApproach)
+        // 1. Day / Night Automatic Gate Control (Only if explicitly enabled for this door)
+        if (controlledByDayNight)
+        {
+            var dnc = DayNightController.Instance ?? UnityEngine.Object.FindFirstObjectByType<DayNightController>();
+            if (dnc != null)
+            {
+                if (dnc.IsDay)
+                {
+                    if (!isOpen) OpenDoor();
+                }
+                else
+                {
+                    if (isOpen) CloseDoor();
+                }
+            }
+        }
+        else if (openOnApproach)
         {
             if (_playerTransform == null) FindPlayer();
 
@@ -238,7 +284,6 @@ public class DoubleSlidingDoor : MonoBehaviour, IMazeDoor
         if (Mathf.Abs(_currentProgress - targetProgress) > 0.0001f)
         {
             _currentProgress = Mathf.MoveTowards(_currentProgress, targetProgress, Time.deltaTime * openSpeed);
-            // Smooth damping
             float smooth = Mathf.SmoothStep(0f, 1f, _currentProgress);
             ApplyProgress(smooth);
         }
@@ -248,18 +293,31 @@ public class DoubleSlidingDoor : MonoBehaviour, IMazeDoor
     {
         if (leftDoor != null)
         {
-            leftDoor.localPosition = Vector3.Lerp(_leftClosedPos, _leftOpenPos, t);
+            leftDoor.localPosition = (t <= 0.0005f) ? _leftClosedPos : Vector3.Lerp(_leftClosedPos, _leftOpenPos, t);
         }
 
         if (rightDoor != null)
         {
-            rightDoor.localPosition = Vector3.Lerp(_rightClosedPos, _rightOpenPos, t);
+            rightDoor.localPosition = (t <= 0.0005f) ? _rightClosedPos : Vector3.Lerp(_rightClosedPos, _rightOpenPos, t);
         }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
     //  PUBLIC METHODS (Call via code, buttons, or UnityEvents)
     // ═══════════════════════════════════════════════════════════════════════════
+
+    [ContextMenu("Reset Doors To Closed (0,0,0)")]
+    public void ResetDoorsToClosed()
+    {
+        AutoFindDoors();
+        _leftClosedPos = Vector3.zero;
+        _rightClosedPos = Vector3.zero;
+        isOpen = false;
+        _currentProgress = 0f;
+        if (leftDoor != null) leftDoor.localPosition = Vector3.zero;
+        if (rightDoor != null) rightDoor.localPosition = Vector3.zero;
+        CalculateOpenPositions();
+    }
 
     [ContextMenu("Open Door")]
     public void OpenDoor()
@@ -314,6 +372,12 @@ public class DoubleSlidingDoor : MonoBehaviour, IMazeDoor
     private void OnTriggerEnter(Collider other)
     {
         if (!openOnApproach) return;
+        if (controlledByDayNight && lockAtNight)
+        {
+            var dnc = DayNightController.Instance ?? UnityEngine.Object.FindFirstObjectByType<DayNightController>();
+            if (dnc != null && !dnc.IsDay)
+                return; // Locked at night!
+        }
 
         if (other.CompareTag("Player") || other.GetComponent<PlayerController>() != null)
         {
@@ -346,15 +410,14 @@ public class DoubleSlidingDoor : MonoBehaviour, IMazeDoor
 
     private void OnValidate()
     {
-        // Negative (minus) numbers allow kiye gaye hain taaki opposite side slide kar sakein
         triggerDistance = Mathf.Max(0.5f, triggerDistance);
         openSpeed = Mathf.Max(0.1f, openSpeed);
 
         if (!Application.isPlaying && (leftDoor != null || rightDoor != null))
         {
             AutoFindDoors();
-            if (leftDoor != null) _leftClosedPos = leftDoor.localPosition;
-            if (rightDoor != null) _rightClosedPos = rightDoor.localPosition;
+            _leftClosedPos = Vector3.zero;
+            _rightClosedPos = Vector3.zero;
             CalculateOpenPositions();
             ApplyProgress(isOpen ? 1f : 0f);
         }
@@ -381,14 +444,27 @@ public class DoubleSlidingDoor : MonoBehaviour, IMazeDoor
         }
         if (invertDirection) baseDir = -baseDir;
 
-        float distLeft = separateDistances ? leftSlideDistance : slideDistance;
-        float distRight = separateDistances ? rightSlideDistance : slideDistance;
+        float scaleFactor = 1f;
+        if (compensateParentScale)
+        {
+            switch (slideAxis)
+            {
+                case DoorAxis.X_Axis: scaleFactor = Mathf.Abs(transform.lossyScale.x); break;
+                case DoorAxis.Y_Axis: scaleFactor = Mathf.Abs(transform.lossyScale.y); break;
+                case DoorAxis.Z_Axis:
+                default: scaleFactor = Mathf.Abs(transform.lossyScale.z); break;
+            }
+            if (scaleFactor < 0.001f) scaleFactor = 1f;
+        }
+
+        float distLeft = (separateDistances ? leftSlideDistance : slideDistance) / scaleFactor;
+        float distRight = (separateDistances ? rightSlideDistance : slideDistance) / scaleFactor;
 
         // Left Door open direction (Yellow)
         if (leftDoor != null)
         {
-            Vector3 worldLeft = transform.TransformPoint(leftDoor.localPosition);
-            Vector3 worldLeftTarget = transform.TransformPoint(leftDoor.localPosition - baseDir * distLeft);
+            Vector3 worldLeft = transform.TransformPoint(Vector3.zero);
+            Vector3 worldLeftTarget = transform.TransformPoint(-baseDir * distLeft);
 
             Gizmos.color = Color.yellow;
             Gizmos.DrawLine(worldLeft, worldLeftTarget);
@@ -398,8 +474,8 @@ public class DoubleSlidingDoor : MonoBehaviour, IMazeDoor
         // Right Door open direction (Cyan)
         if (rightDoor != null)
         {
-            Vector3 worldRight = transform.TransformPoint(rightDoor.localPosition);
-            Vector3 worldRightTarget = transform.TransformPoint(rightDoor.localPosition + baseDir * distRight);
+            Vector3 worldRight = transform.TransformPoint(Vector3.zero);
+            Vector3 worldRightTarget = transform.TransformPoint(baseDir * distRight);
 
             Gizmos.color = Color.cyan;
             Gizmos.DrawLine(worldRight, worldRightTarget);

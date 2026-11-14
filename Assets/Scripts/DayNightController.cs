@@ -143,15 +143,38 @@ public class DayNightController : MonoBehaviour
     [Range(2000f, 9000f)]
     [SerializeField] private float cloudCanopyRadius = 5500f;
 
+    [Tooltip("Cloud Quantity / Sky Coverage: Kitne clouds aakash me dikhenge (0.1 = Bahot kam badal, 0.52 = Normal scattered clouds, 0.85 = Overcast ghane badal)")]
     [Range(0.1f, 0.9f)]
-    [SerializeField] private float cloudCoverage = 0.50f;
+    [SerializeField] private float cloudCoverage = 0.52f;
+
+    [Tooltip("Cloud Thickness / Density: Badal kitne ghane / mote honge (0.5 = Halke patle badal, 1.35 = Normal thick, 3.5 = Bahot ghane dense badal)")]
+    [Range(0.5f, 3.5f)]
+    [SerializeField] private float cloudDensity = 1.35f;
+
+    [Tooltip("Cloud Edge Softness: Badlo ke kinare kitne mulayam / feathery honge")]
+    [Range(0.05f, 0.5f)]
+    [SerializeField] private float cloudSoftness = 0.32f;
+
+    [Tooltip("Cloud Scale: Badlo ka size (kam number = bade continuous formations, jyada number = chhote badal)")]
+    [Range(0.2f, 3.0f)]
+    [SerializeField] private float cloudScale = 0.65f;
+
+    [Tooltip("Wind Speed: Hawa ke sath badal chalne ki speed")]
+    [Range(0.0005f, 0.02f)]
+    [SerializeField] private float cloudWindSpeed = 0.003f;
+
+    public float CloudCoverage { get => cloudCoverage; set => cloudCoverage = Mathf.Clamp(value, 0.1f, 0.9f); }
+    public float CloudDensity { get => cloudDensity; set => cloudDensity = Mathf.Clamp(value, 0.5f, 3.5f); }
+    public float CloudSoftness { get => cloudSoftness; set => cloudSoftness = Mathf.Clamp(value, 0.05f, 0.5f); }
+    public float CloudScale { get => cloudScale; set => cloudScale = Mathf.Clamp(value, 0.2f, 3.0f); }
+    public float CloudWindSpeed { get => cloudWindSpeed; set => cloudWindSpeed = Mathf.Clamp(value, 0.0005f, 0.02f); }
 
     [Header("── 7. Elevated Stars Dome VFX (High Sky Only) ────")]
     [SerializeField] private ParticleSystem starsSystem;
 
     [Tooltip("Radius of the celestial star dome hemisphere (meters).")]
-    [Range(1000f, 9000f)]
-    [SerializeField] private float starDomeRadius = 1800f;
+    [Range(2000f, 9000f)]
+    [SerializeField] private float starDomeRadius = 4200f;
 
     // Public Events
     public event Action OnSunrise;
@@ -311,12 +334,6 @@ public class DayNightController : MonoBehaviour
         {
             cam.farClipPlane = 12000f;
         }
-
-        // Guarantee shadow distance is expansive so zero moving circular shadow boundary follows the player
-        if (QualitySettings.shadowDistance < 400f)
-        {
-            QualitySettings.shadowDistance = 450f;
-        }
     }
 
     // ───────────────────────────────────────────────────────────────
@@ -394,7 +411,7 @@ public class DayNightController : MonoBehaviour
 
     public void NotifyMazeSystemDay()
     {
-        // 1. Only open the door of the active block facing the Glade
+        // 1. Trigger MazeBlockManager (ONLY the active block facing the Glade opens its door!)
         var mazeManager = FindFirstObjectByType<MazeSystem.MazeBlockManager>();
         if (mazeManager != null)
         {
@@ -414,7 +431,7 @@ public class DayNightController : MonoBehaviour
 
     public void NotifyMazeSystemNight()
     {
-        // 1. Only close the door of the active block facing the Glade
+        // 1. Trigger MazeBlockManager (ONLY the active block facing the Glade closes its door!)
         var mazeManager = FindFirstObjectByType<MazeSystem.MazeBlockManager>();
         if (mazeManager != null)
         {
@@ -512,14 +529,14 @@ public class DayNightController : MonoBehaviour
         float sunArcProgress = cycleTime / 0.50f;
         Vector3 sunPos = CalculateSkyArcPosition(Mathf.Clamp01(sunArcProgress));
 
-        // Smooth Sun Horizon Fade Envelope: Fades in smoothly at 0.0..0.08, fades out at 0.42..0.50
+        // Smooth Sun Horizon Fade Envelope: Fades in smoothly at 0.0..0.06, fades out at 0.44..0.50
         float sunHorizonFade = 0f;
         if (cycleTime >= 0f && cycleTime <= 0.50f)
         {
-            if (cycleTime < 0.08f)
-                sunHorizonFade = Mathf.SmoothStep(0f, 1f, cycleTime / 0.08f);
-            else if (cycleTime > 0.42f)
-                sunHorizonFade = Mathf.SmoothStep(1f, 0f, (cycleTime - 0.42f) / 0.08f);
+            if (cycleTime < 0.06f)
+                sunHorizonFade = Mathf.SmoothStep(0f, 1f, cycleTime / 0.06f);
+            else if (cycleTime > 0.44f)
+                sunHorizonFade = Mathf.SmoothStep(1f, 0f, (cycleTime - 0.44f) / 0.06f);
             else
                 sunHorizonFade = 1f;
         }
@@ -551,14 +568,14 @@ public class DayNightController : MonoBehaviour
         float moonArcProgress = (cycleTime - 0.50f) / 0.50f;
         Vector3 moonPos = CalculateSkyArcPosition(Mathf.Clamp01(moonArcProgress));
 
-        // Smooth Moon Horizon Fade Envelope: Fades in smoothly at 0.50..0.58, fades out at 0.92..1.00
+        // Smooth Moon Horizon Fade Envelope: Fades in smoothly at 0.50..0.56, fades out at 0.94..1.00
         float moonHorizonFade = 0f;
         if (cycleTime >= 0.50f && cycleTime <= 1.0f)
         {
-            if (cycleTime < 0.58f)
-                moonHorizonFade = Mathf.SmoothStep(0f, 1f, (cycleTime - 0.50f) / 0.08f);
-            else if (cycleTime > 0.92f)
-                moonHorizonFade = Mathf.SmoothStep(1f, 0f, (cycleTime - 0.92f) / 0.08f);
+            if (cycleTime < 0.56f)
+                moonHorizonFade = Mathf.SmoothStep(0f, 1f, (cycleTime - 0.50f) / 0.06f);
+            else if (cycleTime > 0.94f)
+                moonHorizonFade = Mathf.SmoothStep(1f, 0f, (cycleTime - 0.94f) / 0.06f);
             else
                 moonHorizonFade = 1f;
         }
@@ -608,50 +625,51 @@ public class DayNightController : MonoBehaviour
             Color lightCol;
             float totalIntensity;
 
-            Vector3 dirSun = (worldCenter - sunPos).normalized;
-            Vector3 dirMoon = (worldCenter - moonPos).normalized;
-
-            if (cycleTime < 0.44f)
+            if (cycleTime < 0.45f)
             {
-                // Pure Daylight: Rays originate directly from Sun, casting authentic parallel shadows
+                // Pure Daylight
                 lightSourcePos = sunPos;
-                lightForward = dirSun;
+                lightForward = (worldCenter - sunPos).normalized;
                 totalIntensity = sunCurrentIntensity;
 
                 if (cycleTime < 0.08f)
                     lightCol = Color.Lerp(sunriseColor, dayColor, Mathf.SmoothStep(0f, 1f, cycleTime / 0.08f));
-                else if (cycleTime > 0.36f)
-                    lightCol = Color.Lerp(dayColor, goldenHourColor, Mathf.SmoothStep(0f, 1f, (cycleTime - 0.36f) / 0.08f));
+                else if (cycleTime > 0.38f)
+                    lightCol = Color.Lerp(dayColor, goldenHourColor, Mathf.SmoothStep(0f, 1f, (cycleTime - 0.38f) / 0.07f));
                 else
                     lightCol = dayColor;
             }
-            else if (cycleTime < 0.56f)
+            else if (cycleTime < 0.55f)
             {
                 // Seamless Twilight Dusk Blend (Sunset -> Night)
-                float tDusk = Mathf.SmoothStep(0f, 1f, (cycleTime - 0.44f) / 0.12f);
+                float tDusk = (cycleTime - 0.45f) / 0.10f;
                 lightSourcePos = Vector3.Lerp(sunPos, moonPos, tDusk);
+                Vector3 dirSun = (worldCenter - sunPos).normalized;
+                Vector3 dirMoon = (worldCenter - moonPos).normalized;
                 lightForward = Vector3.Slerp(dirSun, dirMoon, tDusk);
 
-                Color duskColor = Color.Lerp(sunsetColor, twilightColor, tDusk);
-                lightCol = Color.Lerp(duskColor, nightColor, tDusk);
+                Color duskColor = Color.Lerp(sunsetColor, twilightColor, Mathf.SmoothStep(0f, 1f, tDusk));
+                lightCol = Color.Lerp(duskColor, nightColor, Mathf.SmoothStep(0f, 1f, tDusk));
                 totalIntensity = Mathf.Lerp(sunCurrentIntensity, moonCurrentIntensity, tDusk);
             }
             else if (cycleTime < 0.94f)
             {
-                // Pure Moonlight: Rays originate directly from Moon, casting authentic lunar shadows
+                // Pure Moonlight
                 lightSourcePos = moonPos;
-                lightForward = dirMoon;
+                lightForward = (worldCenter - moonPos).normalized;
                 lightCol = nightColor;
                 totalIntensity = moonCurrentIntensity;
             }
             else
             {
                 // Seamless Twilight Dawn Blend (Night -> Sunrise)
-                float tDawn = Mathf.SmoothStep(0f, 1f, (cycleTime - 0.94f) / 0.06f);
+                float tDawn = (cycleTime - 0.94f) / 0.06f;
                 lightSourcePos = Vector3.Lerp(moonPos, sunPos, tDawn);
+                Vector3 dirMoon = (worldCenter - moonPos).normalized;
+                Vector3 dirSun = (worldCenter - sunPos).normalized;
                 lightForward = Vector3.Slerp(dirMoon, dirSun, tDawn);
 
-                lightCol = Color.Lerp(nightColor, sunriseColor, tDawn);
+                lightCol = Color.Lerp(nightColor, sunriseColor, Mathf.SmoothStep(0f, 1f, tDawn));
                 totalIntensity = Mathf.Lerp(moonCurrentIntensity, sunCurrentIntensity, tDawn);
             }
 
@@ -740,15 +758,19 @@ public class DayNightController : MonoBehaviour
         UpdateStarsVisibility(starAlpha);
 
         // ── 5. REALISTIC CLOUD CANOPY UPDATE ───────────────────────
+        Vector3 activeCelestialPos = (cycleTime <= 0.50f) ? sunPos : moonPos;
         Color activeLightCol = directionalLight != null ? directionalLight.color : Color.white;
-        UpdateCloudCanopyLighting(sunPos, moonPos, activeLightCol);
+        UpdateCloudCanopyLighting(activeCelestialPos, activeLightCol);
 
-        // Center Cloud Canopy directly above the active world/glade
+        // Center Cloud Canopy and Star Dome directly above the active world/glade
         if (_cloudCanopyObject != null)
             _cloudCanopyObject.transform.position = worldCenter + Vector3.up * cloudCanopyAltitude;
+
+        if (starsSystem != null)
+            starsSystem.transform.position = worldCenter + Vector3.up * 500f; // High base: ZERO stars can touch ground!
     }
 
-    private void UpdateCloudCanopyLighting(Vector3 sunPos, Vector3 moonPos, Color lightColor)
+    private void UpdateCloudCanopyLighting(Vector3 lightPos, Color lightColor)
     {
         if (_cloudCanopyObject == null) return;
         var renderer = _cloudCanopyObject.GetComponent<MeshRenderer>();
@@ -760,42 +782,23 @@ public class DayNightController : MonoBehaviour
             renderer.material = _cloudCanopyMaterialInstance;
         }
 
-        Vector3 worldCenter = GetWorldCenter();
-        Vector3 dirSun = (sunPos - worldCenter).normalized;
-        Vector3 dirMoon = (moonPos - worldCenter).normalized;
-        Vector3 celestialDir;
-
-        // Smooth continuous celestial light direction for cloud forward scatter (Zero instant pops at twilight!)
-        if (cycleTime < 0.44f)
-        {
-            celestialDir = dirSun;
-        }
-        else if (cycleTime < 0.56f)
-        {
-            float t = Mathf.SmoothStep(0f, 1f, (cycleTime - 0.44f) / 0.12f);
-            celestialDir = Vector3.Slerp(dirSun, dirMoon, t);
-        }
-        else if (cycleTime < 0.94f)
-        {
-            celestialDir = dirMoon;
-        }
-        else
-        {
-            float t = Mathf.SmoothStep(0f, 1f, (cycleTime - 0.94f) / 0.06f);
-            celestialDir = Vector3.Slerp(dirMoon, dirSun, t);
-        }
-
-        _cloudCanopyMaterialInstance.SetVector("_SunDirection", celestialDir);
+        Vector3 sunDirection = (lightPos - GetWorldCenter()).normalized;
+        _cloudCanopyMaterialInstance.SetVector("_SunDirection", sunDirection);
         _cloudCanopyMaterialInstance.SetFloat("_CloudCoverage", cloudCoverage);
+        _cloudCanopyMaterialInstance.SetFloat("_CloudDensity", cloudDensity);
+        _cloudCanopyMaterialInstance.SetFloat("_CloudSoftness", cloudSoftness);
+        _cloudCanopyMaterialInstance.SetFloat("_Tiling", cloudScale);
+        _cloudCanopyMaterialInstance.SetFloat("_WindSpeedX", cloudWindSpeed);
+        _cloudCanopyMaterialInstance.SetFloat("_WindSpeedY", cloudWindSpeed * 0.5f);
 
-        // 24-Hour Continuous Realistic Cloud Color Palette (Silky Hermite Transitions)
+        // 24-Hour Continuous Realistic Cloud Color Palette
         Color baseCloud;
         Color shadowCloud;
 
         if (cycleTime < 0.08f)
         {
             // Dawn golden peach
-            float factor = Mathf.SmoothStep(0f, 1f, cycleTime / 0.08f);
+            float factor = cycleTime / 0.08f;
             baseCloud = Color.Lerp(new Color(1f, 0.78f, 0.58f, 0.95f), new Color(1f, 1f, 1f, 0.95f), factor);
             shadowCloud = Color.Lerp(new Color(0.40f, 0.28f, 0.45f, 1f), new Color(0.38f, 0.42f, 0.52f, 1f), factor);
         }
@@ -808,16 +811,16 @@ public class DayNightController : MonoBehaviour
         else if (cycleTime < 0.50f)
         {
             // Sunset crimson & amber clouds
-            float factor = Mathf.SmoothStep(0f, 1f, (cycleTime - 0.38f) / 0.12f);
-            baseCloud = Color.Lerp(new Color(1f, 1f, 1f, 0.95f), new Color(1f, 0.52f, 0.25f, 0.95f), factor);
-            shadowCloud = Color.Lerp(new Color(0.38f, 0.42f, 0.52f, 1f), new Color(0.35f, 0.20f, 0.34f, 1f), factor);
+            float factor = (cycleTime - 0.38f) / 0.12f;
+            baseCloud = Color.Lerp(new Color(1f, 1f, 1f, 0.95f), new Color(1f, 0.48f, 0.20f, 0.95f), factor);
+            shadowCloud = Color.Lerp(new Color(0.38f, 0.42f, 0.52f, 1f), new Color(0.35f, 0.18f, 0.32f, 1f), factor);
         }
         else if (cycleTime < 0.58f)
         {
             // Twilight dusk silhouettes
-            float factor = Mathf.SmoothStep(0f, 1f, (cycleTime - 0.50f) / 0.08f);
-            baseCloud = Color.Lerp(new Color(1f, 0.52f, 0.25f, 0.95f), new Color(0.22f, 0.26f, 0.40f, 0.88f), factor);
-            shadowCloud = Color.Lerp(new Color(0.35f, 0.20f, 0.34f, 1f), new Color(0.06f, 0.08f, 0.16f, 1f), factor);
+            float factor = (cycleTime - 0.50f) / 0.08f;
+            baseCloud = Color.Lerp(new Color(1f, 0.48f, 0.20f, 0.95f), new Color(0.22f, 0.26f, 0.40f, 0.88f), factor);
+            shadowCloud = Color.Lerp(new Color(0.35f, 0.18f, 0.32f, 1f), new Color(0.06f, 0.08f, 0.16f, 1f), factor);
         }
         else if (cycleTime < 0.92f)
         {
@@ -828,7 +831,7 @@ public class DayNightController : MonoBehaviour
         else
         {
             // Pre-dawn transition
-            float factor = Mathf.SmoothStep(0f, 1f, (cycleTime - 0.92f) / 0.08f);
+            float factor = (cycleTime - 0.92f) / 0.08f;
             baseCloud = Color.Lerp(new Color(0.22f, 0.26f, 0.40f, 0.88f), new Color(1f, 0.78f, 0.58f, 0.95f), factor);
             shadowCloud = Color.Lerp(new Color(0.06f, 0.08f, 0.16f, 1f), new Color(0.40f, 0.28f, 0.45f, 1f), factor);
         }
@@ -845,24 +848,24 @@ public class DayNightController : MonoBehaviour
         var renderer = starsSystem.GetComponent<ParticleSystemRenderer>();
         if (renderer == null) return;
 
-        // Failsafe: if particles were ever lost or cleared upon Play, firmly place them back
+        // Failsafe: if particles were ever lost, firmly place them back on the upper dome
         if (starsSystem.particleCount < 600)
         {
             ConfigureElevatedStarsParticleSystem(starsSystem);
         }
 
-        // Always center star dome directly on camera so stars remain fixed in the high sky
-        Camera mainCam = Camera.main;
-        Vector3 camPos = mainCam != null ? mainCam.transform.position : GetWorldCenter();
-        starsSystem.transform.position = camPos + Vector3.up * 200f;
-
-        bool showStars = alpha > 0.005f;
-        if (renderer.enabled != showStars)
+        if (alpha <= 0.005f)
         {
-            renderer.enabled = showStars;
+            if (renderer.enabled) renderer.enabled = false;
+            return;
         }
 
-        if (showStars && renderer.sharedMaterial != null)
+        if (!renderer.enabled)
+        {
+            renderer.enabled = true;
+        }
+
+        if (renderer.sharedMaterial != null)
         {
             if (_starMaterialInstance == null || _starMaterialInstance.shader != renderer.sharedMaterial.shader)
             {
@@ -870,13 +873,13 @@ public class DayNightController : MonoBehaviour
                 renderer.material = _starMaterialInstance;
             }
 
-            Color starColor = new Color(2.5f, 2.5f, 3.2f, Mathf.Clamp01(alpha));
+            Color starColor = new Color(1f, 1f, 1f, Mathf.Clamp01(alpha));
             if (_starMaterialInstance.HasProperty("_BaseColor"))
                 _starMaterialInstance.SetColor("_BaseColor", starColor);
             if (_starMaterialInstance.HasProperty("_Color"))
                 _starMaterialInstance.SetColor("_Color", starColor);
             if (_starMaterialInstance.HasProperty("_EmissionColor"))
-                _starMaterialInstance.SetColor("_EmissionColor", new Color(3f, 3f, 3.8f) * alpha);
+                _starMaterialInstance.SetColor("_EmissionColor", new Color(1.4f, 1.4f, 1.8f) * alpha);
         }
     }
 
@@ -1189,7 +1192,7 @@ public class DayNightController : MonoBehaviour
                 var child = transform.GetChild(i);
                 if (child == null) continue;
                 string n = child.name;
-                if (n.Contains("Cumulus") || n.Contains("Cirrus") || n == "Clouds_Layer" || n.Contains("Cloud_") || n.Contains("Terrain_Fog"))
+                if (n.Contains("Cumulus") || n.Contains("Cirrus") || n == "Clouds_Layer")
                 {
                     SafeDestroy(child.gameObject);
                 }
@@ -1201,7 +1204,7 @@ public class DayNightController : MonoBehaviour
             {
                 if (ps == null) continue;
                 string n = ps.gameObject.name;
-                if (n.Contains("Cumulus") || n.Contains("Cirrus") || n == "Clouds_Layer" || n.Contains("Terrain_Fog"))
+                if (n.Contains("Cumulus") || n.Contains("Cirrus") || n == "Clouds_Layer")
                 {
                     SafeDestroy(ps.gameObject);
                 }
@@ -1350,12 +1353,12 @@ public class DayNightController : MonoBehaviour
         ParticleSystem.Particle[] stars = new ParticleSystem.Particle[count];
         var rng = new System.Random(42);
 
-        float radius = 1800f; // Closer dome radius for crisp, high-visibility glittering stars
+        float radius = starDomeRadius; // 4200m
         for (int i = 0; i < count; i++)
         {
             float azimuth = (float)(rng.NextDouble() * Math.PI * 2.0);
-            // Elevation: 14° to 88° strictly above the horizon!
-            float minElev = 0.18f;
+            // Elevation: 15° to 88° strictly above the horizon!
+            float minElev = 0.22f;
             float maxElev = 0.98f;
             float elev = minElev + (float)(rng.NextDouble() * (maxElev - minElev));
 
@@ -1363,23 +1366,23 @@ public class DayNightController : MonoBehaviour
             float sinElev = Mathf.Sin(elev * Mathf.PI * 0.5f);
 
             float x = radius * cosElev * Mathf.Cos(azimuth);
-            float y = radius * sinElev; // Strictly in the upper sky hemisphere (300m to 1800m altitude)
+            float y = radius * sinElev; // Strictly positive high sky altitude (1200m to 4200m!)
             float z = radius * cosElev * Mathf.Sin(azimuth);
 
             stars[i].position = new Vector3(x, y, z);
-            stars[i].startSize = 22f + (float)(rng.NextDouble() * 32f); // 22m to 54m prominent stars
+            stars[i].startSize = 24f + (float)(rng.NextDouble() * 32f); // 24m to 56m glittering stars
             stars[i].startLifetime = float.MaxValue;
             stars[i].remainingLifetime = float.MaxValue;
             stars[i].velocity = Vector3.zero;
 
             float temp = (float)rng.NextDouble();
             Color starCol;
-            if (temp < 0.65f)
-                starCol = new Color(2.5f, 2.5f, 3.2f, 1f); // Radiant diamond white
-            else if (temp < 0.85f)
-                starCol = new Color(3.2f, 2.6f, 1.8f, 1f); // Warm stellar gold
+            if (temp < 0.70f)
+                starCol = new Color(0.95f, 0.98f, 1.0f, 1f); // Diamond white
+            else if (temp < 0.88f)
+                starCol = new Color(1.0f, 0.92f, 0.80f, 1f); // Warm stellar gold
             else
-                starCol = new Color(1.8f, 2.8f, 3.6f, 1f); // Celestial sapphire blue
+                starCol = new Color(0.80f, 0.90f, 1.0f, 1f); // Celestial blue
 
             stars[i].startColor = starCol;
         }

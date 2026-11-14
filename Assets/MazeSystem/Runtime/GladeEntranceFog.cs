@@ -11,6 +11,8 @@ namespace MazeSystem
     public sealed class GladeEntranceFog : MonoBehaviour
     {
         [Header("── Fog Wall ─────────────────────────────────")]
+        [Tooltip("Disable Glade center fog completely so no fog plane or particles appear")]
+        [SerializeField] private bool disableFog = true;
         [SerializeField] private Renderer fogRenderer;
         [SerializeField] private Material fogMaterial;
         [SerializeField] private string coverageProperty = "_Coverage";
@@ -41,11 +43,27 @@ namespace MazeSystem
             if (dustParticles != null)
                 _emission = dustParticles.emission;
 
+            if (disableFog)
+            {
+                if (fogRenderer != null) fogRenderer.enabled = false;
+                if (dustParticles != null && dustParticles.isPlaying) dustParticles.Stop();
+                Coverage = 0f;
+                return;
+            }
+
             SetCoverage(initialCoverage);
         }
 
         public void SetCoverage(float value)
         {
+            if (disableFog)
+            {
+                Coverage = 0f;
+                if (fogRenderer != null) fogRenderer.enabled = false;
+                if (dustParticles != null && dustParticles.isPlaying) dustParticles.Stop();
+                return;
+            }
+
             Coverage = Mathf.Clamp01(value);
 
             if (fogRenderer != null)
@@ -79,6 +97,12 @@ namespace MazeSystem
 
         public IEnumerator FadeTo(float target, float duration)
         {
+            if (disableFog)
+            {
+                SetCoverage(0f);
+                yield break;
+            }
+
             target = Mathf.Clamp01(target);
             if (duration <= 0.0001f)
             {

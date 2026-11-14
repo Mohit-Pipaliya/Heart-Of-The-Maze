@@ -3594,7 +3594,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1089217682
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3602,11 +3602,12 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1089217681}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 82680bc19c1dc41f88bac3ab7a60e23f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MazeSystem::MazeSystem.GladeEntranceFog
+  disableFog: 1
   fogRenderer: {fileID: 1089217683}
   fogMaterial: {fileID: 2100000, guid: 7b6a5c451c99f4bbfba6de59f3485b37, type: 2}
   coverageProperty: _Coverage
@@ -3620,7 +3621,7 @@ MeshRenderer:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1089217681}
-  m_Enabled: 1
+  m_Enabled: 0
   m_CastShadows: 1
   m_ReceiveShadows: 1
   m_DynamicOccludee: 1

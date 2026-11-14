@@ -156,6 +156,43 @@ public class DayNightControllerEditor : Editor
 
         EditorGUILayout.Space(8);
 
+        // Cloud Canopy Quick Presets
+        EditorGUILayout.LabelField("☁️ Cloud Canopy Quick Presets (Coverage & Density)", EditorStyles.boldLabel);
+        EditorGUILayout.BeginHorizontal();
+        if (GUILayout.Button("🌤️ Few / Clear Clouds", GUILayout.Height(26)))
+        {
+            Undo.RecordObject(controller, "Preset Few Clouds");
+            controller.CloudCoverage = 0.32f;
+            controller.CloudDensity = 1.0f;
+            controller.CloudScale = 0.65f;
+            controller.UpdateCelestialState();
+            EditorUtility.SetDirty(controller);
+            SceneView.RepaintAll();
+        }
+        if (GUILayout.Button("⛅ Scattered Natural", GUILayout.Height(26)))
+        {
+            Undo.RecordObject(controller, "Preset Scattered Clouds");
+            controller.CloudCoverage = 0.52f;
+            controller.CloudDensity = 1.4f;
+            controller.CloudScale = 0.65f;
+            controller.UpdateCelestialState();
+            EditorUtility.SetDirty(controller);
+            SceneView.RepaintAll();
+        }
+        if (GUILayout.Button("☁️ Dense / Heavy Canopy", GUILayout.Height(26)))
+        {
+            Undo.RecordObject(controller, "Preset Dense Clouds");
+            controller.CloudCoverage = 0.78f;
+            controller.CloudDensity = 2.6f;
+            controller.CloudScale = 0.75f;
+            controller.UpdateCelestialState();
+            EditorUtility.SetDirty(controller);
+            SceneView.RepaintAll();
+        }
+        EditorGUILayout.EndHorizontal();
+
+        EditorGUILayout.Space(8);
+
         // Purge & Setup Buttons
         EditorGUILayout.BeginHorizontal();
         if (GUILayout.Button("🧹 Purge Ground Particles & Clouds", GUILayout.Height(30)))
