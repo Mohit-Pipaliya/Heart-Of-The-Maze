@@ -23,12 +23,7 @@ public class CameraController : MonoBehaviour
 
     [Header("Collision")]
     public LayerMask collisionMask;
-    public float minDistance = 0.15f;
-    public float cameraCollisionRadius = 0.20f;
-    public float cameraCollisionMargin = 0.22f;
-
-    private Camera _cam;
-    private float _collisionSmoothDist = 4.0f;
+    public float minDistance = 0.5f;
 
     [Header("Editor Preview (Only for tuning)")]
     [Range(-20f, 70f)]
@@ -87,6 +82,7 @@ public class CameraController : MonoBehaviour
     // Zoom ke liye variables
     private float _currentDistance;
     private Vector3 _currentOffset;
+    private float _smoothCollisionDist = 0f;
     private GunEquipSystem _gunSystem;
 
     // Cinematic variables
@@ -204,13 +200,12 @@ public class CameraController : MonoBehaviour
     {
         _currentDistance = distance;
         _currentOffset = targetOffset;
-        _collisionSmoothDist = distance;
+        _smoothCollisionDist = distance;
 
-        _cam = GetComponent<Camera>();
-        if (_cam == null) _cam = Camera.main;
-        if (_cam != null && _cam.nearClipPlane > 0.05f)
+        Camera cam = GetComponent<Camera>() ?? Camera.main;
+        if (cam != null && cam.nearClipPlane > 0.08f)
         {
-            _cam.nearClipPlane = 0.05f;
+            cam.nearClipPlane = 0.08f;
         }
 
         if (Application.isPlaying && target != null)
@@ -298,70 +293,89 @@ public class CameraController : MonoBehaviour
         
         float scale = target.lossyScale.y;
 
-        // Safe central origin at player height
-        Vector3 safeCenter = target.position + (Vector3.up * _currentOffset.y * scale);
+        // Apply offset (right/up/forward relative to player rotation)
+        Vector3 pivotPoint = target.position + (Vector3.up * _currentOffset.y * scale);
+        Vector3 shoulderOffset = rotation * new Vector3(_currentOffset.x * scale, 0f, _currentOffset.z * scale);
+        Vector3 actualTargetOffset = pivotPoint + shoulderOffset;
 
-        // Effective collision mask: ALWAYS includes Default (0) and Ground (24), strictly ignores Player/Triggers/etc.
-        int ignoreMask = LayerMask.GetMask("Player", "Ignore Raycast", "TransparentFX", "UI", "Enemy", "Item", "BodyPart", "Water");
-        int effectiveMask = (collisionMask.value != 0 ? (collisionMask.value | 1 | (1 << 24)) : ~0) & ~ignoreMask;
+        int defaultMask = LayerMask.GetMask("Default", "Ground");
+        int excludedMask = LayerMask.GetMask("Player", "Ignore Raycast", "TransparentFX", "UI", "Enemy", "Animal", "Item");
+        int mask = (collisionMask.value != 0 ? (collisionMask.value | defaultMask) : defaultMask) & ~excludedMask;
 
-        // Shoulder / lateral offset with anti-penetration probe
-        Vector3 lateralOffset = rotation * new Vector3(_currentOffset.x * scale, 0, _currentOffset.z * scale);
-        Vector3 probeOrigin = safeCenter;
-
-        if (lateralOffset.sqrMagnitude > 0.001f)
+        // Shoulder offset collision check: prevent right-shoulder camera from starting inside a wall to player's right
+        if (shoulderOffset.sqrMagnitude > 0.001f)
         {
-            float shoulderDist = lateralOffset.magnitude;
-            Vector3 shoulderDir = lateralOffset / shoulderDist;
-            if (Physics.SphereCast(safeCenter, cameraCollisionRadius, shoulderDir, out RaycastHit sHit, shoulderDist, effectiveMask, QueryTriggerInteraction.Ignore))
+            if (Physics.SphereCast(pivotPoint, 0.2f, shoulderOffset.normalized, out RaycastHit shoulderHit, shoulderOffset.magnitude, mask, QueryTriggerInteraction.Ignore))
             {
-                float safeSDist = Mathf.Max(0f, sHit.distance - cameraCollisionMargin);
-                probeOrigin = safeCenter + shoulderDir * safeSDist;
-            }
-            else
-            {
-                probeOrigin = safeCenter + lateralOffset;
+                actualTargetOffset = pivotPoint + shoulderOffset.normalized * Mathf.Max(0f, shoulderHit.distance - 0.15f);
             }
         }
 
         float scaledDistance = _currentDistance * scale;
-        Vector3 castDirection = -(rotation * Vector3.forward);
         float maxDistance = scaledDistance + _kickbackDistance;
+        Vector3 camBackward = -(rotation * Vector3.forward);
+        Vector3 unconstrainedPosition = actualTargetOffset + camBackward * maxDistance;
 
         if (Application.isPlaying)
         {
-            float targetDistance = maxDistance;
+            float sphereRadius = 0.28f;
+            float safetyBuffer = 0.16f;
+            float minAllowedDistance = Mathf.Max(minDistance, 0.35f);
+            float targetCollisionDist = maxDistance;
 
-            // SphereCast from safe probeOrigin backwards towards camera position
-            if (Physics.SphereCast(probeOrigin, cameraCollisionRadius, castDirection, out RaycastHit hit, maxDistance, effectiveMask, QueryTriggerInteraction.Ignore))
+            // 1. Primary SphereCast from target pivot towards camera
+            if (Physics.SphereCast(actualTargetOffset, sphereRadius, camBackward, out RaycastHit hit, maxDistance, mask, QueryTriggerInteraction.Ignore))
             {
-                targetDistance = Mathf.Clamp(hit.distance - cameraCollisionMargin, minDistance, maxDistance);
+                targetCollisionDist = Mathf.Min(targetCollisionDist, hit.distance - safetyBuffer);
             }
 
-            // INSTANT collision response when pushing into walls (no lag/penetration!)
-            if (targetDistance < _collisionSmoothDist)
+            // 2. Precision Raycast for sharp corners and edges
+            if (Physics.Raycast(actualTargetOffset, camBackward, out RaycastHit rayHit, maxDistance, mask, QueryTriggerInteraction.Ignore))
             {
-                _collisionSmoothDist = targetDistance;
+                targetCollisionDist = Mathf.Min(targetCollisionDist, rayHit.distance - (sphereRadius + safetyBuffer));
+            }
+
+            targetCollisionDist = Mathf.Clamp(targetCollisionDist, minAllowedDistance, maxDistance);
+
+            // 3. ZERO-LAG Collision Push-In (instant snap against wall, smooth ease out when clearing wall)
+            if (_smoothCollisionDist <= 0.01f || targetCollisionDist < _smoothCollisionDist)
+            {
+                _smoothCollisionDist = targetCollisionDist; // Instant clamp! Camera can NEVER enter a wall!
             }
             else
             {
-                // Smooth easing when moving back into open space
-                _collisionSmoothDist = Mathf.MoveTowards(_collisionSmoothDist, targetDistance, Time.deltaTime * (zoomSpeed * 3f));
+                _smoothCollisionDist = Mathf.Lerp(_smoothCollisionDist, targetCollisionDist, Time.deltaTime * 12f);
             }
 
-            Vector3 targetCamPos = probeOrigin + (castDirection * _collisionSmoothDist);
+            Vector3 finalCamPos = actualTargetOffset + camBackward * _smoothCollisionDist;
 
-            // Additional safety check: if point is inside geometry (e.g. tight corner), push forward
-            if (Physics.CheckSphere(targetCamPos, cameraCollisionRadius * 0.85f, effectiveMask, QueryTriggerInteraction.Ignore))
+            // 4. Overlap penetration failsafe: ensure camera sphere is 100% outside all solid colliders
+            Collider[] overlaps = Physics.OverlapSphere(finalCamPos, sphereRadius * 0.85f, mask, QueryTriggerInteraction.Ignore);
+            if (overlaps != null && overlaps.Length > 0)
             {
-                targetCamPos = Vector3.MoveTowards(targetCamPos, safeCenter, cameraCollisionMargin + 0.05f);
+                for (int i = 0; i < overlaps.Length; i++)
+                {
+                    Vector3 closest = overlaps[i].ClosestPoint(finalCamPos);
+                    Vector3 pushDir = finalCamPos - closest;
+                    float pushDist = pushDir.magnitude;
+                    if (pushDist < 0.001f)
+                    {
+                        // Camera center is completely embedded inside collider, push directly towards target pivot
+                        pushDir = (actualTargetOffset - finalCamPos).normalized;
+                        finalCamPos += pushDir * (sphereRadius + 0.15f);
+                    }
+                    else if (pushDist < sphereRadius)
+                    {
+                        finalCamPos += pushDir.normalized * (sphereRadius - pushDist + 0.08f);
+                    }
+                }
             }
 
-            transform.position = targetCamPos + _shakeOffset;
+            transform.position = finalCamPos + _shakeOffset;
         }
         else
         {
-            transform.position = probeOrigin + (castDirection * maxDistance);
+            transform.position = unconstrainedPosition;
         }
 
         transform.rotation = rotation;
