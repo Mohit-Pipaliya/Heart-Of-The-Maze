@@ -272,11 +272,11 @@ public class DayNightController : MonoBehaviour
     {
         if (IsDay)
         {
-            NotifyMazeSystemDay();
+            NotifyDoorsDay();
         }
         else
         {
-            NotifyMazeSystemNight();
+            NotifyDoorsNight();
         }
     }
 
@@ -352,13 +352,13 @@ public class DayNightController : MonoBehaviour
             {
                 OnSunrise?.Invoke();
                 OnDayStart?.Invoke();
-                NotifyMazeSystemDay();
+                NotifyDoorsDay();
             }
             else
             {
                 OnSunset?.Invoke();
                 OnNightStart?.Invoke();
-                NotifyMazeSystemNight();
+                NotifyDoorsNight();
             }
         }
     }
@@ -369,8 +369,8 @@ public class DayNightController : MonoBehaviour
         cycleTime = day ? (p * 0.5f) : (0.5f + p * 0.5f);
         UpdateCelestialState();
         _previousWasDay = day;
-        if (day) NotifyMazeSystemDay();
-        else NotifyMazeSystemNight();
+        if (day) NotifyDoorsDay();
+        else NotifyDoorsNight();
     }
 
     [ContextMenu("Jump To Sunrise")]
@@ -379,7 +379,7 @@ public class DayNightController : MonoBehaviour
         cycleTime = 0.03f;
         _previousWasDay = true;
         UpdateCelestialState();
-        NotifyMazeSystemDay();
+        NotifyDoorsDay();
     }
 
     [ContextMenu("Jump To High Noon")]
@@ -388,7 +388,7 @@ public class DayNightController : MonoBehaviour
         cycleTime = 0.25f;
         _previousWasDay = true;
         UpdateCelestialState();
-        NotifyMazeSystemDay();
+        NotifyDoorsDay();
     }
 
     [ContextMenu("Jump To Sunset")]
@@ -397,7 +397,7 @@ public class DayNightController : MonoBehaviour
         cycleTime = 0.52f;
         _previousWasDay = false;
         UpdateCelestialState();
-        NotifyMazeSystemNight();
+        NotifyDoorsNight();
     }
 
     [ContextMenu("Jump To Midnight")]
@@ -406,48 +406,31 @@ public class DayNightController : MonoBehaviour
         cycleTime = 0.75f;
         _previousWasDay = false;
         UpdateCelestialState();
-        NotifyMazeSystemNight();
+        NotifyDoorsNight();
     }
 
-    public void NotifyMazeSystemDay()
+    public void NotifyDoorsDay()
     {
-        // 1. Trigger MazeBlockManager (ONLY the active block facing the Glade opens its door!)
-        var mazeManager = FindFirstObjectByType<MazeSystem.MazeBlockManager>();
-        if (mazeManager != null)
+        var slidingDoors = FindObjectsByType<DoubleSlidingDoor>(FindObjectsSortMode.None);
+        foreach (var door in slidingDoors)
         {
-            mazeManager.AutoAdvanceDayNight = false;
-            mazeManager.DelayNightWhilePlayerInside = false;
-            mazeManager.TriggerDay();
-            mazeManager.OpenActiveDoor();
-        }
-
-        // 2. Unlock Glade Entrance Gate Blocker
-        var gate = FindFirstObjectByType<MazeSystem.GladeEntranceGate>();
-        if (gate != null)
-        {
-            gate.SetBlocked(false);
+            if (door != null && door.controlledByDayNight)
+                door.OpenDoor();
         }
     }
 
-    public void NotifyMazeSystemNight()
+    public void NotifyDoorsNight()
     {
-        // 1. Trigger MazeBlockManager (ONLY the active block facing the Glade closes its door!)
-        var mazeManager = FindFirstObjectByType<MazeSystem.MazeBlockManager>();
-        if (mazeManager != null)
+        var slidingDoors = FindObjectsByType<DoubleSlidingDoor>(FindObjectsSortMode.None);
+        foreach (var door in slidingDoors)
         {
-            mazeManager.AutoAdvanceDayNight = false;
-            mazeManager.DelayNightWhilePlayerInside = false;
-            mazeManager.TriggerNight();
-            mazeManager.CloseActiveDoor();
-        }
-
-        // 2. Lock Glade Entrance Gate Blocker
-        var gate = FindFirstObjectByType<MazeSystem.GladeEntranceGate>();
-        if (gate != null)
-        {
-            gate.SetBlocked(true);
+            if (door != null && door.controlledByDayNight)
+                door.CloseDoor();
         }
     }
+
+    public void NotifyMazeSystemDay() => NotifyDoorsDay();
+    public void NotifyMazeSystemNight() => NotifyDoorsNight();
 
     // ───────────────────────────────────────────────────────────────
     //  Grand Sky Arc Calculation

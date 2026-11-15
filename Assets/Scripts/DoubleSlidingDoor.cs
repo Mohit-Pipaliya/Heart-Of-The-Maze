@@ -1,15 +1,13 @@
 using System;
 using UnityEngine;
-using MazeSystem;
 
 /// <summary>
 /// Normal Double Sliding Door Mechanism.
 /// Jab gate khulta hai toh Left Door ek taraf aur Right Door uski opposite taraf slide hota hai.
 /// Inspector me Axis (X, Y, Z) aur Slide Distance set karne ka aasan option hai.
-/// Implements IMazeDoor for full seamless Shifting Maze integration.
 /// </summary>
 [SelectionBase]
-public class DoubleSlidingDoor : MonoBehaviour, IMazeDoor
+public class DoubleSlidingDoor : MonoBehaviour
 {
     public enum DoorAxis
     {
