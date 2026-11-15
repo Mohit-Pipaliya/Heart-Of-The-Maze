@@ -10,14 +10,15 @@ using UnityEngine;
 /// 1. 8 Maze Blocks (Maze 1 to Maze 8).
 /// 2. Day 1 starts with Block 8 directly facing the Glade entrance.
 /// 3. Nightly Rotation (Mutual Position Swap with Automatic Glade Alignment):
-///    Every time a block swaps into the Glade entrance slot, it is automatically rotated
-///    so that its main entrance door is ALWAYS facing the Glade!
-/// 4. Ground Smoke VFX (Dhuva niche se nikalna):
-///    When night begins, mystical smoke billows up from the ground across the doorway archway,
-///    fading in smoothly. In the morning (day), the smoke stops and smoothly fades out!
+///    - Sequence: Block 8 -> Block 1 -> Block 2 -> Block 3 -> Block 4 -> Block 5 -> Block 6 -> Block 7 -> Block 8.
+///    - Exactly ONE block is at the Glade entrance at any given time (no overlapping ever).
+///    - Whichever block arrives at the Glade entrance is automatically rotated so its entrance door ALWAYS faces the Glade!
+/// 4. Complete BoxCollider Smoke VFX (Dhuva sari jagah se nikal kar BoxCollider ko pura dhak deta hai):
+///    - When night begins, smoke billows up from the ground across the entire BoxCollider area, fading in smoothly.
+///    - In the morning (day), the smoke stops and smoothly fades out!
 /// 5. Day/Night Doors:
-///    Day starts -> ONLY the single entrance door facing the Glade side opens. All other doors remain closed.
-///    Night starts -> Active entrance door closes (and stays closed all night).
+///    - Day starts -> ONLY the single entrance door facing the Glade side opens. All other doors remain closed.
+///    - Night starts -> Active entrance door closes (and stays closed all night).
 /// 6. One-Click Setup in Inspector!
 /// </summary>
 [DisallowMultipleComponent]
@@ -34,14 +35,14 @@ public class MazeManager : MonoBehaviour
     [Tooltip("Scene me 'maze enterence fog' empty GameObject ya BoxCollider yahan drag karein. (Empty chhodne par auto-find kar lega).")]
     public Transform mazeEntranceFog;
 
-    [Tooltip("Ground smoke visual effect script khud generate karegi")]
+    [Tooltip("Smoke visual effect script khud generate karegi")]
     public bool autoGenerateFog = true;
 
     [Tooltip("Smoke fade in / fade out duration (seconds)")]
     [Range(0.5f, 4f)] public float fogFadeDuration = 2.0f;
 
-    [Tooltip("Smoke ka color (mystical misty white/smoke gray)")]
-    public Color fogColor = new Color(0.85f, 0.88f, 0.94f, 0.85f);
+    [Tooltip("Smoke color (mystical pale smoke gray)")]
+    public Color fogColor = new Color(0.85f, 0.88f, 0.94f, 0.88f);
 
     [Header("─── 3. Day / Night Door Automation ─────────────────────")]
     [Tooltip("Automatically connect to DayNightController in scene")]
@@ -194,11 +195,11 @@ public class MazeManager : MonoBehaviour
         CloseActiveDoor();
         yield return new WaitForSeconds(0.8f);
 
-        // 2. Night shuru hote hi niche se dhuva (smoke) nikalna chalu ho aur fade in ho
+        // 2. Night shuru hote hi BoxCollider se dhuva (smoke) nikalna chalu ho aur fade in ho
         PlayAudio(fogSound);
         yield return FadeFog(1f, fogFadeDuration);
 
-        // 3. Play rumble audio and perform the mutual block swap behind the rising smoke
+        // 3. Play rumble audio and perform block swap behind the dense smoke
         PlayAudio(swapRumbleSound);
         AdvanceToNextBlock();
 
@@ -208,7 +209,7 @@ public class MazeManager : MonoBehaviour
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    //  BLOCK ROTATION & MUTUAL POSITION SWAP (DOOR ALWAYS FACES GLADE)
+    //  BLOCK ROTATION & MUTUAL POSITION SWAP (EXACTLY ONE BLOCK AT GLADE)
     // ═══════════════════════════════════════════════════════════════════════════
 
     public void AdvanceToNextBlock()
@@ -231,29 +232,49 @@ public class MazeManager : MonoBehaviour
             ReleaseAndCloseBlockDoors(outgoingBlock);
             ReleaseAndCloseBlockDoors(incomingBlock);
 
-            // Read the incoming block's current reserve position
-            int inHomeIdx = incomingBlockNum - 1;
-            Vector3 reservePos = _homePositions[inHomeIdx];
-            Quaternion reserveRot = _homeRotations[inHomeIdx];
+            // Read incoming block's current position (where it is currently resting in reserve)
+            Vector3 reservePos = incomingBlock.transform.position;
 
-            // 1. Purana (outgoing) block naye block ki reserve position aur normal rotation par jaye
-            outgoingBlock.transform.SetPositionAndRotation(reservePos, reserveRot);
+            // Failsafe: If reservePos is somehow at or near the Glade entrance, send to safe home slot
+            if (Vector3.Distance(reservePos, _activeSlotCenter) < 700f)
+            {
+                int safeIdx = (outgoingBlockNum - 1 < 7) ? outgoingBlockNum - 1 : 0;
+                reservePos = _homePositions[safeIdx];
+            }
 
-            // 2. Naya (incoming) block active Glade entrance slot par aaye,
-            //    AND is rotated so that its main entrance door is ALWAYS facing the Glade side!
+            // 1. Outgoing block moves to incoming block's reserve position with identity rotation
+            outgoingBlock.transform.SetPositionAndRotation(reservePos, Quaternion.identity);
+
+            // 2. Incoming block moves to the Glade entrance slot and rotates so its door ALWAYS faces Glade
             int optimalAngle = GetOptimalGladeRotation(incomingBlockNum);
             PositionBlockAtGladeSlot(incomingBlock, optimalAngle);
 
             currentActiveBlockNumber = incomingBlockNum;
 
-            // Ensure ONLY the Glade-facing door on incoming block is locked closed for the night
+            // 3. Strict Failsafe: Ensure that GLADE KE SAMNE HAMESHA EK HI BLOCK HO!
+            //    No other block is ever allowed to overlap or remain near the Glade entrance.
+            for (int i = 0; i < mazeBlocks.Length; i++)
+            {
+                GameObject b = mazeBlocks[i];
+                if (b != null && b != incomingBlock)
+                {
+                    if (Vector3.Distance(b.transform.position, _activeSlotCenter) < 700f)
+                    {
+                        int fallbackSlot = (i < 7) ? i : 0;
+                        b.transform.SetPositionAndRotation(_homePositions[fallbackSlot], Quaternion.identity);
+                        Debug.LogWarning($"[MazeManager] Failsafe: Cleared overlapping block {i + 1} away to reserve slot {fallbackSlot + 1}!");
+                    }
+                }
+            }
+
+            // Lock incoming Glade entrance door closed for the night
             DoubleSlidingDoor incomingGladeDoor = FindActiveEntranceDoor();
             if (incomingGladeDoor != null)
             {
                 incomingGladeDoor.CloseByManager();
             }
 
-            Debug.Log($"[MazeManager] MUTUAL SWAP SUCCESS: Block {outgoingBlockNum} moved to reserve ({reservePos.x:F0}, {reservePos.z:F0}). Block {incomingBlockNum} is now ACTIVE at Glade entrance with rotation {optimalAngle}°! Door facing Glade.");
+            Debug.Log($"[MazeManager] SWAP COMPLETE: Block {incomingBlockNum} is now the ONLY block at the Glade entrance (rot={optimalAngle}°, door facing Glade). Block {outgoingBlockNum} moved to reserve ({reservePos.x:F0}, {reservePos.z:F0}).");
         }
     }
 
@@ -309,7 +330,7 @@ public class MazeManager : MonoBehaviour
             PositionBlockAtGladeSlot(startBlock, GetOptimalGladeRotation(currentActiveBlockNumber));
         }
 
-        // Ensure other blocks are in their reserve slots
+        // Ensure other blocks are in their reserve slots (never at Glade entrance)
         for (int i = 0; i < 8; i++)
         {
             int blockNum = i + 1;
@@ -454,7 +475,7 @@ public class MazeManager : MonoBehaviour
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    //  GROUND SMOKE VFX (Dhuva niche se nikalna - Night ON / Day OFF)
+    //  BOXCOLLIDER COVERING SMOKE VFX (Dhuva sari jagah se nikal kar BoxCollider ko dhak leta hai)
     // ═══════════════════════════════════════════════════════════════════════════
 
     public void EnsureEntranceFogVisuals(bool forceRecreate = false)
@@ -478,7 +499,7 @@ public class MazeManager : MonoBehaviour
 
         if (existing == null)
         {
-            CreateGroundSmokeEffect();
+            CreateBoxColliderSmokeEffect();
         }
         else
         {
@@ -489,70 +510,68 @@ public class MazeManager : MonoBehaviour
         SetFogAlpha(_currentFogAlpha);
     }
 
-    private void CreateGroundSmokeEffect()
+    private void CreateBoxColliderSmokeEffect()
     {
         _fogEffectRoot = new GameObject("_GeneratedFogEffect");
         _fogEffectRoot.transform.SetParent(mazeEntranceFog, false);
 
-        // Position ground emitter right at ground level (Y = 0) spanning the doorway
         BoxCollider box = mazeEntranceFog.GetComponent<BoxCollider>();
-        Vector3 smokePosition = Vector3.zero;
-        Vector3 groundArea = new Vector3(25f, 1f, 90f);
+        Vector3 smokeCenter = Vector3.zero;
+        Vector3 smokeBoxSize = new Vector3(30f, 65f, 160f);
 
         if (box != null)
         {
-            smokePosition = new Vector3(box.center.x, 0.5f, box.center.z);
-            groundArea = new Vector3(Mathf.Max(25f, box.size.x), 1.2f, Mathf.Max(90f, box.size.z));
+            smokeCenter = box.center;
+            // Match the exact dimensions of user's BoxCollider so the ENTIRE collider is covered
+            smokeBoxSize = new Vector3(
+                Mathf.Max(25f, box.size.x),
+                Mathf.Max(35f, box.size.y),
+                Mathf.Max(80f, box.size.z)
+            );
         }
 
-        _fogEffectRoot.transform.localPosition = smokePosition;
+        _fogEffectRoot.transform.localPosition = smokeCenter;
         _fogEffectRoot.transform.localRotation = Quaternion.identity;
 
-        // Billowing Ground Smoke Particle System (Dhuva niche se nikalne wala)
-        GameObject psGo = new GameObject("GroundSmokeParticles");
+        // Billowing Smoke Particle System covering the entire BoxCollider volume
+        GameObject psGo = new GameObject("BoxColliderSmokeParticles");
         psGo.transform.SetParent(_fogEffectRoot.transform, false);
         psGo.transform.localPosition = Vector3.zero;
 
         _fogParticleSystem = psGo.AddComponent<ParticleSystem>();
         var main = _fogParticleSystem.main;
-        main.startLifetime = new ParticleSystem.MinMaxCurve(3.0f, 5.0f);
-        main.startSpeed = new ParticleSystem.MinMaxCurve(3.0f, 5.5f); // Upward rising speed
-        main.startSize = new ParticleSystem.MinMaxCurve(8f, 16f);     // Starts at ground size
-        main.startColor = new Color(fogColor.r, fogColor.g, fogColor.b, 0.85f);
-        main.maxParticles = 160;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(3.5f, 5.5f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(2.0f, 4.5f);
+        main.startSize = new ParticleSystem.MinMaxCurve(22f, 42f); // Large rolling smoke puffs
+        main.startColor = new Color(fogColor.r, fogColor.g, fogColor.b, 0.88f);
+        main.maxParticles = 350;
         main.simulationSpace = ParticleSystemSimulationSpace.Local;
         main.loop = true;
         main.playOnAwake = false;
 
-        // Emission from ground strip across doorway
-        var emission = _fogParticleSystem.emission;
-        emission.rateOverTime = 45f;
-        emission.enabled = false;
-
-        // Shape: Flat box at ground level
+        // Shape: Box matches user's entire BoxCollider area so smoke emits from everywhere inside it
         var shape = _fogParticleSystem.shape;
         shape.shapeType = ParticleSystemShapeType.Box;
-        shape.scale = groundArea;
-        shape.rotation = new Vector3(-90f, 0f, 0f); // Emits upwards (+Y) from ground
+        shape.scale = smokeBoxSize;
 
-        // Velocity: Rising upward with natural drift
+        // Upward rising velocity with 3D rolling turbulence
         var vel = _fogParticleSystem.velocityOverLifetime;
         vel.enabled = true;
         vel.space = ParticleSystemSimulationSpace.Local;
         vel.y = new ParticleSystem.MinMaxCurve(2.0f, 4.5f);
-        vel.x = new ParticleSystem.MinMaxCurve(-0.8f, 0.8f);
-        vel.z = new ParticleSystem.MinMaxCurve(-0.8f, 0.8f);
+        vel.x = new ParticleSystem.MinMaxCurve(-1.0f, 1.0f);
+        vel.z = new ParticleSystem.MinMaxCurve(-1.0f, 1.0f);
 
-        // Size over lifetime: Expands as smoke rises up into the archway
+        // Size expansion as smoke billows and fills the volume
         var sizeOverLife = _fogParticleSystem.sizeOverLifetime;
         sizeOverLife.enabled = true;
         AnimationCurve sizeCurve = new AnimationCurve();
-        sizeCurve.AddKey(0f, 0.4f);  // Starts smaller at ground
-        sizeCurve.AddKey(0.4f, 1.2f); // Rapidly expands as it rises
-        sizeCurve.AddKey(1.0f, 2.5f); // Billows into massive rolling smoke clouds
+        sizeCurve.AddKey(0f, 0.6f);
+        sizeCurve.AddKey(0.4f, 1.2f);
+        sizeCurve.AddKey(1.0f, 1.9f);
         sizeOverLife.size = new ParticleSystem.MinMaxCurve(1f, sizeCurve);
 
-        // Color & Alpha: Fades in quickly from ground, stays thick, dissipates at top
+        // Color and alpha over lifetime
         var colOverLife = _fogParticleSystem.colorOverLifetime;
         colOverLife.enabled = true;
         Gradient grad = new Gradient();
@@ -560,22 +579,25 @@ public class MazeManager : MonoBehaviour
             new GradientColorKey[] { new GradientColorKey(fogColor, 0f), new GradientColorKey(fogColor, 1f) },
             new GradientAlphaKey[] {
                 new GradientAlphaKey(0.0f, 0f),
-                new GradientAlphaKey(0.9f, 0.15f), // Billows thick right off the ground
-                new GradientAlphaKey(0.85f, 0.65f),
-                new GradientAlphaKey(0.0f, 1.0f)   // Smoothly dissipates near top
+                new GradientAlphaKey(0.92f, 0.15f),
+                new GradientAlphaKey(0.85f, 0.70f),
+                new GradientAlphaKey(0.0f, 1.0f)
             }
         );
         colOverLife.color = grad;
 
-        // Material with soft particle blending
+        // Rotation over lifetime for natural rolling smoke
+        var rotOverLife = _fogParticleSystem.rotationOverLifetime;
+        rotOverLife.enabled = true;
+        rotOverLife.z = new ParticleSystem.MinMaxCurve(-0.3f, 0.3f);
+
         var psRenderer = psGo.GetComponent<ParticleSystemRenderer>();
         psRenderer.material = Resources.Load<Material>("VFX/M_ParticleAlpha")
             ?? Resources.Load<Material>("M_ParticleAlpha");
 
-        // Rotation over lifetime for rolling smoke look
-        var rotOverLife = _fogParticleSystem.rotationOverLifetime;
-        rotOverLife.enabled = true;
-        rotOverLife.z = new ParticleSystem.MinMaxCurve(-0.4f, 0.4f);
+        var emission = _fogParticleSystem.emission;
+        emission.rateOverTime = 110f;
+        emission.enabled = false;
     }
 
     public IEnumerator FadeFog(float targetAlpha, float duration)
@@ -644,7 +666,7 @@ public class MazeManager : MonoBehaviour
             main.startColor = pc;
 
             var em = _fogParticleSystem.emission;
-            em.rateOverTime = 45f * _currentFogAlpha;
+            em.rateOverTime = 110f * _currentFogAlpha;
         }
     }
 
@@ -681,7 +703,7 @@ public class MazeManager : MonoBehaviour
         CaptureInitialSlots();
         ApplyInitialActiveBlock();
 
-        Debug.Log("[MazeManager] One-Click Setup finished! 8 Blocks, DayNight Controller, and Ground Smoke successfully linked.");
+        Debug.Log("[MazeManager] One-Click Setup finished! 8 Blocks, DayNight Controller, and BoxCollider Smoke successfully linked.");
     }
 
     public void AutoFindBlocks()
@@ -748,7 +770,7 @@ public class MazeManager : MonoBehaviour
         createdFogGo.transform.position = new Vector3(4335.4f, 0f, 1552.6f);
         BoxCollider box = createdFogGo.AddComponent<BoxCollider>();
         box.isTrigger = true;
-        box.size = new Vector3(25f, 40f, 100f);
+        box.size = new Vector3(30f, 65f, 160f);
         mazeEntranceFog = createdFogGo.transform;
         Debug.Log($"[MazeManager] Created default 'maze enterence fog' BoxCollider at {createdFogGo.transform.position}");
     }
@@ -757,10 +779,10 @@ public class MazeManager : MonoBehaviour
     //  EDITOR CONTEXT MENU TESTING TOOLS
     // ═══════════════════════════════════════════════════════════════════════════
 
-    [ContextMenu("Simulate Day (Open Door & Fog Off)")]
+    [ContextMenu("Simulate Day (Open Door & Smoke Off)")]
     public void TestOpenDoor() => StartCoroutine(DayStartRoutine());
 
-    [ContextMenu("Simulate Night (Close Door, Fog On & Swap)")]
+    [ContextMenu("Simulate Night (Close Door, Smoke On & Swap)")]
     public void TestNightSwap() => StartNightSwap();
 
     [ContextMenu("Toggle Entrance Smoke")]
