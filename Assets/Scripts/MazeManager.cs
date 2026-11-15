@@ -12,11 +12,11 @@ using UnityEngine;
 /// 3. Nightly Rotation (Mutual Position Swap):
 ///    Block 8 <-> Block 1 -> Block 1 <-> Block 2 -> ... -> Block 7 <-> Block 8.
 ///    The outgoing block takes the incoming block's position, and the incoming block takes the Glade entrance slot!
-/// 4. 100% Opaque Fog Wall:
-///    When night arrives, an impenetrable, thick opaque fog wall covers the entrance opening
+/// 4. 100% Opaque 3D Fog Wall:
+///    When night arrives, a thick, impenetrable 3D opaque fog wall covers the entrance opening
 ///    so that player standing in the Glade cannot see through to the outside or see blocks moving.
 /// 5. Day/Night Doors:
-///    Day starts -> Active block entrance door opens (and stays open all day).
+///    Day starts -> ONLY the single entrance door facing the Glade side opens. All other doors remain closed.
 ///    Night starts -> Active entrance door closes (and stays closed all night).
 /// 6. One-Click Setup in Inspector!
 /// </summary>
@@ -31,7 +31,7 @@ public class MazeManager : MonoBehaviour
     public GameObject[] mazeBlocks = new GameObject[8];
 
     [Header("─── 2. Entrance Fog Object ─────────────────────────────")]
-    [Tooltip("Scene me 'maze enterence fog' empty GameObject ya BoxCollider yahan drag karein. (Agar empty chhodenge toh script automatically dhund legi ya create kar degi).")]
+    [Tooltip("Scene me 'maze enterence fog' empty GameObject ya BoxCollider yahan drag karein. (Empty chhodne par auto-find kar lega).")]
     public Transform mazeEntranceFog;
 
     [Tooltip("Fog visual effect script khud generate karegi")]
@@ -90,7 +90,7 @@ public class MazeManager : MonoBehaviour
 
         InitializeAudio();
         CaptureInitialSlots();
-        EnsureEntranceFogVisuals();
+        EnsureEntranceFogVisuals(true);
     }
 
     private void Start()
@@ -189,18 +189,19 @@ public class MazeManager : MonoBehaviour
         CloseActiveDoor();
         yield return new WaitForSeconds(1.0f);
 
-        // 2. Fade in dense 100% opaque entrance fog wall
+        // 2. Fade in dense 100% opaque 3D entrance fog wall
         PlayAudio(fogSound);
         yield return FadeFog(1f, fogFadeDuration);
 
-        // At 1.0 alpha, the fog wall is 100% opaque. The entire doorway is concealed.
+        // Short pause while opaque fog completely seals the entrance
+        yield return new WaitForSeconds(0.3f);
+
         // 3. Play rumble audio and perform the mutual block swap behind the opaque fog wall
         PlayAudio(swapRumbleSound);
-        yield return new WaitForSeconds(0.4f);
-
         AdvanceToNextBlock();
 
-        yield return new WaitForSeconds(0.8f);
+        // Keep the thick fog wall up for 1.0s after swap so movement is 100% hidden
+        yield return new WaitForSeconds(1.0f);
 
         // 4. Fade out the entrance fog wall, revealing the newly arrived maze block
         yield return FadeFog(0f, fogFadeDuration);
@@ -243,19 +244,19 @@ public class MazeManager : MonoBehaviour
             Quaternion incomingRot = incomingBlock.transform.rotation;
 
             // Direct mutual swap:
-            // Purana vala naye vale ki position me chala jaye
+            // Purana block naye block ki position me chala jaye
             outgoingBlock.transform.SetPositionAndRotation(incomingPos, incomingRot);
 
-            // Naye vala glade entrance ki position me aa jaye
+            // Naya block glade entrance ki position me aa jaye
             incomingBlock.transform.SetPositionAndRotation(outgoingPos, outgoingRot);
 
             currentActiveBlockNumber = incomingBlockNum;
 
-            // Lock incoming block entrance door closed for the night
-            DoubleSlidingDoor incomingDoor = FindActiveEntranceDoor();
-            if (incomingDoor != null)
+            // Ensure ONLY the Glade-facing door on incoming block is locked closed for the night
+            DoubleSlidingDoor incomingGladeDoor = FindActiveEntranceDoor();
+            if (incomingGladeDoor != null)
             {
-                incomingDoor.CloseByManager();
+                incomingGladeDoor.CloseByManager();
             }
 
             Debug.Log($"[MazeManager] MUTUAL SWAP SUCCESS: Block {outgoingBlockNum} moved to reserve ({incomingPos.x:F0}, {incomingPos.z:F0}). Block {incomingBlockNum} is now ACTIVE at Glade entrance ({outgoingPos.x:F0}, {outgoingPos.z:F0})!");
@@ -334,16 +335,32 @@ public class MazeManager : MonoBehaviour
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    //  DOOR CONTROL
+    //  DOOR CONTROL (ONLY GLADE-FACING DOOR OPENS!)
     // ═══════════════════════════════════════════════════════════════════════════
 
     public void OpenActiveDoor()
     {
-        DoubleSlidingDoor door = FindActiveEntranceDoor();
-        if (door != null)
+        GameObject active = GetActiveBlock();
+        if (active == null) return;
+
+        var allDoors = active.GetComponentsInChildren<DoubleSlidingDoor>(true);
+        DoubleSlidingDoor gladeFacingDoor = FindActiveEntranceDoor();
+
+        // 1. Ensure all interior/non-glade doors on this block remain CLOSED
+        foreach (var d in allDoors)
         {
-            door.OpenByManager();
-            Debug.Log($"[MazeManager] Opened entrance door '{door.gameObject.name}' on active Block {currentActiveBlockNumber}");
+            if (d != null && d != gladeFacingDoor)
+            {
+                d.ReleaseManagerOverride();
+                d.CloseDoor();
+            }
+        }
+
+        // 2. Open strictly ONLY the door facing the Glade side!
+        if (gladeFacingDoor != null)
+        {
+            gladeFacingDoor.OpenByManager();
+            Debug.Log($"[MazeManager] SUCCESS: Opened ONLY the Glade-facing entrance door '{gladeFacingDoor.gameObject.name}' (world X: {gladeFacingDoor.transform.position.x:F1}) on active Block {currentActiveBlockNumber}");
         }
     }
 
@@ -381,7 +398,9 @@ public class MazeManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Finds the entrance door on the currently active block that faces the Glade / mazeEntranceFog.
+    /// Finds the specific door on the active block that faces the Glade side.
+    /// The Glade is located in the +X direction (world X >= 4300).
+    /// Therefore, the door with the MAXIMUM world X (transform.position.x) is strictly the Glade-facing door!
     /// </summary>
     public DoubleSlidingDoor FindActiveEntranceDoor()
     {
@@ -391,33 +410,28 @@ public class MazeManager : MonoBehaviour
         var doors = active.GetComponentsInChildren<DoubleSlidingDoor>(true);
         if (doors == null || doors.Length == 0) return null;
 
-        // Position where the Glade entrance gate is located
-        Vector3 entranceTarget = (mazeEntranceFog != null)
-            ? mazeEntranceFog.position
-            : new Vector3(4335.4f, 0f, 1552.6f);
-
-        DoubleSlidingDoor closest = null;
-        float minDist = float.MaxValue;
+        DoubleSlidingDoor bestDoor = null;
+        float maxX = float.MinValue;
 
         foreach (var d in doors)
         {
             if (d == null) continue;
-            float dist = Vector3.Distance(d.transform.position, entranceTarget);
-            if (dist < minDist)
+            float wx = d.transform.position.x;
+            if (wx > maxX)
             {
-                minDist = dist;
-                closest = d;
+                maxX = wx;
+                bestDoor = d;
             }
         }
 
-        return closest ?? doors[0];
+        return bestDoor ?? doors[0];
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    //  100% OPAQUE PROCEDURAL FOG WALL SYSTEM
+    //  100% OPAQUE 3D PROCEDURAL FOG WALL SYSTEM
     // ═══════════════════════════════════════════════════════════════════════════
 
-    public void EnsureEntranceFogVisuals()
+    public void EnsureEntranceFogVisuals(bool forceRecreate = false)
     {
         if (mazeEntranceFog == null)
         {
@@ -427,20 +441,29 @@ public class MazeManager : MonoBehaviour
 
         if (!autoGenerateFog) return;
 
-        // Check if effect already exists
+        // Clean up stale or broken effect root
         Transform existing = mazeEntranceFog.Find("_GeneratedFogEffect");
-        if (existing != null)
+        if (existing != null && (forceRecreate || _fogCurtainRenderers == null || _fogCurtainRenderers.Length == 0 || _fogCurtainMaterial == null))
+        {
+            if (Application.isPlaying) Destroy(existing.gameObject);
+            else DestroyImmediate(existing.gameObject);
+            existing = null;
+        }
+
+        if (existing == null)
+        {
+            CreateFogVisualObjects();
+        }
+        else
         {
             _fogEffectRoot = existing.gameObject;
             _fogParticleSystem = _fogEffectRoot.GetComponentInChildren<ParticleSystem>();
             _fogCurtainRenderers = _fogEffectRoot.GetComponentsInChildren<MeshRenderer>();
-        }
-        else
-        {
-            CreateFogVisualObjects();
+            if (_fogCurtainRenderers != null && _fogCurtainRenderers.Length > 0)
+                _fogCurtainMaterial = _fogCurtainRenderers[0].material;
         }
 
-        SetFogAlpha(0f);
+        SetFogAlpha(_currentFogAlpha);
     }
 
     private void CreateFogVisualObjects()
@@ -450,74 +473,106 @@ public class MazeManager : MonoBehaviour
         _fogEffectRoot.transform.localPosition = Vector3.zero;
         _fogEffectRoot.transform.localRotation = Quaternion.identity;
 
-        // Determine doorway volume size from BoxCollider
-        Vector3 fogSize = new Vector3(25f, 45f, 75f);
         BoxCollider box = mazeEntranceFog.GetComponent<BoxCollider>();
+        Vector3 fogCenter = Vector3.zero;
+        Vector3 fogSize = new Vector3(30f, 65f, 160f);
+
         if (box != null)
         {
-            fogSize = box.size;
-            _fogEffectRoot.transform.localPosition = box.center;
+            fogCenter = box.center;
+            // Guarantee full archway coverage: at least 30m thick, 65m high, 160m wide
+            fogSize = new Vector3(
+                Mathf.Max(30f, box.size.x),
+                Mathf.Max(65f, box.size.y),
+                Mathf.Max(160f, box.size.z)
+            );
         }
 
-        // Material with Universal Render Pipeline / Unlit (or fallback)
-        Shader unlitShader = Shader.Find("Universal Render Pipeline/Unlit")
-            ?? Shader.Find("Sprites/Default")
-            ?? Shader.Find("Unlit/Transparent");
+        _fogEffectRoot.transform.localPosition = fogCenter;
 
-        Material curtainMat = new Material(unlitShader);
-        curtainMat.name = "M_OpaqueFogWall";
-        curtainMat.SetFloat("_Surface", 1f); // Transparent
-        curtainMat.SetFloat("_Blend", 0f);   // Alpha blend
-        curtainMat.SetFloat("_Cull", 0f);    // Double-sided (Cull Off)!
-        curtainMat.SetInt("_ZWrite", 0);
-        curtainMat.renderQueue = 3050;
-        curtainMat.SetColor("_BaseColor", new Color(fogColor.r, fogColor.g, fogColor.b, 0f));
-        _fogCurtainMaterial = curtainMat;
+        // Create URP Unlit Material with Cull Off (double-sided)
+        Shader unlitShader = Shader.Find("Universal Render Pipeline/Unlit")
+            ?? Shader.Find("Unlit/Transparent")
+            ?? Shader.Find("Sprites/Default");
+
+        Material fogMat = new Material(unlitShader);
+        fogMat.name = "M_OpaqueFogWall_Mat";
+        fogMat.SetFloat("_Surface", 1f); // Transparent
+        fogMat.SetFloat("_Blend", 0f);   // Alpha blending
+        fogMat.SetFloat("_Cull", 0f);    // Two-sided (Render both front and back faces)
+        fogMat.SetInt("_ZWrite", 0);
+        fogMat.renderQueue = 3100;
+        fogMat.SetColor("_BaseColor", new Color(fogColor.r, fogColor.g, fogColor.b, 0f));
+        _fogCurtainMaterial = fogMat;
 
         List<MeshRenderer> renderers = new List<MeshRenderer>();
 
-        // Create double-sided dual barrier across doorway opening (facing along X axis, covering Z-Y plane)
-        float curtainWidth = Mathf.Max(fogSize.z, fogSize.x) * 1.25f;
-        float curtainHeight = fogSize.y * 1.25f;
+        // 1. 3D Fog Barrier Volume (Cube Primitive - renders from ALL 6 sides!)
+        GameObject fogVolume = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        fogVolume.name = "FogVolume_3D";
+        fogVolume.transform.SetParent(_fogEffectRoot.transform, false);
+        fogVolume.transform.localPosition = Vector3.zero;
+        fogVolume.transform.localRotation = Quaternion.identity;
+        fogVolume.transform.localScale = fogSize;
 
-        // Front Curtain
-        GameObject curtainFront = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        curtainFront.name = "FogCurtain_Front";
-        curtainFront.transform.SetParent(_fogEffectRoot.transform, false);
-        curtainFront.transform.localPosition = new Vector3(2.0f, 0f, 0f);
-        curtainFront.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
-        curtainFront.transform.localScale = new Vector3(curtainWidth, curtainHeight, 1f);
+        Collider cubeCol = fogVolume.GetComponent<Collider>();
+        if (cubeCol != null)
+        {
+            if (Application.isPlaying) Destroy(cubeCol);
+            else DestroyImmediate(cubeCol);
+        }
 
-        Collider colF = curtainFront.GetComponent<Collider>();
-        if (colF != null) DestroyImmediate(colF);
+        MeshRenderer cubeMr = fogVolume.GetComponent<MeshRenderer>();
+        cubeMr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        cubeMr.receiveShadows = false;
+        cubeMr.material = fogMat;
+        renderers.Add(cubeMr);
 
-        MeshRenderer mrF = curtainFront.GetComponent<MeshRenderer>();
+        // 2. High-Density Front & Back Dual Passage Quads
+        GameObject quadFront = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        quadFront.name = "FogCurtain_FacingGlade";
+        quadFront.transform.SetParent(_fogEffectRoot.transform, false);
+        quadFront.transform.localPosition = new Vector3(fogSize.x * 0.45f, 0f, 0f);
+        quadFront.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+        quadFront.transform.localScale = new Vector3(fogSize.z * 1.15f, fogSize.y * 1.15f, 1f);
+
+        Collider qcF = quadFront.GetComponent<Collider>();
+        if (qcF != null)
+        {
+            if (Application.isPlaying) Destroy(qcF);
+            else DestroyImmediate(qcF);
+        }
+
+        MeshRenderer mrF = quadFront.GetComponent<MeshRenderer>();
         mrF.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         mrF.receiveShadows = false;
-        mrF.material = curtainMat;
+        mrF.material = fogMat;
         renderers.Add(mrF);
 
-        // Back Curtain
-        GameObject curtainBack = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        curtainBack.name = "FogCurtain_Back";
-        curtainBack.transform.SetParent(_fogEffectRoot.transform, false);
-        curtainBack.transform.localPosition = new Vector3(-2.0f, 0f, 0f);
-        curtainBack.transform.localRotation = Quaternion.Euler(0f, -90f, 0f);
-        curtainBack.transform.localScale = new Vector3(curtainWidth, curtainHeight, 1f);
+        GameObject quadBack = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        quadBack.name = "FogCurtain_FacingMaze";
+        quadBack.transform.SetParent(_fogEffectRoot.transform, false);
+        quadBack.transform.localPosition = new Vector3(-fogSize.x * 0.45f, 0f, 0f);
+        quadBack.transform.localRotation = Quaternion.Euler(0f, -90f, 0f);
+        quadBack.transform.localScale = new Vector3(fogSize.z * 1.15f, fogSize.y * 1.15f, 1f);
 
-        Collider colB = curtainBack.GetComponent<Collider>();
-        if (colB != null) DestroyImmediate(colB);
+        Collider qcB = quadBack.GetComponent<Collider>();
+        if (qcB != null)
+        {
+            if (Application.isPlaying) Destroy(qcB);
+            else DestroyImmediate(qcB);
+        }
 
-        MeshRenderer mrB = curtainBack.GetComponent<MeshRenderer>();
+        MeshRenderer mrB = quadBack.GetComponent<MeshRenderer>();
         mrB.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         mrB.receiveShadows = false;
-        mrB.material = curtainMat;
+        mrB.material = fogMat;
         renderers.Add(mrB);
 
         _fogCurtainRenderers = renderers.ToArray();
 
-        // 3. Dense Billowing Fog Particle System
-        GameObject psGo = new GameObject("FogParticles");
+        // 3. Dense Billowing Mist Particle System
+        GameObject psGo = new GameObject("MistParticles");
         psGo.transform.SetParent(_fogEffectRoot.transform, false);
         psGo.transform.localPosition = Vector3.zero;
 
@@ -525,25 +580,25 @@ public class MazeManager : MonoBehaviour
         var main = _fogParticleSystem.main;
         main.startLifetime = 3.5f;
         main.startSpeed = 0.5f;
-        main.startSize = new ParticleSystem.MinMaxCurve(14f, 26f);
+        main.startSize = new ParticleSystem.MinMaxCurve(16f, 32f);
         main.startColor = new Color(fogColor.r, fogColor.g, fogColor.b, 0.95f);
-        main.maxParticles = 100;
+        main.maxParticles = 120;
         main.simulationSpace = ParticleSystemSimulationSpace.Local;
         main.loop = true;
         main.playOnAwake = false;
 
         var emission = _fogParticleSystem.emission;
-        emission.rateOverTime = 40f;
+        emission.rateOverTime = 50f;
         emission.enabled = false;
 
         var shape = _fogParticleSystem.shape;
         shape.shapeType = ParticleSystemShapeType.Box;
-        shape.scale = new Vector3(fogSize.x, fogSize.y, fogSize.z);
+        shape.scale = fogSize;
 
         var psRenderer = psGo.GetComponent<ParticleSystemRenderer>();
         psRenderer.material = Resources.Load<Material>("VFX/M_ParticleAlpha") 
-            ?? Resources.Load<Material>("M_ParticleAlpha")
-            ?? curtainMat;
+            ?? Resources.Load<Material>("M_ParticleAlpha") 
+            ?? fogMat;
 
         var colOverLife = _fogParticleSystem.colorOverLifetime;
         colOverLife.enabled = true;
@@ -609,22 +664,29 @@ public class MazeManager : MonoBehaviour
         if (_fogEffectRoot != null && !_fogEffectRoot.activeSelf)
             _fogEffectRoot.SetActive(true);
 
-        if (_fogCurtainMaterial != null)
+        Color c = fogColor;
+        c.a = _currentFogAlpha;
+
+        // Apply alpha to all fog wall mesh renderers directly
+        if (_fogCurtainRenderers != null)
         {
-            Color c = fogColor;
-            c.a = _currentFogAlpha;
-            if (_fogCurtainMaterial.HasProperty("_BaseColor"))
-                _fogCurtainMaterial.SetColor("_BaseColor", c);
-            if (_fogCurtainMaterial.HasProperty("_Color"))
-                _fogCurtainMaterial.SetColor("_Color", c);
+            for (int i = 0; i < _fogCurtainRenderers.Length; i++)
+            {
+                if (_fogCurtainRenderers[i] != null && _fogCurtainRenderers[i].material != null)
+                {
+                    Material m = _fogCurtainRenderers[i].material;
+                    if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
+                    if (m.HasProperty("_Color")) m.SetColor("_Color", c);
+                }
+            }
         }
 
         if (_fogParticleSystem != null)
         {
             var main = _fogParticleSystem.main;
-            Color c = fogColor;
-            c.a = _currentFogAlpha * 0.95f;
-            main.startColor = c;
+            Color pc = fogColor;
+            pc.a = _currentFogAlpha * 0.95f;
+            main.startColor = pc;
         }
     }
 
@@ -656,7 +718,7 @@ public class MazeManager : MonoBehaviour
     {
         AutoFindBlocks();
         AutoFindEntranceFog();
-        EnsureEntranceFogVisuals();
+        EnsureEntranceFogVisuals(true);
         _slotsCaptured = false;
         CaptureInitialSlots();
         ApplyInitialActiveBlock();
@@ -728,7 +790,7 @@ public class MazeManager : MonoBehaviour
         createdFogGo.transform.position = new Vector3(4335.4f, 20f, 1552.6f);
         BoxCollider box = createdFogGo.AddComponent<BoxCollider>();
         box.isTrigger = true;
-        box.size = new Vector3(25f, 45f, 75f);
+        box.size = new Vector3(30f, 65f, 160f);
         mazeEntranceFog = createdFogGo.transform;
         Debug.Log($"[MazeManager] Created default 'maze enterence fog' BoxCollider at {createdFogGo.transform.position}");
     }
@@ -746,8 +808,16 @@ public class MazeManager : MonoBehaviour
     [ContextMenu("Toggle Fog (On / Off)")]
     public void TestToggleFog()
     {
+        EnsureEntranceFogVisuals();
         float target = _currentFogAlpha > 0.5f ? 0f : 1f;
-        StartCoroutine(FadeFog(target, 1.2f));
+        if (!Application.isPlaying)
+        {
+            SetFogAlpha(target);
+        }
+        else
+        {
+            StartCoroutine(FadeFog(target, 1.2f));
+        }
     }
 
     [ContextMenu("Jump To Next Block Immediately")]

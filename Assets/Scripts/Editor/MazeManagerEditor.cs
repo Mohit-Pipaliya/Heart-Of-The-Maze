@@ -30,7 +30,12 @@ public class MazeManagerEditor : Editor
         {
             Undo.RecordObject(mgr, "One-Click Setup Maze Manager");
             mgr.OneClickSetup();
+            mgr.EnsureEntranceFogVisuals(true);
             EditorUtility.SetDirty(mgr);
+            if (!Application.isPlaying)
+            {
+                UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(mgr.gameObject.scene);
+            }
         }
         GUI.backgroundColor = Color.white;
 
