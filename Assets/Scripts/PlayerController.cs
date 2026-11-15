@@ -456,25 +456,35 @@ public class PlayerController : MonoBehaviour
         // Animator se current animated foot position lo
         Vector3 animFootPos = _anim.GetIKPosition(foot);
 
-        // Pair ke upar se neeche raycast maro
-        Vector3 rayOrigin = animFootPos + Vector3.up * 0.5f;
-        LayerMask mask = groundMask.value != 0 ? groundMask : Physics.DefaultRaycastLayers;
+        // Character scale ke hisaab se raycast origin aur distance adjust karo taaki steps/terrain pe fail na ho
+        float scaleY = transform.lossyScale.y / 15f;
+        float upOffset = Mathf.Max(0.8f, 1.2f * scaleY);
+        float rayDist = Mathf.Max(2.5f, footRaycastDist * scaleY);
+
+        Vector3 rayOrigin = animFootPos + Vector3.up * upOffset;
+
+        // Include Layer 0 (Default) so all maze terrain, steps, and floors are detected!
+        int effectiveMask = (groundMask.value != 0) ? (groundMask.value | (1 << 0)) : ~LayerMask.GetMask("Player", "Ignore Raycast");
 
         _anim.SetIKPositionWeight(foot, weight);
         _anim.SetIKRotationWeight(foot, weight);
 
-        if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, footRaycastDist, mask, QueryTriggerInteraction.Ignore))
+        if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, rayDist, effectiveMask, QueryTriggerInteraction.Ignore))
         {
-            // Pair ko zameen ki surface pe plant karo
-            _anim.SetIKPosition(foot, hit.point + Vector3.up * footGroundOffset);
+            // Ignore hitting the player's own colliders
+            if (hit.collider.transform.IsChildOf(transform) || hit.collider.transform == transform)
+                return;
 
-            // Pair ko zameen ki slope ke saath align karo
+            // Pair ko terrain surface / step pe solid plant karo (chipak ke chalte hain)
+            float effectiveOffset = footGroundOffset * Mathf.Max(1f, scaleY);
+            _anim.SetIKPosition(foot, hit.point + Vector3.up * effectiveOffset);
+
+            // Pair ko terrain/step slope ke saath 100% align karo
             Quaternion footRot = Quaternion.LookRotation(
                 Vector3.ProjectOnPlane(transform.forward, hit.normal),
                 hit.normal);
             _anim.SetIKRotation(foot, footRot);
         }
-        // Raycast miss hua to animated position hi use hogi (weight already set hai)
     }
 
     private void LateUpdate()

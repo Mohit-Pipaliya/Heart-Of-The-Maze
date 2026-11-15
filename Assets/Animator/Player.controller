@@ -175,7 +175,7 @@ BlendTree:
     m_Motion: {fileID: -203655887218126122, guid: 197c777f2e7c946e3a7e1370eeb1ee54, type: 3}
     m_Threshold: 0.5
     m_Position: {x: 0, y: 0}
-    m_TimeScale: 1.25
+    m_TimeScale: 2.3
     m_CycleOffset: 0
     m_DirectBlendParameter: Speed
     m_Mirror: 0
@@ -183,7 +183,7 @@ BlendTree:
     m_Motion: {fileID: -203655887218126122, guid: 6257ed2a348dd4a36a4d08456f5248ca, type: 3}
     m_Threshold: 1
     m_Position: {x: 0, y: 0}
-    m_TimeScale: 1.35
+    m_TimeScale: 1.85
     m_CycleOffset: 0
     m_DirectBlendParameter: Speed
     m_Mirror: 0
@@ -426,7 +426,7 @@ BlendTree:
     m_Motion: {fileID: -203655887218126122, guid: 907f4a76c8b864994b277a4e6aca397b, type: 3}
     m_Threshold: 0.5
     m_Position: {x: 0, y: 0}
-    m_TimeScale: 1.25
+    m_TimeScale: 2.3
     m_CycleOffset: 0
     m_DirectBlendParameter: Speed
     m_Mirror: 0
@@ -434,7 +434,7 @@ BlendTree:
     m_Motion: {fileID: -203655887218126122, guid: 107505555f5704dc5b58bda557c85de3, type: 3}
     m_Threshold: 1
     m_Position: {x: 0, y: 0}
-    m_TimeScale: 1.35
+    m_TimeScale: 1.85
     m_CycleOffset: 0
     m_DirectBlendParameter: Speed
     m_Mirror: 0
@@ -614,7 +614,7 @@ BlendTree:
     m_Motion: {fileID: -203655887218126122, guid: a2481b6ce12a7471b84201c6b08e494f, type: 3}
     m_Threshold: 0.5
     m_Position: {x: 0, y: 0}
-    m_TimeScale: 1.25
+    m_TimeScale: 2.3
     m_CycleOffset: 0
     m_DirectBlendParameter: Speed
     m_Mirror: 0
@@ -622,7 +622,7 @@ BlendTree:
     m_Motion: {fileID: -203655887218126122, guid: d207fcb6f2ca243bb850cc88582b1edd, type: 3}
     m_Threshold: 1
     m_Position: {x: 0, y: 0}
-    m_TimeScale: 1.35
+    m_TimeScale: 1.85
     m_CycleOffset: 0
     m_DirectBlendParameter: Speed
     m_Mirror: 0
@@ -2150,7 +2150,7 @@ BlendTree:
     m_Motion: {fileID: -203655887218126122, guid: d3c545bc8d12041e9a1ca135098a5ce0, type: 3}
     m_Threshold: 0.5
     m_Position: {x: 0, y: 0}
-    m_TimeScale: 1.3
+    m_TimeScale: 2.3
     m_CycleOffset: 0
     m_DirectBlendParameter: Speed
     m_Mirror: 0
@@ -2158,7 +2158,7 @@ BlendTree:
     m_Motion: {fileID: -203655887218126122, guid: 764069de345d44c40b7f361ff3f27eeb, type: 3}
     m_Threshold: 1
     m_Position: {x: 0, y: 0}
-    m_TimeScale: 1.35
+    m_TimeScale: 1.85
     m_CycleOffset: 0
     m_DirectBlendParameter: Speed
     m_Mirror: 0
@@ -2177,7 +2177,7 @@ AnimatorState:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: Gun Aim Walk
-  m_Speed: 1.25
+  m_Speed: 2
   m_CycleOffset: 0
   m_Transitions:
   - {fileID: -6144339892728208269}
