@@ -6322,7 +6322,7 @@ Camera:
     y: 0
     width: 1
     height: 1
-  near clip plane: 0.08
+  near clip plane: 0.3
   far clip plane: 10000
   field of view: 90
   orthographic: 0
@@ -6425,7 +6425,7 @@ MonoBehaviour:
   yMaxLimit: 70
   collisionMask:
     serializedVersion: 2
-    m_Bits: 16777217
+    m_Bits: 16777216
   minDistance: 0.5
   editorPreviewPitch: 15
   recoilRecoverySpeed: 10
