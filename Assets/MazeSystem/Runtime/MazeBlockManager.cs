@@ -281,14 +281,22 @@ namespace MazeSystem
             _receivedDayNightSignal = true;
             _isCurrentlyNight = false;
 
-            // Immediately command main door to open for day
-            OpenActiveDoor();
-            if (gate != null) gate.SetBlocked(false);
-
-            if (transition != null)
+            if (transition != null && transition.IsBusy)
+            {
+                // Night routine is actively moving blocks; queue day start safely until blocks settle
                 transition.HandleDayStart();
+            }
             else
-                Debug.LogError("[MazeSystem] Day signal received but no MazeTransitionController is assigned.", this);
+            {
+                // Immediately command main door to open for day
+                OpenActiveDoor();
+                if (gate != null) gate.SetBlocked(false);
+
+                if (transition != null)
+                    transition.HandleDayStart();
+                else
+                    Debug.LogError("[MazeSystem] Day signal received but no MazeTransitionController is assigned.", this);
+            }
         }
 
         // ───────────────────────────────────────────────────────────────
@@ -503,6 +511,17 @@ namespace MazeSystem
             {
                 IMazeDoor door = _activeBlock.Door;
                 if (door != null) door.SetStateInstant(open);
+            }
+        }
+
+        public void SetNightDoorsInstant(bool open)
+        {
+            SetActiveDoorInstant(open);
+            MazeBlock incoming = IncomingBlock;
+            if (incoming != null)
+            {
+                IMazeDoor incomingDoor = incoming.Door;
+                if (incomingDoor != null) incomingDoor.SetStateInstant(open);
             }
         }
 

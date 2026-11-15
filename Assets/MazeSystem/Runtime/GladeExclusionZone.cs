@@ -59,9 +59,12 @@ namespace MazeSystem
 
         /// <summary>
         /// Fast, zero-allocation check whether arbitrary test bounds intersect the exclusion zone.
+        /// Subterranean travel completely below ground floor (Y < -5m) does not violate the Glade surface.
         /// </summary>
         public bool Intersects(Bounds testBounds)
         {
+            if (testBounds.max.y < -5f) return false;
+
             Bounds exclusion = GetExpandedBounds();
             return exclusion.Intersects(testBounds);
         }

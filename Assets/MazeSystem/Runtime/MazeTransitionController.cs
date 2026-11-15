@@ -219,8 +219,8 @@ namespace MazeSystem
 
             if (!manager.NightDoorsClosed)
             {
-                FailNight("doors did not close safely");
-                yield break;
+                // Guarantee both active and incoming doors are firmly closed so night transition never stalls
+                manager.SetNightDoorsInstant(false);
             }
 
             State = TransitionState.FogIn;
@@ -282,7 +282,7 @@ namespace MazeSystem
                 // Failsafe: if doors haven't closed after 3 seconds, force instant close so maze is sealed
                 if (elapsed > 3.0f)
                 {
-                    manager.SetActiveDoorInstant(false);
+                    manager.SetNightDoorsInstant(false);
                     yield break;
                 }
 

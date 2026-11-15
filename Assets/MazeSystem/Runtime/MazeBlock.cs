@@ -35,7 +35,7 @@ namespace MazeSystem
         public int BlockNumber => blockNumber;
         public Transform MainEntrance => mainEntrance;
         public MazeMainDoor MainDoor => mainDoor;
-        public IMazeDoor Door => (IMazeDoor)mainDoor ?? (IMazeDoor)GetComponentInChildren<IMazeDoor>(true);
+        public IMazeDoor Door => (IMazeDoor)mainDoor ?? (IMazeDoor)GetComponentInChildren<MazeMainDoor>(true) ?? (IMazeDoor)GetComponentInChildren<IMazeDoor>(true);
         public MazeBlockContents Contents => contents != null ? contents : (contents = GetComponent<MazeBlockContents>() ?? gameObject.AddComponent<MazeBlockContents>());
         public bool Captured => captured;
         public Vector3 OriginalPosition => originalPosition;
