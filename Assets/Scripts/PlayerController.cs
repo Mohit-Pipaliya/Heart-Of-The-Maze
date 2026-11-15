@@ -1328,10 +1328,29 @@ public class PlayerController : MonoBehaviour
     public void TriggerFireAnimation()
     {
         _lastFireTime = Time.time;
+
+        // Gun ko jaha hai wahi bilkul fix rakhne ke liye hand recoil animation skip karte hain
+        GunShooter shooter = GunShooter.Instance ?? GetComponentInChildren<GunShooter>();
+        if (shooter != null && shooter.lockGunPositionOnFire)
+        {
+            return;
+        }
+
         if (_anim != null)
         {
             _anim.ResetTrigger(HashFire);
             _anim.SetTrigger(HashFire);
+        }
+    }
+
+    /// <summary>
+    /// Plays the Magazine Change reload animation on the player when pressing M.
+    /// </summary>
+    public void TriggerMagazineChangeAnimation()
+    {
+        if (_anim != null)
+        {
+            _anim.CrossFadeInFixedTime("MagazineChange", 0.15f, 0, 0f);
         }
     }
 

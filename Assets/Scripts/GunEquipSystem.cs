@@ -160,6 +160,9 @@ public class GunEquipSystem : MonoBehaviour
     [Tooltip("Optional: An empty object placed inside the gun at the handle to automatically align it.")]
     public Transform gunHandlePoint;
     
+    [Tooltip("Empty object socket on player body where the carried magazine will be placed.")]
+    public Transform magazineHolsterSocket;
+    
     [Tooltip("The Animator playing the equip/unequip animations")]
     public Animator playerAnimator;
 

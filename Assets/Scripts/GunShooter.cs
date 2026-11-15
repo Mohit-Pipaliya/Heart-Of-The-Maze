@@ -1,8 +1,49 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 public class GunShooter : MonoBehaviour
 {
     public static GunShooter Instance { get; private set; }
+
+    [Header("── Ammo & Reload Settings ──")]
+    [Tooltip("Bullets currently inside active gun magazine (40 bullets per round).")]
+    public int currentMagAmmo = 40;
+    [Tooltip("Max capacity of one magazine round (40 bullets).")]
+    public int maxMagCapacity = 40;
+    [Tooltip("Current reserve bullets carried by player.")]
+    public int reserveAmmo = 120;
+    [Tooltip("Maximum reserve ammo player can carry (120 bullets).")]
+    public int maxReserveAmmo = 120;
+    [Tooltip("Reload duration in seconds when pressing R.")]
+    public float reloadDuration = 1.35f;
+
+    [Header("── 3D Magazine System (M Key & Sockets) ──")]
+    [Tooltip("Whether the player has collected a spare magazine via E.")]
+    public bool hasSpareMagazine = false;
+    [Tooltip("Empty socket GameObject on Player body where carried spare magazine is placed.")]
+    public Transform magazineHolsterSocket;
+    [Tooltip("Socket/Position on Gun where active magazine sits.")]
+    public Transform gunMagazineSocket;
+    [Tooltip("Socket or bone on Player Left Hand where magazine is held during reload.")]
+    public Transform leftHandSocket;
+    [Tooltip("Prefab or 3D model of the M4 Magazine.")]
+    public GameObject magazinePrefab;
+    [Tooltip("Duration of full Magazine Change animation sequence.")]
+    public float magChangeDuration = 1.85f;
+
+    [Header("── Ammo HUD Settings ──")]
+    public bool showAmmoHUD = true;
+
+    // Reload & Magazine State
+    public bool isReloading = false;
+    public bool isChangingMagazine = false;
+    private GameObject _carriedMagObj;
+    private GameObject _gunMagObj;
+    private Vector3 _userMagScale = Vector3.one;
+    private Vector3 _userMagWorldScale = Vector3.zero;
+    private GameObject _userMagTemplate;
+    private string _hudMessage = null;
+    private float _hudMessageTimer = 0f;
 
     [Header("── Gun Barrel & Ballistics ──")]
     public Transform barrelPoint;
@@ -21,14 +62,18 @@ public class GunShooter : MonoBehaviour
     [Range(0.8f, 1.2f)] public float minPitch = 0.94f;
     [Range(0.8f, 1.2f)] public float maxPitch = 1.06f;
 
+    [Header("── Weapon Stability on Fire ──")]
+    [Tooltip("If true, the gun stays 100% fixed in place when firing (zero kickback, zero hand/camera shake).")]
+    public bool lockGunPositionOnFire = true;
+
     [Header("── Camera Recoil & Shake ──")]
-    public float recoilPitchKick = 2.2f;      // Snappy vertical camera impulse
-    public float recoilYawKick = 0.65f;       // Subtle horizontal sway
-    public float recoilShakeAmount = 0.10f;   // High-frequency kinetic screen shake
+    public float recoilPitchKick = 0f;        // 0 = gun and camera stay completely fixed
+    public float recoilYawKick = 0f;          // 0 = no horizontal sway
+    public float recoilShakeAmount = 0f;      // 0 = no camera shake
 
     [Header("── Procedural Weapon Kickback ──")]
     [Tooltip("Enable realistic weapon kickback and recovery on fire.")]
-    public bool disableWeaponKick = false;   // Snappy weapon kick enabled for visceral AAA combat feel
+    public bool disableWeaponKick = true;    // True = gun does not kick or move on fire!
     public float weaponKickZ = 0.038f;       // Punchy backward kick into shoulder
     public float weaponKickUp = 0.008f;      // Subtle vertical kick
     public float weaponPitchKick = 1.6f;     // Snappy muzzle climb
@@ -116,6 +161,7 @@ public class GunShooter : MonoBehaviour
 
         _playerController = GetComponentInParent<PlayerController>();
         if (_playerController == null) _playerController = GetComponent<PlayerController>();
+        GetLeftHandSocket();
 
         _playerCollider = GetComponentInChildren<Collider>();
         _mainCam = Camera.main;
@@ -239,12 +285,55 @@ public class GunShooter : MonoBehaviour
         float targetSize = isAiming ? aimBaseSize : crosshairBaseSize;
         _currentSize = Mathf.Lerp(_currentSize, targetSize, Time.deltaTime * recoilRecoverSpeed);
 
+        // Reload Input (R Key)
+        bool rPressed = (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
+            || Input.GetKeyDown(KeyCode.R);
+        if (rPressed && !isReloading && !isChangingMagazine)
+        {
+            if (currentMagAmmo < maxMagCapacity && reserveAmmo > 0)
+            {
+                StartCoroutine(ReloadRoutine());
+            }
+        }
+
+        // Magazine Change Input (M Key)
+        bool mPressed = (Keyboard.current != null && Keyboard.current.mKey.wasPressedThisFrame)
+            || Input.GetKeyDown(KeyCode.M);
+        if (mPressed && !isReloading && !isChangingMagazine)
+        {
+            if (hasSpareMagazine)
+            {
+                StartCoroutine(ChangeMagazineRoutine());
+            }
+            else
+            {
+                _hudMessage = "NO SPARE MAGAZINE! Pick one up with [E]";
+                _hudMessageTimer = 2.5f;
+            }
+        }
+
         bool holdingFire = Input.GetMouseButton(0);
         bool clickedFire = Input.GetMouseButtonDown(0);
 
         if ((holdingFire || clickedFire) && Time.time >= _nextFireTime)
         {
+            if (isReloading || isChangingMagazine)
+            {
+                return; // Cannot shoot while reloading or changing magazine
+            }
+
+            if (currentMagAmmo <= 0)
+            {
+                _nextFireTime = Time.time + 0.25f;
+                Vector3 muzzlePos = GetEffectiveBarrelPosition();
+                GameAudio.PlayDryFire(muzzlePos, _audioSource);
+                _hudMessage = reserveAmmo > 0 ? "EMPTY! Press [R] to Reload" : "NO AMMO! Press [M] if you have a Spare Mag";
+                _hudMessageTimer = 2.0f;
+                return;
+            }
+
             _nextFireTime = Time.time + fireRate;
+            currentMagAmmo--;
             Fire();
             _currentSize += expandOnFire;
         }
@@ -268,8 +357,8 @@ public class GunShooter : MonoBehaviour
                 _hasRecordedBaseTransform = true;
             }
 
-            // Agar kick disabled hai — gun ko strictly original position pe lock karo
-            if (disableWeaponKick)
+            // Gun ko jaha hai wahi bilkul strictly fixed lock rakho — fire karne par bhi bilkul nahi hilegi
+            if (lockGunPositionOnFire || disableWeaponKick)
             {
                 gunTrans.localPosition = _baseGunLocalPos;
                 gunTrans.localRotation = _baseGunLocalRot;
@@ -381,7 +470,11 @@ public class GunShooter : MonoBehaviour
         // 2. Play Punchy Gunshot SFX with pitch variation
         GameAudio.PlayGunshot(muzzlePos, _audioSource, 1.0f);
         ZombieSense.Report(muzzlePos, ZombieSense.Kind.Gunshot);
-        GameFeel.FovPunch(2.2f);
+
+        if (!lockGunPositionOnFire)
+        {
+            GameFeel.FovPunch(2.2f);
+        }
 
         // 3. Pooled AAA Muzzle Flash (Core, Plume, Cross Vents, Sparks, Smoke, Light)
         TriggerMuzzleFlash(muzzlePos, fireDir);
@@ -389,25 +482,33 @@ public class GunShooter : MonoBehaviour
         // 4. Authentic 5.56mm Brass Shell Casing Ejection from receiver
         EjectShellCasing();
 
-        // 5. Procedural Weapon Kickback Impulse
-        if (!disableWeaponKick)
+        // 5. Procedural Weapon Kickback Impulse (disabled when locked)
+        if (!disableWeaponKick && !lockGunPositionOnFire)
         {
             _weaponKickPos += new Vector3(0f, 0f, -weaponKickZ);
             _weaponKickRot += new Vector3(-weaponPitchKick, Random.Range(-weaponYawKick, weaponYawKick), 0f);
         }
-
-        // 6. Camera Recoil & Screen Shake
-        if (_cameraController == null)
+        else
         {
-            _cameraController = CameraController.Instance ?? FindFirstObjectByType<CameraController>();
+            _weaponKickPos = Vector3.zero;
+            _weaponKickRot = Vector3.zero;
         }
-        if (_cameraController != null)
+
+        // 6. Camera Recoil & Screen Shake (disabled when locked)
+        if (!lockGunPositionOnFire && recoilPitchKick > 0.001f)
         {
-            _cameraController.AddRecoil(
-                pitchKick: recoilPitchKick,
-                yawKick: Random.Range(-recoilYawKick, recoilYawKick),
-                shakeAmount: recoilShakeAmount
-            );
+            if (_cameraController == null)
+            {
+                _cameraController = CameraController.Instance ?? FindFirstObjectByType<CameraController>();
+            }
+            if (_cameraController != null)
+            {
+                _cameraController.AddRecoil(
+                    pitchKick: recoilPitchKick,
+                    yawKick: Random.Range(-recoilYawKick, recoilYawKick),
+                    shakeAmount: recoilShakeAmount
+                );
+            }
         }
 
         // 7. Synchronized Player Animation Trigger
@@ -950,6 +1051,575 @@ public class GunShooter : MonoBehaviour
 
             DrawHitMarker(cx, cy, hitMarkerSize, hitMarkerThickness, markerCol);
         }
+
+        if (_gunSystem != null && _gunSystem.IsGunEquipped)
+        {
+            DrawAmmoHUD();
+        }
+    }
+
+    private void DrawAmmoHUD()
+    {
+        if (!showAmmoHUD) return;
+
+        float hudWidth = 240f;
+        float hudHeight = 78f;
+        float x = Screen.width - hudWidth - 25f;
+        float y = Screen.height - hudHeight - 25f;
+
+        if (_whitePixelTex == null)
+        {
+            _whitePixelTex = new Texture2D(1, 1);
+            _whitePixelTex.SetPixel(0, 0, Color.white);
+            _whitePixelTex.Apply();
+        }
+
+        // Background Box
+        GUI.color = new Color(0.04f, 0.06f, 0.09f, 0.85f);
+        GUI.DrawTexture(new Rect(x, y, hudWidth, hudHeight), _whitePixelTex);
+
+        // Border outline
+        GUI.color = new Color(0.35f, 0.42f, 0.55f, 0.6f);
+        GUI.DrawTexture(new Rect(x, y, hudWidth, 1.5f), _whitePixelTex);
+        GUI.DrawTexture(new Rect(x, y, 1.5f, hudHeight), _whitePixelTex);
+        GUI.DrawTexture(new Rect(x + hudWidth - 1.5f, y, 1.5f, hudHeight), _whitePixelTex);
+        GUI.DrawTexture(new Rect(x, y + hudHeight - 1.5f, hudWidth, 1.5f), _whitePixelTex);
+
+        // Current Ammo Number
+        GUIStyle bigStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 32,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleLeft
+        };
+
+        if (currentMagAmmo == 0)
+        {
+            bigStyle.normal.textColor = ((int)(Time.time * 4f) % 2 == 0) ? new Color(1f, 0.25f, 0.25f) : Color.white;
+        }
+        else if (currentMagAmmo <= 10)
+        {
+            bigStyle.normal.textColor = new Color(1f, 0.75f, 0.2f);
+        }
+        else
+        {
+            bigStyle.normal.textColor = Color.white;
+        }
+
+        GUI.color = Color.white;
+        GUI.Label(new Rect(x + 16f, y + 6f, 75f, 38f), currentMagAmmo.ToString(), bigStyle);
+
+        GUIStyle slashStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 17,
+            fontStyle = FontStyle.Normal,
+            alignment = TextAnchor.MiddleLeft
+        };
+        slashStyle.normal.textColor = new Color(0.75f, 0.78f, 0.85f, 0.9f);
+        GUI.Label(new Rect(x + 70f, y + 17f, 85f, 25f), $"/ {reserveAmmo}", slashStyle);
+
+        GUIStyle subStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 11,
+            alignment = TextAnchor.MiddleRight
+        };
+        subStyle.normal.textColor = new Color(0.6f, 0.65f, 0.72f);
+        GUI.Label(new Rect(x + 130f, y + 8f, 95f, 20f), "5.56 NATO", subStyle);
+
+        // Status Line / Magazine Indicator
+        GUIStyle statusStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 12,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleLeft
+        };
+
+        if (isChangingMagazine)
+        {
+            statusStyle.normal.textColor = new Color(0.3f, 0.85f, 1f);
+            GUI.Label(new Rect(x + 16f, y + 48f, 215f, 22f), "CHANGING MAGAZINE... [M]", statusStyle);
+        }
+        else if (isReloading)
+        {
+            statusStyle.normal.textColor = new Color(1f, 0.85f, 0.25f);
+            GUI.Label(new Rect(x + 16f, y + 48f, 215f, 22f), "RELOADING... [R]", statusStyle);
+        }
+        else if (hasSpareMagazine)
+        {
+            statusStyle.normal.textColor = new Color(0.35f, 0.95f, 0.45f);
+            GUI.Label(new Rect(x + 16f, y + 48f, 215f, 22f), "● SPARE MAG READY [Press M]", statusStyle);
+        }
+        else if (currentMagAmmo == 0)
+        {
+            statusStyle.normal.textColor = new Color(1f, 0.35f, 0.35f);
+            GUI.Label(new Rect(x + 16f, y + 48f, 215f, 22f), reserveAmmo > 0 ? "EMPTY! Press [R] to Reload" : "NO AMMO!", statusStyle);
+        }
+        else
+        {
+            statusStyle.normal.textColor = new Color(0.55f, 0.58f, 0.65f);
+            GUI.Label(new Rect(x + 16f, y + 48f, 215f, 22f), "○ [R] Reload  •  [M] Change Mag", statusStyle);
+        }
+
+        // Notification Banner
+        if (_hudMessageTimer > 0f && !string.IsNullOrEmpty(_hudMessage))
+        {
+            _hudMessageTimer -= Time.deltaTime;
+            float notifW = 420f;
+            float notifH = 36f;
+            float nx = (Screen.width - notifW) * 0.5f;
+            float ny = Screen.height * 0.74f;
+
+            GUI.color = new Color(0.06f, 0.08f, 0.12f, 0.90f);
+            GUI.DrawTexture(new Rect(nx, ny, notifW, notifH), _whitePixelTex);
+
+            GUI.color = new Color(0.4f, 0.5f, 0.7f, 0.7f);
+            GUI.DrawTexture(new Rect(nx, ny, notifW, 1.5f), _whitePixelTex);
+            GUI.DrawTexture(new Rect(nx, ny + notifH - 1.5f, notifW, 1.5f), _whitePixelTex);
+
+            GUI.color = Color.white;
+            GUIStyle notifStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 14,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter
+            };
+            notifStyle.normal.textColor = new Color(1f, 0.88f, 0.35f);
+            GUI.Label(new Rect(nx, ny, notifW, notifH), _hudMessage, notifStyle);
+        }
+    }
+
+    /// <summary>
+    /// R Key Reload Routine: Refills active magazine (up to 40) from reserve ammo.
+    /// E.g. 0 / 120 -> 40 / 80.
+    /// </summary>
+    public System.Collections.IEnumerator ReloadRoutine()
+    {
+        isReloading = true;
+        _hudMessage = "RELOADING...";
+        _hudMessageTimer = reloadDuration;
+
+        Vector3 muzzlePos = GetEffectiveBarrelPosition();
+
+        // 1. Mag Out sound
+        GameAudio.PlayMagOut(muzzlePos, _audioSource);
+        yield return new WaitForSeconds(reloadDuration * 0.40f);
+
+        // 2. Mag In sound
+        GameAudio.PlayMagIn(muzzlePos, _audioSource);
+        yield return new WaitForSeconds(reloadDuration * 0.35f);
+
+        // 3. Bolt pull/cock
+        GameAudio.PlayGunCock(muzzlePos, _audioSource);
+        yield return new WaitForSeconds(reloadDuration * 0.25f);
+
+        int needed = maxMagCapacity - currentMagAmmo;
+        int toLoad = Mathf.Min(needed, reserveAmmo);
+        reserveAmmo -= toLoad;
+        currentMagAmmo += toLoad;
+
+        _hudMessage = null;
+        isReloading = false;
+    }
+
+    /// <summary>
+    /// Gets the Transform representing the Player's Left Hand for magazine reload.
+    /// </summary>
+    public Transform GetLeftHandSocket()
+    {
+        if (leftHandSocket != null) return leftHandSocket;
+
+        if (_playerController != null)
+        {
+            Animator anim = _playerController.GetComponent<Animator>();
+            if (anim != null && anim.isHuman)
+            {
+                Transform bone = anim.GetBoneTransform(HumanBodyBones.LeftHand);
+                if (bone != null)
+                {
+                    leftHandSocket = bone;
+                    return bone;
+                }
+            }
+
+            Transform[] all = _playerController.GetComponentsInChildren<Transform>(true);
+            for (int i = 0; i < all.Length; i++)
+            {
+                if (all[i].name == "LeftHandTorchPoint")
+                {
+                    leftHandSocket = all[i];
+                    return all[i];
+                }
+                if (all[i].name == "LeftHand" || all[i].name == "mixamorig:LeftHand")
+                {
+                    leftHandSocket = all[i];
+                    return all[i];
+                }
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// M Key Magazine Change Routine: Plays character reload animation,
+    /// moves magazine to player's left hand during animation, and when inserted
+    /// into the gun it disappears (receiver eats it), then fully restocks 120 bullets.
+    /// </summary>
+    public System.Collections.IEnumerator ChangeMagazineRoutine()
+    {
+        isChangingMagazine = true;
+        _hudMessage = "CHANGING MAGAZINE...";
+        _hudMessageTimer = magChangeDuration;
+
+        Vector3 muzzlePos = GetEffectiveBarrelPosition();
+
+        // Trigger character magazine change animation
+        if (_playerController != null)
+        {
+            _playerController.TriggerMagazineChangeAnimation();
+        }
+
+        // If carried magazine doesn't exist yet but player has spare mag, ensure it exists
+        if (_carriedMagObj == null && hasSpareMagazine)
+        {
+            EnsureHolsterMagazine();
+        }
+
+        // Phase 1: Hand pulls out old magazine (~0.40s)
+        yield return new WaitForSeconds(0.40f);
+        GameAudio.PlayMagOut(muzzlePos, _audioSource);
+
+        if (_gunMagObj != null)
+        {
+            SpawnDroppedMagazine(_gunMagObj.transform.position, _gunMagObj.transform.rotation);
+            _gunMagObj.SetActive(false);
+            Destroy(_gunMagObj, 0.1f);
+            _gunMagObj = null;
+        }
+
+        // Phase 2: Magazine player ke left hand mein attach hoti hai!
+        Transform handT = GetLeftHandSocket();
+        if (_carriedMagObj != null && handT != null)
+        {
+            _carriedMagObj.transform.SetParent(handT, false);
+            _carriedMagObj.transform.localPosition = new Vector3(0.01f, 0.05f, 0.02f);
+            _carriedMagObj.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+
+            Vector3 worldScale = _userMagWorldScale != Vector3.zero ? _userMagWorldScale : _carriedMagObj.transform.lossyScale;
+            Vector3 parentLossy = handT.lossyScale;
+            _carriedMagObj.transform.localScale = new Vector3(
+                parentLossy.x > 0.0001f ? worldScale.x / parentLossy.x : _userMagScale.x,
+                parentLossy.y > 0.0001f ? worldScale.y / parentLossy.y : _userMagScale.y,
+                parentLossy.z > 0.0001f ? worldScale.z / parentLossy.z : _userMagScale.z
+            );
+            _carriedMagObj.SetActive(true);
+        }
+
+        // Hand travels with magazine towards gun magwell (~0.65s)
+        yield return new WaitForSeconds(0.65f);
+
+        // Magazine gun mein insert hoti hai
+        GameAudio.PlayMagIn(muzzlePos, _audioSource);
+
+        // User requirement: "gun jane ke baad gayab ho jani chaiye"
+        // Gun mein jaane ke baad magazine completely gayab (deactivate & destroy) ho jaati hai!
+        if (_carriedMagObj != null)
+        {
+            _carriedMagObj.SetActive(false);
+            Destroy(_carriedMagObj, 0.05f);
+            _carriedMagObj = null;
+        }
+
+        if (_gunMagObj != null)
+        {
+            _gunMagObj.SetActive(false);
+            Destroy(_gunMagObj, 0.05f);
+            _gunMagObj = null;
+        }
+
+        // Phase 3: Cock bolt / charging handle (~0.45s)
+        yield return new WaitForSeconds(0.45f);
+        GameAudio.PlayGunCock(muzzlePos, _audioSource);
+
+        // Reset ammo: 40 bullets active in gun + 120 bullets in reserve!
+        currentMagAmmo = maxMagCapacity;
+        reserveAmmo = maxReserveAmmo;
+        hasSpareMagazine = false;
+
+        _hudMessage = "MAGAZINE CHANGED! 120 BULLETS RESTOCKED";
+        _hudMessageTimer = 2.5f;
+
+        yield return new WaitForSeconds(0.30f);
+        isChangingMagazine = false;
+    }
+
+    /// <summary>
+    /// Gets the exact local scale from the assigned magazine prefab or the user's picked up object.
+    /// </summary>
+    public Vector3 GetPrefabScale()
+    {
+        if (magazinePrefab != null)
+        {
+            return magazinePrefab.transform.localScale;
+        }
+        if (_userMagScale != Vector3.zero)
+        {
+            return _userMagScale;
+        }
+        return Vector3.one;
+    }
+
+    /// <summary>
+    /// Called when player picks up a 3D magazine in the world with 'E'.
+    /// The magazine is placed on the empty object socket with the user's exact prefab size.
+    /// </summary>
+    public void PickUpSpareMagazine(GameObject pickupObj = null)
+    {
+        hasSpareMagazine = true;
+
+        EnsureHolsterSocketExists();
+
+        if (pickupObj != null)
+        {
+            // Store the user's exact prefab scale and template
+            _userMagScale = pickupObj.transform.localScale;
+            _userMagWorldScale = pickupObj.transform.lossyScale;
+            _userMagTemplate = pickupObj;
+
+            if (_carriedMagObj != null && _carriedMagObj != pickupObj)
+            {
+                Destroy(_carriedMagObj);
+            }
+
+            _carriedMagObj = pickupObj;
+            _carriedMagObj.name = "Carried_M4Magazine";
+
+            if (magazineHolsterSocket != null)
+            {
+                _carriedMagObj.transform.SetParent(magazineHolsterSocket, false);
+                _carriedMagObj.transform.localPosition = Vector3.zero;
+                _carriedMagObj.transform.localRotation = Quaternion.identity;
+
+                // User requirement: Prefab mein jo visual size hai wahi size rehni chahiye!
+                Vector3 parentLossy = magazineHolsterSocket.lossyScale;
+                _carriedMagObj.transform.localScale = new Vector3(
+                    parentLossy.x > 0.0001f ? _userMagWorldScale.x / parentLossy.x : _userMagScale.x,
+                    parentLossy.y > 0.0001f ? _userMagWorldScale.y / parentLossy.y : _userMagScale.y,
+                    parentLossy.z > 0.0001f ? _userMagWorldScale.z / parentLossy.z : _userMagScale.z
+                );
+            }
+
+            _carriedMagObj.SetActive(true);
+        }
+        else
+        {
+            EnsureHolsterMagazine();
+            if (_carriedMagObj != null)
+            {
+                _carriedMagObj.transform.localScale = GetPrefabScale();
+                _carriedMagObj.SetActive(true);
+            }
+        }
+
+        GameAudio.PlayEquip(transform.position);
+        _hudMessage = "SPARE MAGAZINE COLLECTED! Press [M] to Change";
+        _hudMessageTimer = 3.5f;
+    }
+
+    public void EnsureHolsterSocketExists()
+    {
+        if (magazineHolsterSocket == null && _gunSystem != null && _gunSystem.magazineHolsterSocket != null)
+        {
+            magazineHolsterSocket = _gunSystem.magazineHolsterSocket;
+        }
+
+        if (magazineHolsterSocket == null)
+        {
+            Transform playerT = transform;
+            if (_playerController != null) playerT = _playerController.transform;
+
+            Transform found = playerT.Find("MagazineHolsterPoint") 
+                ?? playerT.Find("MagazineHolster")
+                ?? playerT.Find("MagazineSocket");
+
+            if (found == null)
+            {
+                Transform[] allChildren = playerT.GetComponentsInChildren<Transform>(true);
+                for (int i = 0; i < allChildren.Length; i++)
+                {
+                    if (allChildren[i].name == "MagazineHolsterPoint" || allChildren[i].name == "MagazineHolster")
+                    {
+                        found = allChildren[i];
+                        break;
+                    }
+                }
+            }
+
+            if (found == null)
+            {
+                GameObject socketObj = new GameObject("MagazineHolsterPoint");
+                socketObj.transform.SetParent(playerT, false);
+                socketObj.transform.localPosition = new Vector3(-0.1109f, 0.6418f, -0.0068f);
+                socketObj.transform.localEulerAngles = new Vector3(15f, -10f, 0f);
+                found = socketObj.transform;
+            }
+            magazineHolsterSocket = found;
+            if (_gunSystem != null) _gunSystem.magazineHolsterSocket = found;
+        }
+    }
+
+    public void EnsureHolsterMagazine()
+    {
+        EnsureHolsterSocketExists();
+
+        Vector3 targetScale = GetPrefabScale();
+
+        if (_carriedMagObj == null && magazineHolsterSocket != null)
+        {
+            _carriedMagObj = CreateMagazineModel("Carried_M4Magazine");
+            _carriedMagObj.transform.SetParent(magazineHolsterSocket, false);
+            _carriedMagObj.transform.localPosition = Vector3.zero;
+            _carriedMagObj.transform.localRotation = Quaternion.identity;
+            _carriedMagObj.transform.localScale = targetScale;
+        }
+        else if (_carriedMagObj != null)
+        {
+            _carriedMagObj.transform.localScale = targetScale;
+        }
+    }
+
+    public void EnsureGunMagazineSocket()
+    {
+        if (gunMagazineSocket == null)
+        {
+            if (_gunSystem != null && _gunSystem.gun != null)
+            {
+                Transform gunT = _gunSystem.gun.transform;
+                Transform found = gunT.Find("GunMagazineSocket") ?? gunT.Find("MagSocket") ?? gunT.Find("Magazine");
+                if (found == null)
+                {
+                    Transform[] allChildren = gunT.GetComponentsInChildren<Transform>(true);
+                    for (int i = 0; i < allChildren.Length; i++)
+                    {
+                        if (allChildren[i].name == "GunMagazineSocket" || allChildren[i].name == "MagSocket")
+                        {
+                            found = allChildren[i];
+                            break;
+                        }
+                    }
+                }
+
+                if (found == null)
+                {
+                    GameObject magSock = new GameObject("GunMagazineSocket");
+                    magSock.transform.SetParent(gunT, false);
+                    magSock.transform.localPosition = new Vector3(0f, -0.05f, 0.12f);
+                    magSock.transform.localEulerAngles = Vector3.zero;
+                    found = magSock.transform;
+                }
+                gunMagazineSocket = found;
+            }
+        }
+    }
+
+    public void EnsureGunMagazine()
+    {
+        if (_gunSystem == null || _gunSystem.gun == null) return;
+
+        EnsureGunMagazineSocket();
+
+        Vector3 targetScale = GetPrefabScale();
+
+        if (_gunMagObj == null && gunMagazineSocket != null)
+        {
+            _gunMagObj = CreateMagazineModel("Gun_ActiveMagazine");
+            _gunMagObj.transform.SetParent(gunMagazineSocket, false);
+            _gunMagObj.transform.localPosition = Vector3.zero;
+            _gunMagObj.transform.localRotation = Quaternion.identity;
+            _gunMagObj.transform.localScale = targetScale;
+        }
+        else if (_gunMagObj != null)
+        {
+            _gunMagObj.transform.localScale = targetScale;
+        }
+    }
+
+    private GameObject CreateMagazineModel(string objName = "M4_Magazine")
+    {
+        // 1. User assigned 3D model / prefab in Inspector
+        if (magazinePrefab != null)
+        {
+            GameObject inst = Instantiate(magazinePrefab);
+            inst.name = objName;
+            return inst;
+        }
+
+        // 2. Clone from the user's picked up magazine object
+        if (_userMagTemplate != null)
+        {
+            GameObject inst = Instantiate(_userMagTemplate);
+            inst.name = objName;
+            return inst;
+        }
+
+        // 3. Fallback to 3D model FBX if present in project
+#if UNITY_EDITOR
+        GameObject res = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Model/M4 Magazine/source/M4Mag.fbx");
+        if (res != null)
+        {
+            GameObject inst = Instantiate(res);
+            inst.name = objName;
+            return inst;
+        }
+#endif
+
+        // Procedural authentic magazine geometry (fallback only)
+        GameObject magObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        magObj.name = objName;
+        Collider c = magObj.GetComponent<Collider>();
+        if (c != null) Destroy(c);
+
+        Material mat = Resources.Load<Material>("Materials/M_M4Magazine");
+        if (mat == null) mat = GetCasingMaterial();
+        Renderer r = magObj.GetComponent<Renderer>();
+        if (r != null && mat != null) r.sharedMaterial = mat;
+
+        return magObj;
+    }
+
+    private void SpawnDroppedMagazine(Vector3 pos, Quaternion rot)
+    {
+        GameObject dropped = CreateMagazineModel("Dropped_EmptyMagazine");
+        dropped.transform.SetParent(null);
+        dropped.transform.position = pos;
+        dropped.transform.rotation = rot;
+        dropped.transform.localScale = GetPrefabScale();
+
+        // Clean up any MagazinePickup scripts on dropped instance
+        MagazinePickup[] pickups = dropped.GetComponentsInChildren<MagazinePickup>(true);
+        for (int i = 0; i < pickups.Length; i++)
+        {
+            if (pickups[i] != null) Destroy(pickups[i]);
+        }
+
+        BoxCollider col = dropped.GetComponent<BoxCollider>();
+        if (col == null) col = dropped.AddComponent<BoxCollider>();
+        col.size = new Vector3(0.04f, 0.20f, 0.09f);
+        col.isTrigger = false;
+        col.enabled = true;
+
+        Rigidbody rb = dropped.AddComponent<Rigidbody>();
+        if (rb == null) rb = dropped.AddComponent<Rigidbody>();
+        rb.mass = 0.45f;
+        rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
+
+        if (_playerCollider != null)
+            Physics.IgnoreCollision(col, _playerCollider, true);
+
+        Vector3 dropForce = -transform.up * 1.5f + Random.insideUnitSphere * 0.35f;
+        rb.linearVelocity = dropForce;
+        rb.angularVelocity = new Vector3(Random.Range(-5f, 5f), Random.Range(-5f, 5f), Random.Range(-5f, 5f));
+
+        Destroy(dropped, 4.0f);
     }
 
     private void DrawHitMarker(float cx, float cy, float size, float thickness, Color color)

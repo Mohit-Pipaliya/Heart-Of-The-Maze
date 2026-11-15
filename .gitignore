@@ -69,3 +69,8 @@ crashlytics-build.properties
 ehthumbs.db
 Thumbs.db
 .local/
+
+# Unity Recovery
+Assets/_Recovery/
+*.unity.bak
+

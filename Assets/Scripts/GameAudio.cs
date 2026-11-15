@@ -43,10 +43,18 @@ public static class GameAudio
         ZombieWalk,
         ZombieCrawl,
         BoatPaddle,
-        BoatWaterLap
+        BoatWaterLap,
+        GunDryFire,
+        MagOut,
+        MagIn,
+        GunCock
     }
 
     private static AudioClip _gunshotClip;
+    private static AudioClip _gunDryFireClip;
+    private static AudioClip _magOutClip;
+    private static AudioClip _magInClip;
+    private static AudioClip _gunCockClip;
     private static AudioClip _swordSwingClip;
     private static AudioClip _swordClashClip;
     private static AudioClip _swordFleshClip;
@@ -107,6 +115,7 @@ public static class GameAudio
         _bulletGroundClip = null;
         _footstepClip = _jumpClip = _landClip = _pickupClip = _equipClip = null;
         _paddleClip = _boatWaterLapClip = _hitClip = _deathClip = _uiClip = null;
+        _gunDryFireClip = _magOutClip = _magInClip = _gunCockClip = null;
         _zombieScreamClip = _zombieAttackClip = _zombieHurtClip = _zombieDeathClip = _zombieGroanClip = null;
         _zombieWalkClip = _zombieCrawlClip = null;
         _pool = null;
@@ -218,6 +227,18 @@ public static class GameAudio
             case SoundType.UI:
                 if (_uiClip == null) _uiClip = MakeProcedural("UI", 0.06f, 880f, 0.25f);
                 return _uiClip;
+            case SoundType.GunDryFire:
+                if (_gunDryFireClip == null) _gunDryFireClip = LoadAudioClip("GunDryFire") ?? MakeProcedural("DryFire", 0.08f, 1800f, 0.35f);
+                return _gunDryFireClip;
+            case SoundType.MagOut:
+                if (_magOutClip == null) _magOutClip = LoadAudioClip("MagOut") ?? MakeProcedural("MagOut", 0.25f, 900f, 0.45f);
+                return _magOutClip;
+            case SoundType.MagIn:
+                if (_magInClip == null) _magInClip = LoadAudioClip("MagIn") ?? MakeProcedural("MagIn", 0.25f, 350f, 0.55f);
+                return _magInClip;
+            case SoundType.GunCock:
+                if (_gunCockClip == null) _gunCockClip = LoadAudioClip("GunCock") ?? MakeProcedural("GunCock", 0.35f, 600f, 0.5f);
+                return _gunCockClip;
 
             default:
                 return null;
@@ -300,6 +321,66 @@ public static class GameAudio
         else
         {
             PlayAtPoint(clip, pos, volume, 0.97f, 1.03f, 0.3f);
+        }
+    }
+
+    public static void PlayDryFire(Vector3 pos, AudioSource source = null, float volume = 0.85f)
+    {
+        AudioClip clip = GetClip(SoundType.GunDryFire);
+        if (clip == null) return;
+        if (source != null)
+        {
+            source.pitch = Random.Range(0.96f, 1.04f);
+            source.PlayOneShot(clip, volume);
+        }
+        else
+        {
+            PlayAtPoint(clip, pos, volume, 0.96f, 1.04f, 0.2f);
+        }
+    }
+
+    public static void PlayMagOut(Vector3 pos, AudioSource source = null, float volume = 0.9f)
+    {
+        AudioClip clip = GetClip(SoundType.MagOut);
+        if (clip == null) return;
+        if (source != null)
+        {
+            source.pitch = Random.Range(0.97f, 1.03f);
+            source.PlayOneShot(clip, volume);
+        }
+        else
+        {
+            PlayAtPoint(clip, pos, volume, 0.97f, 1.03f, 0.25f);
+        }
+    }
+
+    public static void PlayMagIn(Vector3 pos, AudioSource source = null, float volume = 0.95f)
+    {
+        AudioClip clip = GetClip(SoundType.MagIn);
+        if (clip == null) return;
+        if (source != null)
+        {
+            source.pitch = Random.Range(0.98f, 1.02f);
+            source.PlayOneShot(clip, volume);
+        }
+        else
+        {
+            PlayAtPoint(clip, pos, volume, 0.98f, 1.02f, 0.25f);
+        }
+    }
+
+    public static void PlayGunCock(Vector3 pos, AudioSource source = null, float volume = 0.9f)
+    {
+        AudioClip clip = GetClip(SoundType.GunCock);
+        if (clip == null) return;
+        if (source != null)
+        {
+            source.pitch = Random.Range(0.98f, 1.02f);
+            source.PlayOneShot(clip, volume);
+        }
+        else
+        {
+            PlayAtPoint(clip, pos, volume, 0.98f, 1.02f, 0.25f);
         }
     }
 
