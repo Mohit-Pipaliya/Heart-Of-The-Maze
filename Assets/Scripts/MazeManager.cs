@@ -13,9 +13,11 @@ using UnityEngine;
 ///    - Sequence: Block 8 -> Block 1 -> Block 2 -> Block 3 -> Block 4 -> Block 5 -> Block 6 -> Block 7 -> Block 8.
 ///    - Exactly ONE block is at the Glade entrance at any given time (no overlapping ever).
 ///    - Whichever block arrives at the Glade entrance is automatically rotated so its entrance door ALWAYS faces the Glade!
-/// 4. Complete BoxCollider Smoke VFX (Dhuva sari jagah se nikal kar BoxCollider ko pura dhak deta hai):
-///    - When night begins, smoke billows up from the ground across the entire BoxCollider area, fading in smoothly.
-///    - In the morning (day), the smoke stops and smoothly fades out!
+/// 4. Glade Entrance Stone Blast Gate & Shadow Void Occlusion (The Maze Runner Style):
+///    - Zero smoke, zero cartoon transparency: 100% Opaque solid stone blast gate + interior shadow void.
+///    - Night starts: Massive stone blast gate drops down / slams shut, completely sealing the doorway so nothing can be seen across ("aar-paar kuch na dikhe")!
+///    - Behind the closed gate, block swap executes secretly in total isolation.
+///    - Morning (Day) starts: Massive stone blast gate smoothly rises up into the archway ceiling, revealing the new maze!
 /// 5. Day/Night Doors:
 ///    - Day starts -> ONLY the single entrance door facing the Glade side opens. All other doors remain closed.
 ///    - Night starts -> Active entrance door closes (and stays closed all night).
@@ -31,18 +33,18 @@ public class MazeManager : MonoBehaviour
     [Tooltip("Assign Blocks 1 to 8 in order. (Index 0 = Block 1, ..., Index 7 = Block 8)")]
     public GameObject[] mazeBlocks = new GameObject[8];
 
-    [Header("─── 2. Entrance Fog Object ─────────────────────────────")]
-    [Tooltip("Scene me 'maze enterence fog' empty GameObject ya BoxCollider yahan drag karein. (Empty chhodne par auto-find kar lega).")]
+    [Header("─── 2. Glade Entrance Occlusion Gate (The Maze Gate) ────")]
+    [Tooltip("Scene me 'Maze Enterence Fog' ya entrance GameObject/BoxCollider.")]
     public Transform mazeEntranceFog;
 
-    [Tooltip("Smoke visual effect script khud generate karegi")]
-    public bool autoGenerateFog = true;
+    [Tooltip("Entrance stone blast gate enable karein (100% opaque solid stone, zero see-through)")]
+    public bool useEntranceGate = true;
 
-    [Tooltip("Smoke fade in / fade out duration (seconds)")]
-    [Range(0.5f, 4f)] public float fogFadeDuration = 2.0f;
+    [Tooltip("Gate open / close animation duration in seconds")]
+    [Range(0.5f, 4f)] public float gateAnimationDuration = 1.8f;
 
-    [Tooltip("Smoke color (mystical pale smoke gray)")]
-    public Color fogColor = new Color(0.85f, 0.88f, 0.94f, 0.88f);
+    [Tooltip("Custom material for the Stone Blast Gate (empty chhodne par auto maze wall material load karega)")]
+    public Material customGateMaterial;
 
     [Header("─── 3. Day / Night Door Automation ─────────────────────")]
     [Tooltip("Automatically connect to DayNightController in scene")]
@@ -56,9 +58,10 @@ public class MazeManager : MonoBehaviour
     public int[] blockSequence = new int[] { 8, 1, 2, 3, 4, 5, 6, 7 };
 
     [Header("─── 5. Audio (Optional) ────────────────────────────────")]
-    public AudioClip fogSound;
+    public AudioClip gateCloseSound;
+    public AudioClip gateOpenSound;
     public AudioClip swapRumbleSound;
-    [Range(0f, 1f)] public float soundVolume = 0.8f;
+    [Range(0f, 1f)] public float soundVolume = 0.85f;
 
     [Header("─── 6. Live Status (Read Only) ─────────────────────────")]
     [SerializeField] private int currentActiveBlockNumber = 8;
@@ -72,16 +75,17 @@ public class MazeManager : MonoBehaviour
     private Quaternion[] _homeRotations = new Quaternion[8];
     private bool _slotsCaptured = false;
 
-    // ─── Ground Smoke Internal References ───
-    private GameObject _fogEffectRoot;
-    private ParticleSystem _fogParticleSystem;
-    private ParticleSystem _groundMistParticleSystem;
-    private MeshRenderer[] _fogCurtainRenderers;
-    private Material _fogCurtainMaterial;
-    private float _currentFogAlpha = 0f;
+    // ─── Entrance Gate Internal References ───
+    private GameObject _entranceGateRoot;
+    private Transform _blastGateMover;
+    private GameObject _shadowVoidVolume;
+    private Vector3 _gateOpenLocalPos;
+    private Vector3 _gateClosedLocalPos;
+    private bool _isGateOpen = false;
     private Coroutine _swapRoutine;
-    private Coroutine _fogFadeRoutine;
+    private Coroutine _gateAnimRoutine;
     private AudioSource _audioSource;
+    private AudioClip _proceduralRumbleClip;
 
     // ─── Day/Night Tracking ───
     private bool _wasDay = false;
@@ -93,7 +97,7 @@ public class MazeManager : MonoBehaviour
 
         InitializeAudio();
         CaptureInitialSlots();
-        EnsureEntranceFogVisuals(true);
+        EnsureEntranceGateVisuals(true);
     }
 
     private void Start()
@@ -108,12 +112,12 @@ public class MazeManager : MonoBehaviour
 
         if (DayNightController.Instance != null && DayNightController.Instance.IsDay)
         {
-            SetFogAlpha(0f);
+            SetGateState(open: true, instant: true);
             OpenActiveDoor();
         }
         else
         {
-            SetFogAlpha(1f);
+            SetGateState(open: false, instant: true);
             CloseAllDoorsInstant();
         }
     }
@@ -138,15 +142,6 @@ public class MazeManager : MonoBehaviour
 
     private void Update()
     {
-        // Animate upward scrolling smoke on the joint smoke wall curtain
-        if (_currentFogAlpha > 0.01f && _fogCurtainMaterial != null)
-        {
-            float offsetY = Time.time * 0.18f;
-            float offsetX = Mathf.Sin(Time.time * 0.2f) * 0.05f;
-            _fogCurtainMaterial.SetTextureOffset("_BaseMap", new Vector2(offsetX, offsetY));
-            _fogCurtainMaterial.SetTextureOffset("_MainTex", new Vector2(offsetX, offsetY));
-        }
-
         // Failsafe polling for DayNightController state changes
         if (syncWithDayNight && DayNightController.Instance != null && !isSwapping)
         {
@@ -182,8 +177,8 @@ public class MazeManager : MonoBehaviour
 
     private IEnumerator DayStartRoutine()
     {
-        // Subah (Day) hote hi smoke fade out hokar bandh ho jana chahiye
-        yield return FadeFog(0f, fogFadeDuration);
+        // Subah (Day) hote hi Stone Blast Gate smoothly open ho kar ceiling me raise ho jaye
+        yield return AnimateEntranceGate(open: true, gateAnimationDuration);
 
         if (doorOpenDelay > 0f)
             yield return new WaitForSeconds(doorOpenDelay);
@@ -203,19 +198,19 @@ public class MazeManager : MonoBehaviour
     {
         isSwapping = true;
 
-        // 1. Immediately command the active block entrance door to close
+        // 1. Active block entrance door ko close hone ka command dein
         CloseActiveDoor();
-        yield return new WaitForSeconds(0.8f);
+        yield return new WaitForSeconds(0.4f);
 
-        // 2. Night shuru hote hi BoxCollider se dhuva (smoke) nikalna chalu ho aur fade in ho
-        PlayAudio(fogSound);
-        yield return FadeFog(1f, fogFadeDuration);
+        // 2. Colossal Stone Blast Gate slams shut, completely sealing the doorway!
+        //    (Ab aar-paar bilkul kuch nahi dikhega - 100% solid stone wall)
+        yield return AnimateEntranceGate(open: false, gateAnimationDuration);
 
-        // 3. Play rumble audio and perform block swap behind the dense smoke
-        PlayAudio(swapRumbleSound);
+        // 3. Play rumble audio and perform block swap behind the sealed solid gate
+        PlayAudio(swapRumbleSound != null ? swapRumbleSound : GetOrCreateGateRumbleClip());
         AdvanceToNextBlock();
 
-        // Smoke stays active and billowing throughout the night!
+        // Blast gate poori raat bandh rahegi!
         isSwapping = false;
         _swapRoutine = null;
     }
@@ -309,188 +304,179 @@ public class MazeManager : MonoBehaviour
     /// Optimal cardinal rotation angle (0, 90, 180, 270) for each of the 8 blocks
     /// so that its main entrance door is ALWAYS situated on the East edge (X ~ 4338) facing the Glade!
     /// </summary>
-    public int GetOptimalGladeRotation(int blockNumber)
+    public static int GetOptimalGladeRotation(int blockNumber)
     {
         switch (blockNumber)
         {
-            case 1: return 180; // West door (X=6) rotates 180° to East edge (X=994)
-            case 2: return 0;   // East door (X=1002) is already facing Glade
-            case 3: return 270; // South door (Z=0) rotates 270° to East edge (X=1000)
-            case 4: return 180; // West door (X=23) rotates 180° to East edge (X=976)
-            case 5: return 270; // South door (Z=12) rotates 270° to East edge (X=988)
-            case 6: return 0;   // East door (X=991) is already facing Glade
-            case 7: return 90;  // North door (Z=992) rotates 90° to East edge (X=992)
-            case 8: return 0;   // East door (X=997) is already facing Glade
+            case 1: return 180;
+            case 2: return 0;
+            case 3: return 270;
+            case 4: return 180;
+            case 5: return 270;
+            case 6: return 0;
+            case 7: return 90;
+            case 8: return 0;
             default: return 0;
         }
     }
 
     private void ApplyInitialActiveBlock()
     {
-        CaptureInitialSlots();
-
-        if (blockSequence == null || blockSequence.Length == 0)
-            blockSequence = new int[] { 8, 1, 2, 3, 4, 5, 6, 7 };
-
+        int initialBlockNum = (blockSequence != null && blockSequence.Length > 0) ? blockSequence[0] : 8;
         currentSequenceIndex = 0;
-        currentActiveBlockNumber = blockSequence[0]; // Day 1 = Block 8
+        currentActiveBlockNumber = initialBlockNum;
 
-        // Place Block 8 at the active slot facing the Glade
-        GameObject startBlock = GetBlock(currentActiveBlockNumber);
-        if (startBlock != null)
+        GameObject activeBlock = GetBlock(initialBlockNum);
+        if (activeBlock != null)
         {
-            PositionBlockAtGladeSlot(startBlock, GetOptimalGladeRotation(currentActiveBlockNumber));
-        }
+            int optimalAngle = GetOptimalGladeRotation(initialBlockNum);
+            PositionBlockAtGladeSlot(activeBlock, optimalAngle);
 
-        // Ensure other blocks are in their reserve slots (never at Glade entrance)
-        for (int i = 0; i < 8; i++)
-        {
-            int blockNum = i + 1;
-            if (blockNum == currentActiveBlockNumber) continue;
-
-            GameObject b = GetBlock(blockNum);
-            if (b != null)
+            for (int i = 0; i < mazeBlocks.Length; i++)
             {
-                b.transform.SetPositionAndRotation(_homePositions[i], _homeRotations[i]);
+                GameObject b = mazeBlocks[i];
+                if (b != null && b != activeBlock)
+                {
+                    if (Vector3.Distance(b.transform.position, _activeSlotCenter) < 700f)
+                    {
+                        int fallbackSlot = (i < 7) ? i : 0;
+                        b.transform.SetPositionAndRotation(_homePositions[fallbackSlot], Quaternion.identity);
+                    }
+                }
             }
         }
-    }
-
-    public GameObject GetActiveBlock() => GetBlock(currentActiveBlockNumber);
-
-    public GameObject GetBlock(int number)
-    {
-        int idx = number - 1;
-        if (idx >= 0 && idx < mazeBlocks.Length)
-            return mazeBlocks[idx];
-        return null;
     }
 
     public void CaptureInitialSlots()
     {
         if (_slotsCaptured) return;
 
-        AutoFindBlocks();
-
-        // Calculate slot center from Maze parent
-        GameObject mazeParent = GameObject.Find("Maze");
-        Vector3 mazeOrigin = (mazeParent != null) ? mazeParent.transform.position : new Vector3(3338f, 0f, 0f);
-
-        _activeSlotBasePosition = mazeOrigin + new Vector3(0f, 0f, 1000f);
-        _activeSlotCenter = _activeSlotBasePosition + new Vector3(500f, 0f, 500f);
-
-        // Capture home positions for all 8 blocks
         for (int i = 0; i < 8; i++)
         {
-            GameObject b = mazeBlocks[i];
-            if (b != null)
+            GameObject block = GetBlock(i + 1);
+            if (block != null)
             {
-                _homePositions[i] = b.transform.position;
-                _homeRotations[i] = b.transform.rotation;
+                _homePositions[i] = block.transform.position;
+                _homeRotations[i] = block.transform.rotation;
             }
+            else
+            {
+                _homePositions[i] = new Vector3(3338f + (i * 1100f), 0f, 1000f);
+                _homeRotations[i] = Quaternion.identity;
+            }
+        }
+
+        GameObject block8 = GetBlock(8);
+        if (block8 != null)
+        {
+            _activeSlotBasePosition = block8.transform.position;
+            _activeSlotCenter = _activeSlotBasePosition + new Vector3(500f, 0f, 500f);
+        }
+        else
+        {
+            _activeSlotCenter = new Vector3(3838f, 0f, 1500f);
         }
 
         _slotsCaptured = true;
     }
 
+    public GameObject GetBlock(int number)
+    {
+        int idx = number - 1;
+        if (mazeBlocks != null && idx >= 0 && idx < mazeBlocks.Length)
+        {
+            return mazeBlocks[idx];
+        }
+        return null;
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
-    //  DOOR CONTROL (ONLY GLADE-FACING DOOR OPENS!)
+    //  DOOR CONTROL (STRICTLY ONLY GLADE-FACING DOOR OPENS)
     // ═══════════════════════════════════════════════════════════════════════════
 
     public void OpenActiveDoor()
     {
-        GameObject active = GetActiveBlock();
-        if (active == null) return;
+        CloseAllDoorsInstant();
 
-        var allDoors = active.GetComponentsInChildren<DoubleSlidingDoor>(true);
-        DoubleSlidingDoor gladeFacingDoor = FindActiveEntranceDoor();
-
-        // 1. Ensure all interior/non-glade doors on this block remain strictly CLOSED
-        foreach (var d in allDoors)
+        DoubleSlidingDoor gladeDoor = FindActiveEntranceDoor();
+        if (gladeDoor != null)
         {
-            if (d != null && d != gladeFacingDoor)
-            {
-                d.ReleaseManagerOverride();
-                d.CloseDoor();
-            }
+            gladeDoor.OpenByManager();
+            Debug.Log($"[MazeManager] Glade-facing door opened on Block {currentActiveBlockNumber} at world position {gladeDoor.transform.position}!");
         }
-
-        // 2. Open strictly ONLY the door facing the Glade side!
-        if (gladeFacingDoor != null)
+        else
         {
-            gladeFacingDoor.OpenByManager();
-            Debug.Log($"[MazeManager] SUCCESS: Opened ONLY the Glade-facing entrance door '{gladeFacingDoor.gameObject.name}' (world X: {gladeFacingDoor.transform.position.x:F1}) on active Block {currentActiveBlockNumber}");
+            Debug.LogWarning($"[MazeManager] No Glade-facing entrance door found near Glade threshold on Block {currentActiveBlockNumber}!");
         }
     }
 
     public void CloseActiveDoor()
     {
-        DoubleSlidingDoor door = FindActiveEntranceDoor();
-        if (door != null)
+        DoubleSlidingDoor gladeDoor = FindActiveEntranceDoor();
+        if (gladeDoor != null)
         {
-            door.CloseByManager();
-            Debug.Log($"[MazeManager] Closed entrance door '{door.gameObject.name}' on active Block {currentActiveBlockNumber}");
+            gladeDoor.CloseByManager();
         }
     }
 
     public void CloseAllDoorsInstant()
     {
-        for (int i = 0; i < mazeBlocks.Length; i++)
+        for (int i = 1; i <= 8; i++)
         {
-            if (mazeBlocks[i] != null)
-                ReleaseAndCloseBlockDoors(mazeBlocks[i]);
+            GameObject b = GetBlock(i);
+            if (b != null) ReleaseAndCloseBlockDoors(b);
         }
     }
 
     public void ReleaseAndCloseBlockDoors(GameObject block)
     {
         if (block == null) return;
-        var doors = block.GetComponentsInChildren<DoubleSlidingDoor>(true);
-        foreach (var d in doors)
+        DoubleSlidingDoor[] doors = block.GetComponentsInChildren<DoubleSlidingDoor>(true);
+        foreach (var door in doors)
         {
-            if (d != null)
+            if (door != null)
             {
-                d.ReleaseManagerOverride();
-                d.SetStateInstant(false);
+                door.CloseByManager();
             }
         }
     }
 
-    /// <summary>
-    /// Finds the specific door on the active block that faces into the Glade.
-    /// Because the Glade is in the +X direction (world X >= 4300),
-    /// the door with the MAXIMUM world X (transform.position.x) is strictly the Glade-facing door!
-    /// </summary>
     public DoubleSlidingDoor FindActiveEntranceDoor()
     {
-        GameObject active = GetActiveBlock();
-        if (active == null) return null;
+        GameObject activeBlock = GetBlock(currentActiveBlockNumber);
+        if (activeBlock == null) return null;
 
-        var doors = active.GetComponentsInChildren<DoubleSlidingDoor>(true);
+        DoubleSlidingDoor[] doors = activeBlock.GetComponentsInChildren<DoubleSlidingDoor>(true);
         if (doors == null || doors.Length == 0) return null;
 
         DoubleSlidingDoor bestDoor = null;
-        float maxX = float.MinValue;
+        float maxWorldX = float.MinValue;
 
         foreach (var d in doors)
         {
             if (d == null) continue;
-            float wx = d.transform.position.x;
-            if (wx > maxX)
+            float worldX = d.transform.position.x;
+            if (worldX > maxWorldX)
             {
-                maxX = wx;
+                maxWorldX = worldX;
                 bestDoor = d;
             }
         }
 
-        return bestDoor ?? doors[0];
+        if (bestDoor != null && maxWorldX >= 4200f)
+        {
+            return bestDoor;
+        }
+
+        return bestDoor;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    //  BOXCOLLIDER COVERING SMOKE VFX (Dhuva sari jagah se nikal kar BoxCollider ko dhak leta hai)
+    //  GLADE ENTRANCE STONE BLAST GATE & SHADOW VOID OCCLUSION
+    //  (100% OPAQUE - AAR PAAR KUCH BHI NAHI DIKHEGA!)
     // ═══════════════════════════════════════════════════════════════════════════
 
-    public void EnsureEntranceFogVisuals(bool forceRecreate = false)
+    public void EnsureEntranceGateVisuals(bool forceRecreate = false)
     {
         if (mazeEntranceFog == null)
         {
@@ -498,414 +484,243 @@ public class MazeManager : MonoBehaviour
             if (mazeEntranceFog == null) return;
         }
 
-        if (!autoGenerateFog) return;
-
-        // Clean up stale or incomplete objects
-        Transform existing = mazeEntranceFog.Find("_GeneratedFogEffect");
-        if (existing != null && (forceRecreate || _fogEffectRoot == null || _fogParticleSystem == null || _groundMistParticleSystem == null || _fogCurtainRenderers == null || _fogCurtainRenderers.Length == 0))
+        // 1. Clean up legacy smoke particles if they exist
+        Transform legacyFog = mazeEntranceFog.Find("_GeneratedFogEffect");
+        if (legacyFog != null)
         {
-            if (Application.isPlaying) Destroy(existing.gameObject);
-            else DestroyImmediate(existing.gameObject);
-            existing = null;
+            if (Application.isPlaying) Destroy(legacyFog.gameObject);
+            else DestroyImmediate(legacyFog.gameObject);
         }
 
-        if (existing == null)
+        if (!useEntranceGate) return;
+
+        // 2. Check if gate already exists
+        Transform existingGate = mazeEntranceFog.Find("_GladeEntranceGate");
+        if (existingGate != null && (forceRecreate || _entranceGateRoot == null || _blastGateMover == null))
         {
-            CreateBoxColliderSmokeEffect();
+            if (Application.isPlaying) Destroy(existingGate.gameObject);
+            else DestroyImmediate(existingGate.gameObject);
+            existingGate = null;
+        }
+
+        if (existingGate == null)
+        {
+            CreateGladeEntranceGate();
         }
         else
         {
-            _fogEffectRoot = existing.gameObject;
-            var systems = _fogEffectRoot.GetComponentsInChildren<ParticleSystem>();
-            if (systems.Length > 0) _fogParticleSystem = systems[0];
-            if (systems.Length > 1) _groundMistParticleSystem = systems[1];
-
-            _fogCurtainRenderers = _fogEffectRoot.GetComponentsInChildren<MeshRenderer>();
-            if (_fogCurtainRenderers != null && _fogCurtainRenderers.Length > 0 && _fogCurtainMaterial == null)
-            {
-                _fogCurtainMaterial = _fogCurtainRenderers[0].sharedMaterial ?? _fogCurtainRenderers[0].material;
-            }
+            _entranceGateRoot = existingGate.gameObject;
+            _blastGateMover = _entranceGateRoot.transform.Find("StoneBlastGateMover");
+            Transform voidT = _entranceGateRoot.transform.Find("ArchwayShadowVoid");
+            if (voidT != null) _shadowVoidVolume = voidT.gameObject;
         }
-
-        SetFogAlpha(_currentFogAlpha);
     }
 
-    private void CreateBoxColliderSmokeEffect()
+    private void CreateGladeEntranceGate()
     {
-        _fogEffectRoot = new GameObject("_GeneratedFogEffect");
-        _fogEffectRoot.transform.SetParent(mazeEntranceFog, false);
+        _entranceGateRoot = new GameObject("_GladeEntranceGate");
+        _entranceGateRoot.transform.SetParent(mazeEntranceFog, false);
 
         BoxCollider box = mazeEntranceFog.GetComponent<BoxCollider>();
-        Vector3 smokeCenter = Vector3.zero;
-        Vector3 smokeBoxSize = new Vector3(30f, 65f, 160f);
+        Vector3 gateCenter = Vector3.zero;
+        float gateWidth = 180f;
+        float gateHeight = 160f;
 
         if (box != null)
         {
-            smokeCenter = box.center;
-            // Match the exact dimensions of user's BoxCollider so the ENTIRE collider is covered
-            smokeBoxSize = new Vector3(
-                Mathf.Max(25f, box.size.x),
-                Mathf.Max(35f, box.size.y),
-                Mathf.Max(80f, box.size.z)
-            );
+            gateCenter = box.center;
+            gateHeight = Mathf.Max(120f, box.size.y);
+            gateWidth = Mathf.Clamp(box.size.z, 160f, 600f);
         }
 
-        _fogEffectRoot.transform.localPosition = smokeCenter;
-        _fogEffectRoot.transform.localRotation = Quaternion.identity;
+        _entranceGateRoot.transform.localPosition = gateCenter;
+        _entranceGateRoot.transform.localRotation = Quaternion.identity;
 
-        Material smokeMat = Resources.Load<Material>("VFX/M_ParticleAlpha")
-            ?? Resources.Load<Material>("VFX/M_Smoke")
-            ?? Resources.Load<Material>("M_ParticleAlpha");
+        // Stone blast gate material (matches the ancient stone walls of the maze)
+        Material gateMat = customGateMaterial
+            ?? Resources.Load<Material>("Materials/M_StoneBlastGate")
+            ?? Resources.Load<Material>("Materials/0")
+            ?? GetWallMaterialFallback();
 
-        // ─────────────────────────────────────────────────────────────────
-        // 1. JOINT SMOKE WALL CURTAINS (100% Opaque, Continuous Dual Barrier)
-        // ─────────────────────────────────────────────────────────────────
-        Shader unlitShader = Shader.Find("Universal Render Pipeline/Unlit")
-            ?? Shader.Find("Universal Render Pipeline/Particles/Unlit")
-            ?? Shader.Find("Unlit/Transparent");
+        // ─────────────────────────────────────────────────────────────
+        // 1. MOVING STONE BLAST GATE (Drops down at night, raises at day)
+        // ─────────────────────────────────────────────────────────────
+        GameObject moverGo = new GameObject("StoneBlastGateMover");
+        moverGo.transform.SetParent(_entranceGateRoot.transform, false);
+        _blastGateMover = moverGo.transform;
 
-        _fogCurtainMaterial = new Material(unlitShader);
-        _fogCurtainMaterial.name = "M_DynamicSmokeWallCurtain";
-        _fogCurtainMaterial.SetFloat("_Surface", 1f);      // Transparent
-        _fogCurtainMaterial.SetFloat("_Blend", 0f);        // Alpha blend
-        _fogCurtainMaterial.SetFloat("_Cull", 0f);         // Double-sided (Cull Off)
-        _fogCurtainMaterial.SetInt("_ZWrite", 0);
-        _fogCurtainMaterial.renderQueue = 3050;
+        // Main massive stone slab
+        GameObject slab = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        slab.name = "StoneBlastGateSlab";
+        slab.transform.SetParent(_blastGateMover, false);
+        slab.transform.localPosition = Vector3.zero;
+        slab.transform.localScale = new Vector3(8f, gateHeight, gateWidth);
 
-        Texture2D smokeTex = Resources.Load<Texture2D>("VFX/T_Smoke");
-        if (smokeTex != null)
+        Renderer slabRenderer = slab.GetComponent<Renderer>();
+        if (slabRenderer != null && gateMat != null)
         {
-            _fogCurtainMaterial.SetTexture("_BaseMap", smokeTex);
-            _fogCurtainMaterial.SetTexture("_MainTex", smokeTex);
-            float tileZ = Mathf.Max(6f, smokeBoxSize.z / 60f);
-            float tileY = Mathf.Max(2f, smokeBoxSize.y / 50f);
-            _fogCurtainMaterial.SetTextureScale("_BaseMap", new Vector2(tileZ, tileY));
-            _fogCurtainMaterial.SetTextureScale("_MainTex", new Vector2(tileZ, tileY));
+            slabRenderer.sharedMaterial = gateMat;
         }
-        Color initialCurtainColor = new Color(fogColor.r, fogColor.g, fogColor.b, 0f);
-        _fogCurtainMaterial.SetColor("_BaseColor", initialCurtainColor);
-        _fogCurtainMaterial.SetColor("_Color", initialCurtainColor);
 
-        List<MeshRenderer> curtainList = new List<MeshRenderer>();
-        float curtainWidth = smokeBoxSize.z * 1.05f;
-        float curtainHeight = smokeBoxSize.y * 1.05f;
+        // Solid collider so player cannot pass through while closed
+        BoxCollider slabCol = slab.GetComponent<BoxCollider>();
+        if (slabCol != null) slabCol.isTrigger = false;
 
-        // Front Curtain: Facing Glade (+X)
-        GameObject curtainFront = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        curtainFront.name = "SmokeWall_Front";
-        curtainFront.transform.SetParent(_fogEffectRoot.transform, false);
-        curtainFront.transform.localPosition = new Vector3(8.0f, 0f, 0f);
-        curtainFront.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
-        curtainFront.transform.localScale = new Vector3(curtainWidth, curtainHeight, 1f);
-        Collider cf = curtainFront.GetComponent<Collider>();
-        if (cf != null) DestroyImmediate(cf);
-        MeshRenderer mrf = curtainFront.GetComponent<MeshRenderer>();
-        mrf.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        mrf.receiveShadows = false;
-        mrf.material = _fogCurtainMaterial;
-        curtainList.Add(mrf);
+        // Decorative stone reinforcement pillars on both ends
+        float halfW = gateWidth * 0.48f;
+        CreateReinforcementPillar("Pillar_Left", _blastGateMover, new Vector3(1f, 0f, -halfW), gateHeight, gateMat);
+        CreateReinforcementPillar("Pillar_Right", _blastGateMover, new Vector3(1f, 0f, halfW), gateHeight, gateMat);
 
-        // Back Curtain: Facing Maze (-X)
-        GameObject curtainBack = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        curtainBack.name = "SmokeWall_Back";
-        curtainBack.transform.SetParent(_fogEffectRoot.transform, false);
-        curtainBack.transform.localPosition = new Vector3(-8.0f, 0f, 0f);
-        curtainBack.transform.localRotation = Quaternion.Euler(0f, -90f, 0f);
-        curtainBack.transform.localScale = new Vector3(curtainWidth, curtainHeight, 1f);
-        Collider cb = curtainBack.GetComponent<Collider>();
-        if (cb != null) DestroyImmediate(cb);
-        MeshRenderer mrb = curtainBack.GetComponent<MeshRenderer>();
-        mrb.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        mrb.receiveShadows = false;
-        mrb.material = _fogCurtainMaterial;
-        curtainList.Add(mrb);
+        // ─────────────────────────────────────────────────────────────
+        // 2. ABYSSAL SHADOW VOID (Pitch black interior volume)
+        // ─────────────────────────────────────────────────────────────
+        _shadowVoidVolume = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        _shadowVoidVolume.name = "ArchwayShadowVoid";
+        _shadowVoidVolume.transform.SetParent(_entranceGateRoot.transform, false);
+        _shadowVoidVolume.transform.localPosition = new Vector3(-12f, 0f, 0f);
+        _shadowVoidVolume.transform.localScale = new Vector3(20f, gateHeight * 1.05f, gateWidth * 1.02f);
 
-        _fogCurtainRenderers = curtainList.ToArray();
+        Collider voidCol = _shadowVoidVolume.GetComponent<Collider>();
+        if (voidCol != null) DestroyImmediate(voidCol);
 
-        // ─────────────────────────────────────────────────────────────────
-        // 2. CONTINUOUS BOTTOM-TO-TOP RISING SMOKE COLUMNS (Unbroken Wall)
-        // ─────────────────────────────────────────────────────────────────
-        GameObject psGo = new GameObject("BoxColliderSmokeParticles");
-        psGo.transform.SetParent(_fogEffectRoot.transform, false);
-        psGo.transform.localPosition = Vector3.zero;
-
-        _fogParticleSystem = psGo.AddComponent<ParticleSystem>();
-        var main = _fogParticleSystem.main;
-        main.startLifetime = new ParticleSystem.MinMaxCurve(5.5f, 7.5f);
-        main.startSpeed = new ParticleSystem.MinMaxCurve(22f, 38f);
-        main.startSize = new ParticleSystem.MinMaxCurve(45f, 85f);
-        main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
-        main.startColor = new Color(fogColor.r, fogColor.g, fogColor.b, 0.95f);
-        main.maxParticles = 1200;
-        main.simulationSpace = ParticleSystemSimulationSpace.Local;
-        main.loop = true;
-        main.playOnAwake = false;
-
-        // Shape: Emits along the bottom baseline across the entire width
-        var shape = _fogParticleSystem.shape;
-        shape.shapeType = ParticleSystemShapeType.Box;
-        shape.position = new Vector3(0f, -smokeBoxSize.y * 0.46f, 0f);
-        shape.scale = new Vector3(smokeBoxSize.x * 0.8f, 4f, smokeBoxSize.z * 1.02f);
-
-        // Strong upward rising velocity from floor all the way to the top
-        var vel = _fogParticleSystem.velocityOverLifetime;
-        vel.enabled = true;
-        vel.space = ParticleSystemSimulationSpace.Local;
-        vel.y = new ParticleSystem.MinMaxCurve(22f, 38f);
-        vel.x = new ParticleSystem.MinMaxCurve(-1.5f, 1.5f);
-        vel.z = new ParticleSystem.MinMaxCurve(-1.5f, 1.5f);
-
-        // 3D Curl Noise for organic swirling vortices
-        var noise = _fogParticleSystem.noise;
-        noise.enabled = true;
-        noise.frequency = 0.035f;
-        noise.strength = 2.8f;
-        noise.scrollSpeed = 0.35f;
-        noise.damping = true;
-        noise.quality = ParticleSystemNoiseQuality.High;
-        noise.octaveCount = 2;
-        noise.octaveMultiplier = 0.5f;
-        noise.octaveScale = 2.0f;
-
-        // Size expansion as columns billow and fuse together
-        var sizeOverLife = _fogParticleSystem.sizeOverLifetime;
-        sizeOverLife.enabled = true;
-        AnimationCurve sizeCurve = new AnimationCurve();
-        sizeCurve.AddKey(0f, 0.65f);
-        sizeCurve.AddKey(0.35f, 1.25f);
-        sizeCurve.AddKey(1.0f, 1.85f);
-        sizeOverLife.size = new ParticleSystem.MinMaxCurve(1f, sizeCurve);
-
-        // Color and alpha over lifetime
-        var colOverLife = _fogParticleSystem.colorOverLifetime;
-        colOverLife.enabled = true;
-        Gradient grad = new Gradient();
-        grad.SetKeys(
-            new GradientColorKey[] { new GradientColorKey(fogColor, 0f), new GradientColorKey(fogColor, 1f) },
-            new GradientAlphaKey[] {
-                new GradientAlphaKey(0.0f, 0f),
-                new GradientAlphaKey(0.95f, 0.15f),
-                new GradientAlphaKey(0.90f, 0.70f),
-                new GradientAlphaKey(0.0f, 1.0f)
+        Material voidMat = Resources.Load<Material>("Materials/M_ArchwayVoid");
+        if (voidMat == null)
+        {
+            Shader unlit = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color");
+            if (unlit != null)
+            {
+                voidMat = new Material(unlit);
+                voidMat.color = Color.black;
             }
-        );
-        colOverLife.color = grad;
+        }
+        Renderer voidRend = _shadowVoidVolume.GetComponent<Renderer>();
+        if (voidRend != null && voidMat != null) voidRend.sharedMaterial = voidMat;
 
-        // Gentle angular twist as smoke rises
-        var rotOverLife = _fogParticleSystem.rotationOverLifetime;
-        rotOverLife.enabled = true;
-        rotOverLife.z = new ParticleSystem.MinMaxCurve(-0.2f, 0.2f);
+        // Calculate closed and open local positions
+        _gateClosedLocalPos = Vector3.zero;
+        _gateOpenLocalPos = new Vector3(0f, gateHeight + 15f, 0f);
 
-        var psRenderer = psGo.GetComponent<ParticleSystemRenderer>();
-        if (smokeMat != null) psRenderer.material = smokeMat;
-
-        var emission = _fogParticleSystem.emission;
-        emission.rateOverTime = 240f;
-        emission.enabled = false;
-
-        // ─────────────────────────────────────────────────────────────────
-        // 3. LOW-HANGING GROUND MIST LAYER
-        // ─────────────────────────────────────────────────────────────────
-        GameObject mistGo = new GameObject("GroundMistParticles");
-        mistGo.transform.SetParent(_fogEffectRoot.transform, false);
-        mistGo.transform.localPosition = new Vector3(0f, -smokeBoxSize.y * 0.45f, 0f);
-
-        _groundMistParticleSystem = mistGo.AddComponent<ParticleSystem>();
-        var mistMain = _groundMistParticleSystem.main;
-        mistMain.startLifetime = new ParticleSystem.MinMaxCurve(5.0f, 8.0f);
-        mistMain.startSpeed = new ParticleSystem.MinMaxCurve(0.6f, 2.2f);
-        mistMain.startSize = new ParticleSystem.MinMaxCurve(25f, 48f);
-        mistMain.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
-        mistMain.startColor = new Color(fogColor.r, fogColor.g, fogColor.b, 0.85f);
-        mistMain.maxParticles = 300;
-        mistMain.simulationSpace = ParticleSystemSimulationSpace.Local;
-        mistMain.loop = true;
-        mistMain.playOnAwake = false;
-
-        var mistShape = _groundMistParticleSystem.shape;
-        mistShape.shapeType = ParticleSystemShapeType.Box;
-        mistShape.scale = new Vector3(smokeBoxSize.x * 1.1f, 3f, smokeBoxSize.z * 1.05f);
-
-        var mistVel = _groundMistParticleSystem.velocityOverLifetime;
-        mistVel.enabled = true;
-        mistVel.space = ParticleSystemSimulationSpace.Local;
-        mistVel.y = new ParticleSystem.MinMaxCurve(0.3f, 1.2f);
-        mistVel.x = new ParticleSystem.MinMaxCurve(-1.8f, 1.8f);
-        mistVel.z = new ParticleSystem.MinMaxCurve(-1.8f, 1.8f);
-
-        var mistNoise = _groundMistParticleSystem.noise;
-        mistNoise.enabled = true;
-        mistNoise.frequency = 0.025f;
-        mistNoise.strength = 1.4f;
-        mistNoise.scrollSpeed = 0.2f;
-        mistNoise.damping = true;
-        mistNoise.quality = ParticleSystemNoiseQuality.High;
-
-        var mistSizeOverLife = _groundMistParticleSystem.sizeOverLifetime;
-        mistSizeOverLife.enabled = true;
-        AnimationCurve mistCurve = new AnimationCurve();
-        mistCurve.AddKey(0f, 0.7f);
-        mistCurve.AddKey(0.4f, 1.3f);
-        mistCurve.AddKey(1.0f, 1.7f);
-        mistSizeOverLife.size = new ParticleSystem.MinMaxCurve(1f, mistCurve);
-
-        var mistCol = _groundMistParticleSystem.colorOverLifetime;
-        mistCol.enabled = true;
-        Gradient mistGrad = new Gradient();
-        mistGrad.SetKeys(
-            new GradientColorKey[] { new GradientColorKey(fogColor, 0f), new GradientColorKey(fogColor, 1f) },
-            new GradientAlphaKey[] {
-                new GradientAlphaKey(0.0f, 0f),
-                new GradientAlphaKey(0.88f, 0.25f),
-                new GradientAlphaKey(0.75f, 0.70f),
-                new GradientAlphaKey(0.0f, 1.0f)
-            }
-        );
-        mistCol.color = mistGrad;
-
-        var mistRot = _groundMistParticleSystem.rotationOverLifetime;
-        mistRot.enabled = true;
-        mistRot.z = new ParticleSystem.MinMaxCurve(-0.1f, 0.1f);
-
-        var mistRenderer = mistGo.GetComponent<ParticleSystemRenderer>();
-        if (smokeMat != null) mistRenderer.material = smokeMat;
-
-        var mistEmission = _groundMistParticleSystem.emission;
-        mistEmission.rateOverTime = 90f;
-        mistEmission.enabled = false;
+        // Initial state
+        _blastGateMover.localPosition = _gateClosedLocalPos;
+        _isGateOpen = false;
+        _shadowVoidVolume.SetActive(true);
     }
 
-    public IEnumerator FadeFog(float targetAlpha, float duration)
+    private void CreateReinforcementPillar(string name, Transform parent, Vector3 localPos, float height, Material mat)
     {
-        EnsureEntranceFogVisuals();
+        GameObject pillar = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        pillar.name = name;
+        pillar.transform.SetParent(parent, false);
+        pillar.transform.localPosition = localPos;
+        pillar.transform.localScale = new Vector3(11f, height * 1.02f, 14f);
+        Renderer r = pillar.GetComponent<Renderer>();
+        if (r != null && mat != null) r.sharedMaterial = mat;
+    }
 
-        if (_fogFadeRoutine != null) StopCoroutine(_fogFadeRoutine);
-
-        float startAlpha = _currentFogAlpha;
-        float elapsed = 0f;
-
-        if (targetAlpha > 0.05f)
+    private Material GetWallMaterialFallback()
+    {
+        GameObject wall = GameObject.Find("wall (72)") ?? GameObject.Find("wall (1)") ?? GameObject.Find("Wall");
+        if (wall != null)
         {
-            if (_fogEffectRoot != null) _fogEffectRoot.SetActive(true);
+            Renderer r = wall.GetComponentInChildren<Renderer>();
+            if (r != null && r.sharedMaterial != null) return r.sharedMaterial;
+        }
+        return null;
+    }
 
-            if (_fogCurtainRenderers != null)
-            {
-                for (int i = 0; i < _fogCurtainRenderers.Length; i++)
-                {
-                    if (_fogCurtainRenderers[i] != null) _fogCurtainRenderers[i].enabled = true;
-                }
-            }
+    public IEnumerator AnimateEntranceGate(bool open, float duration)
+    {
+        EnsureEntranceGateVisuals();
+        if (_blastGateMover == null) yield break;
 
-            if (_fogParticleSystem != null)
-            {
-                var em = _fogParticleSystem.emission;
-                em.enabled = true;
-                _fogParticleSystem.Play();
-            }
-            if (_groundMistParticleSystem != null)
-            {
-                var em = _groundMistParticleSystem.emission;
-                em.enabled = true;
-                _groundMistParticleSystem.Play();
-            }
+        if (_gateAnimRoutine != null) StopCoroutine(_gateAnimRoutine);
+
+        Vector3 startPos = _blastGateMover.localPosition;
+        Vector3 targetPos = open ? _gateOpenLocalPos : _gateClosedLocalPos;
+
+        if (!open && _shadowVoidVolume != null)
+        {
+            _shadowVoidVolume.SetActive(true);
         }
 
+        AudioClip clipToPlay = open ? gateOpenSound : (gateCloseSound != null ? gateCloseSound : swapRumbleSound);
+        if (clipToPlay == null) clipToPlay = GetOrCreateGateRumbleClip();
+        PlayAudio(clipToPlay);
+
+        float elapsed = 0f;
         while (elapsed < duration)
         {
             elapsed += Time.deltaTime;
             float t = Mathf.Clamp01(elapsed / duration);
-            float smooth = Mathf.SmoothStep(startAlpha, targetAlpha, t);
-            SetFogAlpha(smooth);
+            float smoothT = Mathf.SmoothStep(0f, 1f, t);
+            _blastGateMover.localPosition = Vector3.Lerp(startPos, targetPos, smoothT);
             yield return null;
         }
 
-        SetFogAlpha(targetAlpha);
+        _blastGateMover.localPosition = targetPos;
+        _isGateOpen = open;
 
-        if (targetAlpha <= 0.05f)
+        if (open && _shadowVoidVolume != null)
         {
-            if (_fogParticleSystem != null)
-            {
-                var em = _fogParticleSystem.emission;
-                em.enabled = false;
-            }
-            if (_groundMistParticleSystem != null)
-            {
-                var em = _groundMistParticleSystem.emission;
-                em.enabled = false;
-            }
-            if (_fogCurtainRenderers != null)
-            {
-                for (int i = 0; i < _fogCurtainRenderers.Length; i++)
-                {
-                    if (_fogCurtainRenderers[i] != null) _fogCurtainRenderers[i].enabled = false;
-                }
-            }
-            if (_fogEffectRoot != null) _fogEffectRoot.SetActive(false);
+            _shadowVoidVolume.SetActive(false);
         }
 
-        _fogFadeRoutine = null;
+        _gateAnimRoutine = null;
     }
 
-    public void SetFogAlpha(float alpha)
+    public void SetGateState(bool open, bool instant = false)
     {
-        _currentFogAlpha = Mathf.Clamp01(alpha);
+        EnsureEntranceGateVisuals();
+        if (_blastGateMover == null) return;
 
-        if (_currentFogAlpha <= 0.001f)
+        if (instant)
         {
-            if (_fogEffectRoot != null && _fogEffectRoot.activeSelf)
-                _fogEffectRoot.SetActive(false);
-            return;
+            if (_gateAnimRoutine != null) { StopCoroutine(_gateAnimRoutine); _gateAnimRoutine = null; }
+            _blastGateMover.localPosition = open ? _gateOpenLocalPos : _gateClosedLocalPos;
+            _isGateOpen = open;
+            if (_shadowVoidVolume != null) _shadowVoidVolume.SetActive(!open);
         }
-
-        if (_fogEffectRoot != null && !_fogEffectRoot.activeSelf)
-            _fogEffectRoot.SetActive(true);
-
-        // 1. Update Smoke Wall Curtain Material Opacity
-        if (_fogCurtainMaterial != null)
+        else
         {
-            Color cc = new Color(fogColor.r, fogColor.g, fogColor.b, _currentFogAlpha * 1.0f);
-            _fogCurtainMaterial.SetColor("_BaseColor", cc);
-            _fogCurtainMaterial.SetColor("_Color", cc);
-        }
-
-        if (_fogCurtainRenderers != null)
-        {
-            bool showCurtains = _currentFogAlpha > 0.01f;
-            for (int i = 0; i < _fogCurtainRenderers.Length; i++)
+            if (Application.isPlaying)
             {
-                if (_fogCurtainRenderers[i] != null)
-                    _fogCurtainRenderers[i].enabled = showCurtains;
+                StartCoroutine(AnimateEntranceGate(open, gateAnimationDuration));
+            }
+            else
+            {
+                _blastGateMover.localPosition = open ? _gateOpenLocalPos : _gateClosedLocalPos;
+                _isGateOpen = open;
+                if (_shadowVoidVolume != null) _shadowVoidVolume.SetActive(!open);
             }
         }
+    }
 
-        // 2. Update Rising Smoke Plumes
-        Color pc = fogColor;
-        pc.a = _currentFogAlpha * fogColor.a;
-
-        if (_fogParticleSystem != null)
+    private AudioClip GetOrCreateGateRumbleClip()
+    {
+        if (_proceduralRumbleClip != null) return _proceduralRumbleClip;
+        int sampleRate = 22050;
+        int length = sampleRate * 2;
+        float[] data = new float[length];
+        System.Random rand = new System.Random(42);
+        for (int i = 0; i < length; i++)
         {
-            var main = _fogParticleSystem.main;
-            main.startColor = pc;
-
-            var em = _fogParticleSystem.emission;
-            em.rateOverTime = 240f * _currentFogAlpha;
+            float t = (float)i / sampleRate;
+            float low1 = Mathf.Sin(t * Mathf.PI * 2f * 32f);
+            float low2 = Mathf.Sin(t * Mathf.PI * 2f * 54f);
+            float low3 = Mathf.Sin(t * Mathf.PI * 2f * 82f);
+            float noise = ((float)rand.NextDouble() * 2f - 1f) * 0.35f;
+            float env = Mathf.Sin(Mathf.Clamp01(t / 2f) * Mathf.PI);
+            data[i] = (low1 * 0.45f + low2 * 0.3f + low3 * 0.15f + noise) * env * 0.7f;
         }
-
-        // 3. Update Low-Hanging Ground Mist
-        if (_groundMistParticleSystem != null)
-        {
-            var main = _groundMistParticleSystem.main;
-            main.startColor = pc;
-
-            var em = _groundMistParticleSystem.emission;
-            em.rateOverTime = 90f * _currentFogAlpha;
-        }
+        _proceduralRumbleClip = AudioClip.Create("StoneGateGrind", length, 1, sampleRate, false);
+        _proceduralRumbleClip.SetData(data, 0);
+        return _proceduralRumbleClip;
     }
 
     private void InitializeAudio()
     {
         _audioSource = GetComponent<AudioSource>();
-        if (_audioSource == null && (fogSound != null || swapRumbleSound != null))
+        if (_audioSource == null)
         {
             _audioSource = gameObject.AddComponent<AudioSource>();
             _audioSource.spatialBlend = 0.5f;
@@ -921,6 +736,27 @@ public class MazeManager : MonoBehaviour
         }
     }
 
+    public void ToggleEntranceGate() => SetGateState(!_isGateOpen);
+
+    // ─── Backwards Compatibility Stubs ───
+    public void EnsureEntranceFogVisuals(bool forceRecreate = false) => EnsureEntranceGateVisuals(forceRecreate);
+    public void TestOpenDoor() => StartCoroutine(DayStartRoutine());
+    public void TestToggleFog() => ToggleEntranceGate();
+
+    [System.Obsolete("Fog wall has been replaced by the Stone Blast Gate.")]
+    public IEnumerator FadeFog(float targetAlpha, float duration)
+    {
+        bool open = targetAlpha <= 0.05f;
+        yield return AnimateEntranceGate(open, duration);
+    }
+
+    [System.Obsolete("Fog wall has been replaced by the Stone Blast Gate.")]
+    public void SetFogAlpha(float alpha)
+    {
+        bool open = alpha <= 0.05f;
+        SetGateState(open, instant: true);
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     //  AUTO-DISCOVERY & ONE-CLICK SETUP
     // ═══════════════════════════════════════════════════════════════════════════
@@ -930,12 +766,12 @@ public class MazeManager : MonoBehaviour
     {
         AutoFindBlocks();
         AutoFindEntranceFog();
-        EnsureEntranceFogVisuals(true);
+        EnsureEntranceGateVisuals(true);
         _slotsCaptured = false;
         CaptureInitialSlots();
         ApplyInitialActiveBlock();
 
-        Debug.Log("[MazeManager] One-Click Setup finished! 8 Blocks, DayNight Controller, and BoxCollider Smoke successfully linked.");
+        Debug.Log("[MazeManager] One-Click Setup finished! 8 Blocks, DayNight Controller, and Stone Blast Gate successfully linked.");
     }
 
     public void AutoFindBlocks()
@@ -967,6 +803,7 @@ public class MazeManager : MonoBehaviour
             if (found != null)
             {
                 mazeBlocks[i - 1] = found;
+                Debug.Log($"[MazeManager] Auto-linked Block {i} -> '{found.name}'");
             }
         }
     }
@@ -975,15 +812,13 @@ public class MazeManager : MonoBehaviour
     {
         if (mazeEntranceFog != null) return;
 
-        // Search for user's GameObject
         string[] searchNames = new string[] {
+            "Maze Enterence Fog",
             "maze enterence fog",
             "maze entrance fog",
             "Maze Entrance Fog",
-            "Maze Enterence Fog",
-            "Entrance Fog",
-            "Glade Entrance Marker",
-            "Glade Entrance Gate"
+            "EntranceFog",
+            "Entrance Fog"
         };
 
         foreach (var name in searchNames)
@@ -997,39 +832,29 @@ public class MazeManager : MonoBehaviour
             }
         }
 
-        // If not found in scene, automatically instantiate an empty entrance fog marker at the gateway
-        GameObject createdFogGo = new GameObject("maze enterence fog");
+        GameObject createdFogGo = new GameObject("Maze Enterence Fog");
         createdFogGo.transform.position = new Vector3(4335.4f, 0f, 1552.6f);
         BoxCollider box = createdFogGo.AddComponent<BoxCollider>();
         box.isTrigger = true;
         box.size = new Vector3(30f, 65f, 160f);
         mazeEntranceFog = createdFogGo.transform;
-        Debug.Log($"[MazeManager] Created default 'maze enterence fog' BoxCollider at {createdFogGo.transform.position}");
+        Debug.Log($"[MazeManager] Created default 'Maze Enterence Fog' BoxCollider at {createdFogGo.transform.position}");
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
     //  EDITOR CONTEXT MENU TESTING TOOLS
     // ═══════════════════════════════════════════════════════════════════════════
 
-    [ContextMenu("Simulate Day (Open Door & Smoke Off)")]
-    public void TestOpenDoor() => StartCoroutine(DayStartRoutine());
+    [ContextMenu("Simulate Day (Open Gate & Open Door)")]
+    public void TestDayStart() => StartCoroutine(DayStartRoutine());
 
-    [ContextMenu("Simulate Night (Close Door, Smoke On & Swap)")]
+    [ContextMenu("Simulate Night (Close Door, Slam Gate & Swap)")]
     public void TestNightSwap() => StartNightSwap();
 
-    [ContextMenu("Toggle Entrance Smoke")]
-    public void TestToggleFog()
+    [ContextMenu("Toggle Entrance Gate")]
+    public void TestToggleGate()
     {
-        EnsureEntranceFogVisuals();
-        float target = _currentFogAlpha > 0.5f ? 0f : 1f;
-        if (!Application.isPlaying)
-        {
-            SetFogAlpha(target);
-        }
-        else
-        {
-            StartCoroutine(FadeFog(target, 1.5f));
-        }
+        SetGateState(!_isGateOpen);
     }
 
     [ContextMenu("Jump To Next Block Immediately")]
