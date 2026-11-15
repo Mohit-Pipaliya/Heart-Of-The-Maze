@@ -76,6 +76,8 @@ public class MazeManager : MonoBehaviour
     private GameObject _fogEffectRoot;
     private ParticleSystem _fogParticleSystem;
     private ParticleSystem _groundMistParticleSystem;
+    private GameObject _fogWallBarrier;
+    private Material _fogWallMaterial;
     private float _currentFogAlpha = 0f;
     private Coroutine _swapRoutine;
     private Coroutine _fogFadeRoutine;
@@ -131,6 +133,16 @@ public class MazeManager : MonoBehaviour
         {
             DayNightController.Instance.OnDayStart -= OnDayStartSignal;
             DayNightController.Instance.OnNightStart -= OnNightStartSignal;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (_fogWallMaterial != null)
+        {
+            if (Application.isPlaying) Destroy(_fogWallMaterial);
+            else DestroyImmediate(_fogWallMaterial);
+            _fogWallMaterial = null;
         }
     }
 
@@ -491,7 +503,7 @@ public class MazeManager : MonoBehaviour
 
         // Clean up stale or incomplete objects
         Transform existing = mazeEntranceFog.Find("_GeneratedFogEffect");
-        if (existing != null && (forceRecreate || _fogEffectRoot == null || _fogParticleSystem == null || _groundMistParticleSystem == null))
+        if (existing != null && (forceRecreate || _fogEffectRoot == null || _fogParticleSystem == null || _groundMistParticleSystem == null || _fogWallBarrier == null))
         {
             if (Application.isPlaying) Destroy(existing.gameObject);
             else DestroyImmediate(existing.gameObject);
@@ -508,6 +520,9 @@ public class MazeManager : MonoBehaviour
             var systems = _fogEffectRoot.GetComponentsInChildren<ParticleSystem>();
             if (systems.Length > 0) _fogParticleSystem = systems[0];
             if (systems.Length > 1) _groundMistParticleSystem = systems[1];
+
+            Transform barrier = _fogEffectRoot.transform.Find("FogWallOpaqueBarrier");
+            if (barrier != null) _fogWallBarrier = barrier.gameObject;
         }
 
         SetFogAlpha(_currentFogAlpha);
@@ -541,59 +556,86 @@ public class MazeManager : MonoBehaviour
             ?? Resources.Load<Material>("M_ParticleAlpha");
 
         // ─────────────────────────────────────────────────────────────────
-        // 1. BILLOWING RISING SMOKE PLUMES (Turbulent, Wispy, Volumetric)
+        // 0. OPAQUE FOG WALL BARRIER (100% Sight Blocker: block cannot be seen)
         // ─────────────────────────────────────────────────────────────────
-        GameObject psGo = new GameObject("BoxColliderSmokeParticles");
+        _fogWallBarrier = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        _fogWallBarrier.name = "FogWallOpaqueBarrier";
+        _fogWallBarrier.transform.SetParent(_fogEffectRoot.transform, false);
+        _fogWallBarrier.transform.localPosition = Vector3.zero;
+        // Rotate 90 degrees around Y so the barrier faces along X between Glade and Maze
+        _fogWallBarrier.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+        _fogWallBarrier.transform.localScale = new Vector3(smokeBoxSize.z, smokeBoxSize.y, 1f);
+
+        Collider barrierCol = _fogWallBarrier.GetComponent<Collider>();
+        if (barrierCol != null) Destroy(barrierCol);
+
+        MeshRenderer barrierRend = _fogWallBarrier.GetComponent<MeshRenderer>();
+        if (smokeMat != null)
+        {
+            _fogWallMaterial = new Material(smokeMat);
+            _fogWallMaterial.name = "M_FogWallBarrier_Runtime";
+            barrierRend.material = _fogWallMaterial;
+        }
+
+        float floorY = -smokeBoxSize.y * 0.48f;
+
+        // ─────────────────────────────────────────────────────────────────
+        // 1. CONTINUOUS GROUND-TO-TOP RISING SMOKE WALL ("continue niche se upar")
+        // ─────────────────────────────────────────────────────────────────
+        GameObject psGo = new GameObject("ContinuousRisingSmokeWall");
         psGo.transform.SetParent(_fogEffectRoot.transform, false);
-        psGo.transform.localPosition = Vector3.zero;
+        psGo.transform.localPosition = new Vector3(0f, floorY, 0f);
 
         _fogParticleSystem = psGo.AddComponent<ParticleSystem>();
         var main = _fogParticleSystem.main;
-        main.startLifetime = new ParticleSystem.MinMaxCurve(4.0f, 6.5f);
-        main.startSpeed = new ParticleSystem.MinMaxCurve(2.0f, 4.5f);
-        main.startSize = new ParticleSystem.MinMaxCurve(25f, 48f);
+        // Long lifetime so particles reach far past the top of the wall
+        main.startLifetime = new ParticleSystem.MinMaxCurve(5.5f, 8.5f);
+        // Fast upward speed so smoke continuously surges upward
+        main.startSpeed = new ParticleSystem.MinMaxCurve(10.0f, 18.0f);
+        // Large overlapping plumes to form a continuous joint wall (no gaps)
+        main.startSize = new ParticleSystem.MinMaxCurve(35f, 65f);
         main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
-        main.startColor = new Color(fogColor.r, fogColor.g, fogColor.b, 0.85f);
-        main.maxParticles = 350;
+        main.startColor = new Color(fogColor.r, fogColor.g, fogColor.b, 0.95f);
+        main.maxParticles = 3500;
         main.simulationSpace = ParticleSystemSimulationSpace.Local;
         main.loop = true;
         main.playOnAwake = false;
 
-        // Shape: Box matches user's entire BoxCollider area so smoke emits from everywhere inside it
+        // Shape: Emits strictly from the floor line across the entire collider length
         var shape = _fogParticleSystem.shape;
         shape.shapeType = ParticleSystemShapeType.Box;
-        shape.scale = smokeBoxSize;
+        shape.scale = new Vector3(Mathf.Min(smokeBoxSize.x, 25f), 2f, smokeBoxSize.z);
 
-        // Upward rising velocity with 3D rolling turbulence
+        // Upward surging velocity with 3D rolling turbulence
         var vel = _fogParticleSystem.velocityOverLifetime;
         vel.enabled = true;
         vel.space = ParticleSystemSimulationSpace.Local;
-        vel.y = new ParticleSystem.MinMaxCurve(2.2f, 4.5f);
-        vel.x = new ParticleSystem.MinMaxCurve(-0.8f, 0.8f);
-        vel.z = new ParticleSystem.MinMaxCurve(-0.8f, 0.8f);
+        vel.y = new ParticleSystem.MinMaxCurve(12.0f, 22.0f);
+        vel.x = new ParticleSystem.MinMaxCurve(-1.5f, 1.5f);
+        vel.z = new ParticleSystem.MinMaxCurve(-1.5f, 1.5f);
 
-        // Natural 3D Noise Turbulence (curls, eddies, organic fluid billows)
+        // 3D Curl Noise for organic fluid eddies and billowing clouds
         var noise = _fogParticleSystem.noise;
         noise.enabled = true;
-        noise.frequency = 0.045f;
-        noise.strength = 2.2f;
-        noise.scrollSpeed = 0.35f;
+        noise.frequency = 0.03f;
+        noise.strength = 2.5f;
+        noise.scrollSpeed = 0.3f;
         noise.damping = true;
         noise.quality = ParticleSystemNoiseQuality.High;
         noise.octaveCount = 2;
         noise.octaveMultiplier = 0.5f;
         noise.octaveScale = 2.0f;
 
-        // Size expansion as smoke billows and fills the volume
+        // Expanding size as it ascends from floor to top
         var sizeOverLife = _fogParticleSystem.sizeOverLifetime;
         sizeOverLife.enabled = true;
         AnimationCurve sizeCurve = new AnimationCurve();
-        sizeCurve.AddKey(0f, 0.55f);
-        sizeCurve.AddKey(0.35f, 1.15f);
-        sizeCurve.AddKey(1.0f, 1.85f);
+        sizeCurve.AddKey(0f, 0.5f);
+        sizeCurve.AddKey(0.2f, 1.0f);
+        sizeCurve.AddKey(1.0f, 1.8f);
         sizeOverLife.size = new ParticleSystem.MinMaxCurve(1f, sizeCurve);
 
-        // Color and alpha over lifetime (smooth fade-in from floor, rich dense body, soft dissipation)
+        // Dense alpha curve: instant ramp at ground, stays solid and opaque, fades at top
         var colOverLife = _fogParticleSystem.colorOverLifetime;
         colOverLife.enabled = true;
         Gradient grad = new Gradient();
@@ -601,59 +643,58 @@ public class MazeManager : MonoBehaviour
             new GradientColorKey[] { new GradientColorKey(fogColor, 0f), new GradientColorKey(fogColor, 1f) },
             new GradientAlphaKey[] {
                 new GradientAlphaKey(0.0f, 0f),
-                new GradientAlphaKey(0.92f, 0.18f),
-                new GradientAlphaKey(0.85f, 0.65f),
+                new GradientAlphaKey(0.96f, 0.08f),
+                new GradientAlphaKey(0.95f, 0.75f),
                 new GradientAlphaKey(0.0f, 1.0f)
             }
         );
         colOverLife.color = grad;
 
-        // Rotation over lifetime for natural rolling smoke
         var rotOverLife = _fogParticleSystem.rotationOverLifetime;
         rotOverLife.enabled = true;
-        rotOverLife.z = new ParticleSystem.MinMaxCurve(-0.2f, 0.2f);
+        rotOverLife.z = new ParticleSystem.MinMaxCurve(-0.25f, 0.25f);
 
         var psRenderer = psGo.GetComponent<ParticleSystemRenderer>();
         if (smokeMat != null) psRenderer.material = smokeMat;
 
         var emission = _fogParticleSystem.emission;
-        emission.rateOverTime = 110f;
+        emission.rateOverTime = 450f;
         emission.enabled = false;
 
         // ─────────────────────────────────────────────────────────────────
-        // 2. LOW-HANGING GROUND MIST LAYER (Hugging the floor across doorway)
+        // 2. DENSE FLOOR MIST LAYER (Crawling ground fog across doorway)
         // ─────────────────────────────────────────────────────────────────
-        GameObject mistGo = new GameObject("GroundMistParticles");
+        GameObject mistGo = new GameObject("DenseGroundMistParticles");
         mistGo.transform.SetParent(_fogEffectRoot.transform, false);
-        mistGo.transform.localPosition = new Vector3(0f, -smokeBoxSize.y * 0.42f, 0f);
+        mistGo.transform.localPosition = new Vector3(0f, floorY, 0f);
 
         _groundMistParticleSystem = mistGo.AddComponent<ParticleSystem>();
         var mistMain = _groundMistParticleSystem.main;
-        mistMain.startLifetime = new ParticleSystem.MinMaxCurve(5.0f, 8.0f);
-        mistMain.startSpeed = new ParticleSystem.MinMaxCurve(0.4f, 1.6f);
-        mistMain.startSize = new ParticleSystem.MinMaxCurve(18f, 36f);
+        mistMain.startLifetime = new ParticleSystem.MinMaxCurve(6.0f, 9.0f);
+        mistMain.startSpeed = new ParticleSystem.MinMaxCurve(0.5f, 2.5f);
+        mistMain.startSize = new ParticleSystem.MinMaxCurve(25f, 50f);
         mistMain.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
-        mistMain.startColor = new Color(fogColor.r, fogColor.g, fogColor.b, 0.80f);
-        mistMain.maxParticles = 180;
+        mistMain.startColor = new Color(fogColor.r, fogColor.g, fogColor.b, 0.90f);
+        mistMain.maxParticles = 800;
         mistMain.simulationSpace = ParticleSystemSimulationSpace.Local;
         mistMain.loop = true;
         mistMain.playOnAwake = false;
 
         var mistShape = _groundMistParticleSystem.shape;
         mistShape.shapeType = ParticleSystemShapeType.Box;
-        mistShape.scale = new Vector3(smokeBoxSize.x * 1.05f, smokeBoxSize.y * 0.2f, smokeBoxSize.z * 1.05f);
+        mistShape.scale = new Vector3(Mathf.Min(smokeBoxSize.x * 1.5f, 40f), 2f, smokeBoxSize.z);
 
         var mistVel = _groundMistParticleSystem.velocityOverLifetime;
         mistVel.enabled = true;
         mistVel.space = ParticleSystemSimulationSpace.Local;
-        mistVel.y = new ParticleSystem.MinMaxCurve(0.2f, 0.8f);
-        mistVel.x = new ParticleSystem.MinMaxCurve(-1.2f, 1.2f);
-        mistVel.z = new ParticleSystem.MinMaxCurve(-1.2f, 1.2f);
+        mistVel.y = new ParticleSystem.MinMaxCurve(0.3f, 1.2f);
+        mistVel.x = new ParticleSystem.MinMaxCurve(-3.0f, 3.0f);
+        mistVel.z = new ParticleSystem.MinMaxCurve(-2.0f, 2.0f);
 
         var mistNoise = _groundMistParticleSystem.noise;
         mistNoise.enabled = true;
         mistNoise.frequency = 0.025f;
-        mistNoise.strength = 1.2f;
+        mistNoise.strength = 1.5f;
         mistNoise.scrollSpeed = 0.2f;
         mistNoise.damping = true;
         mistNoise.quality = ParticleSystemNoiseQuality.High;
@@ -661,9 +702,9 @@ public class MazeManager : MonoBehaviour
         var mistSizeOverLife = _groundMistParticleSystem.sizeOverLifetime;
         mistSizeOverLife.enabled = true;
         AnimationCurve mistCurve = new AnimationCurve();
-        mistCurve.AddKey(0f, 0.7f);
-        mistCurve.AddKey(0.4f, 1.3f);
-        mistCurve.AddKey(1.0f, 1.7f);
+        mistCurve.AddKey(0f, 0.6f);
+        mistCurve.AddKey(0.4f, 1.2f);
+        mistCurve.AddKey(1.0f, 1.6f);
         mistSizeOverLife.size = new ParticleSystem.MinMaxCurve(1f, mistCurve);
 
         var mistCol = _groundMistParticleSystem.colorOverLifetime;
@@ -673,8 +714,8 @@ public class MazeManager : MonoBehaviour
             new GradientColorKey[] { new GradientColorKey(fogColor, 0f), new GradientColorKey(fogColor, 1f) },
             new GradientAlphaKey[] {
                 new GradientAlphaKey(0.0f, 0f),
-                new GradientAlphaKey(0.85f, 0.25f),
-                new GradientAlphaKey(0.70f, 0.70f),
+                new GradientAlphaKey(0.92f, 0.15f),
+                new GradientAlphaKey(0.85f, 0.70f),
                 new GradientAlphaKey(0.0f, 1.0f)
             }
         );
@@ -682,13 +723,13 @@ public class MazeManager : MonoBehaviour
 
         var mistRot = _groundMistParticleSystem.rotationOverLifetime;
         mistRot.enabled = true;
-        mistRot.z = new ParticleSystem.MinMaxCurve(-0.1f, 0.1f);
+        mistRot.z = new ParticleSystem.MinMaxCurve(-0.15f, 0.15f);
 
         var mistRenderer = mistGo.GetComponent<ParticleSystemRenderer>();
         if (smokeMat != null) mistRenderer.material = smokeMat;
 
         var mistEmission = _groundMistParticleSystem.emission;
-        mistEmission.rateOverTime = 60f;
+        mistEmission.rateOverTime = 180f;
         mistEmission.enabled = false;
     }
 
@@ -741,6 +782,7 @@ public class MazeManager : MonoBehaviour
                 var em = _groundMistParticleSystem.emission;
                 em.enabled = false;
             }
+            if (_fogWallBarrier != null) _fogWallBarrier.SetActive(false);
             if (_fogEffectRoot != null) _fogEffectRoot.SetActive(false);
         }
 
@@ -755,6 +797,8 @@ public class MazeManager : MonoBehaviour
         {
             if (_fogEffectRoot != null && _fogEffectRoot.activeSelf)
                 _fogEffectRoot.SetActive(false);
+            if (_fogWallBarrier != null)
+                _fogWallBarrier.SetActive(false);
             return;
         }
 
@@ -764,13 +808,23 @@ public class MazeManager : MonoBehaviour
         Color pc = fogColor;
         pc.a = _currentFogAlpha * fogColor.a;
 
+        if (_fogWallBarrier != null && _fogWallMaterial != null)
+        {
+            _fogWallBarrier.SetActive(true);
+            Color wallCol = fogColor;
+            wallCol.a = _currentFogAlpha * 0.98f;
+            _fogWallMaterial.color = wallCol;
+            if (_fogWallMaterial.HasProperty("_BaseColor"))
+                _fogWallMaterial.SetColor("_BaseColor", wallCol);
+        }
+
         if (_fogParticleSystem != null)
         {
             var main = _fogParticleSystem.main;
             main.startColor = pc;
 
             var em = _fogParticleSystem.emission;
-            em.rateOverTime = 110f * _currentFogAlpha;
+            em.rateOverTime = 450f * _currentFogAlpha;
         }
 
         if (_groundMistParticleSystem != null)
@@ -779,7 +833,7 @@ public class MazeManager : MonoBehaviour
             main.startColor = pc;
 
             var em = _groundMistParticleSystem.emission;
-            em.rateOverTime = 60f * _currentFogAlpha;
+            em.rateOverTime = 180f * _currentFogAlpha;
         }
     }
 

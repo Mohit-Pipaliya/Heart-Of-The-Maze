@@ -23,7 +23,12 @@ public class CameraController : MonoBehaviour
 
     [Header("Collision")]
     public LayerMask collisionMask;
-    public float minDistance = 0.5f;
+    public float minDistance = 0.15f;
+    public float cameraCollisionRadius = 0.20f;
+    public float cameraCollisionMargin = 0.22f;
+
+    private Camera _cam;
+    private float _collisionSmoothDist = 4.0f;
 
     [Header("Editor Preview (Only for tuning)")]
     [Range(-20f, 70f)]
@@ -199,6 +204,14 @@ public class CameraController : MonoBehaviour
     {
         _currentDistance = distance;
         _currentOffset = targetOffset;
+        _collisionSmoothDist = distance;
+
+        _cam = GetComponent<Camera>();
+        if (_cam == null) _cam = Camera.main;
+        if (_cam != null && _cam.nearClipPlane > 0.05f)
+        {
+            _cam.nearClipPlane = 0.05f;
+        }
 
         if (Application.isPlaying && target != null)
         {
@@ -285,32 +298,70 @@ public class CameraController : MonoBehaviour
         
         float scale = target.lossyScale.y;
 
-        // Apply offset (right/up/forward relative to player rotation)
-        Vector3 actualTargetOffset = target.position 
-                                     + (Vector3.up * _currentOffset.y * scale) 
-                                     + (rotation * new Vector3(_currentOffset.x * scale, 0, _currentOffset.z * scale));
-        
+        // Safe central origin at player height
+        Vector3 safeCenter = target.position + (Vector3.up * _currentOffset.y * scale);
+
+        // Effective collision mask: ALWAYS includes Default (0) and Ground (24), strictly ignores Player/Triggers/etc.
+        int ignoreMask = LayerMask.GetMask("Player", "Ignore Raycast", "TransparentFX", "UI", "Enemy", "Item", "BodyPart", "Water");
+        int effectiveMask = (collisionMask.value != 0 ? (collisionMask.value | 1 | (1 << 24)) : ~0) & ~ignoreMask;
+
+        // Shoulder / lateral offset with anti-penetration probe
+        Vector3 lateralOffset = rotation * new Vector3(_currentOffset.x * scale, 0, _currentOffset.z * scale);
+        Vector3 probeOrigin = safeCenter;
+
+        if (lateralOffset.sqrMagnitude > 0.001f)
+        {
+            float shoulderDist = lateralOffset.magnitude;
+            Vector3 shoulderDir = lateralOffset / shoulderDist;
+            if (Physics.SphereCast(safeCenter, cameraCollisionRadius, shoulderDir, out RaycastHit sHit, shoulderDist, effectiveMask, QueryTriggerInteraction.Ignore))
+            {
+                float safeSDist = Mathf.Max(0f, sHit.distance - cameraCollisionMargin);
+                probeOrigin = safeCenter + shoulderDir * safeSDist;
+            }
+            else
+            {
+                probeOrigin = safeCenter + lateralOffset;
+            }
+        }
+
         float scaledDistance = _currentDistance * scale;
-        Vector3 desiredPosition = actualTargetOffset - (rotation * Vector3.forward * (scaledDistance + _kickbackDistance));
+        Vector3 castDirection = -(rotation * Vector3.forward);
+        float maxDistance = scaledDistance + _kickbackDistance;
 
         if (Application.isPlaying)
         {
-            float finalDistance = scaledDistance;
-            Vector3 directionToCamera = (desiredPosition - actualTargetOffset).normalized;
-            
-            int mask = collisionMask.value != 0 ? collisionMask.value : ~LayerMask.GetMask("Player", "Ignore Raycast");
-            if (Physics.SphereCast(actualTargetOffset, 0.18f, directionToCamera, out RaycastHit hit, scaledDistance, mask, QueryTriggerInteraction.Ignore))
+            float targetDistance = maxDistance;
+
+            // SphereCast from safe probeOrigin backwards towards camera position
+            if (Physics.SphereCast(probeOrigin, cameraCollisionRadius, castDirection, out RaycastHit hit, maxDistance, effectiveMask, QueryTriggerInteraction.Ignore))
             {
-                finalDistance = Mathf.Clamp(hit.distance - 0.12f, minDistance, scaledDistance);
-                desiredPosition = actualTargetOffset - (rotation * Vector3.forward * finalDistance);
+                targetDistance = Mathf.Clamp(hit.distance - cameraCollisionMargin, minDistance, maxDistance);
             }
 
-            // Smooth movement + camera shake impulse
-            transform.position = Vector3.SmoothDamp(transform.position, desiredPosition, ref currentPosVelocity, positionSmoothTime) + _shakeOffset;
+            // INSTANT collision response when pushing into walls (no lag/penetration!)
+            if (targetDistance < _collisionSmoothDist)
+            {
+                _collisionSmoothDist = targetDistance;
+            }
+            else
+            {
+                // Smooth easing when moving back into open space
+                _collisionSmoothDist = Mathf.MoveTowards(_collisionSmoothDist, targetDistance, Time.deltaTime * (zoomSpeed * 3f));
+            }
+
+            Vector3 targetCamPos = probeOrigin + (castDirection * _collisionSmoothDist);
+
+            // Additional safety check: if point is inside geometry (e.g. tight corner), push forward
+            if (Physics.CheckSphere(targetCamPos, cameraCollisionRadius * 0.85f, effectiveMask, QueryTriggerInteraction.Ignore))
+            {
+                targetCamPos = Vector3.MoveTowards(targetCamPos, safeCenter, cameraCollisionMargin + 0.05f);
+            }
+
+            transform.position = targetCamPos + _shakeOffset;
         }
         else
         {
-            transform.position = desiredPosition;
+            transform.position = probeOrigin + (castDirection * maxDistance);
         }
 
         transform.rotation = rotation;
