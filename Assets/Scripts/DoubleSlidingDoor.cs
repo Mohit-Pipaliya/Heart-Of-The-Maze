@@ -62,6 +62,10 @@ public class DoubleSlidingDoor : MonoBehaviour
     [Tooltip("When true at night, proximity trigger will NOT open the door.")]
     public bool lockAtNight = false;
 
+    [Header("─── External / MazeManager Override ───────────────────")]
+    [Tooltip("When true, this door is managed externally (e.g. by MazeManager) and proximity auto-close/auto-open are bypassed.")]
+    public bool isManagedExternally = false;
+
     [Header("─── Player Auto Trigger ────────────────────────────────")]
     [Tooltip("Player paas aane par automatically khule")]
     public bool openOnApproach = true;
@@ -195,9 +199,16 @@ public class DoubleSlidingDoor : MonoBehaviour
 
         if (invertDirection) baseDir = -baseDir;
 
-        float scaleFactor = 1f;
+        float distLeft = separateDistances ? leftSlideDistance : slideDistance;
+        float distRight = separateDistances ? rightSlideDistance : slideDistance;
+
+        // Parent scale compensation:
+        // For scaled maze prefabs (e.g. 50x to 70x), slideDistance (1.3 to 1.5) was authored
+        // in local mesh coordinates for the 2.536-unit door panel.
+        // We only divide by scaleFactor for normal scales (< 5f) to avoid crushing motion to 0.
         if (compensateParentScale)
         {
+            float scaleFactor = 1f;
             switch (slideAxis)
             {
                 case DoorAxis.X_Axis: scaleFactor = Mathf.Abs(transform.lossyScale.x); break;
@@ -205,11 +216,12 @@ public class DoubleSlidingDoor : MonoBehaviour
                 case DoorAxis.Z_Axis:
                 default: scaleFactor = Mathf.Abs(transform.lossyScale.z); break;
             }
-            if (scaleFactor < 0.001f) scaleFactor = 1f;
+            if (scaleFactor > 0.001f && scaleFactor < 5f)
+            {
+                distLeft /= scaleFactor;
+                distRight /= scaleFactor;
+            }
         }
-
-        float distLeft = (separateDistances ? leftSlideDistance : slideDistance) / scaleFactor;
-        float distRight = (separateDistances ? rightSlideDistance : slideDistance) / scaleFactor;
 
         // Normal double door: Left door goes in -direction, Right door goes in +direction
         Vector3 leftDir = -baseDir;
@@ -234,44 +246,48 @@ public class DoubleSlidingDoor : MonoBehaviour
 
     private void Update()
     {
-        // 1. Day / Night Automatic Gate Control (Only if explicitly enabled for this door)
-        if (controlledByDayNight)
+        // 1. Proximity / Day-Night Control
+        // NOTE: If managed externally by MazeManager, proximity auto-close/auto-open are strictly BYPASSED!
+        if (!isManagedExternally)
         {
-            var dnc = DayNightController.Instance ?? UnityEngine.Object.FindFirstObjectByType<DayNightController>();
-            if (dnc != null)
+            if (controlledByDayNight)
             {
-                if (dnc.IsDay)
+                var dnc = DayNightController.Instance ?? UnityEngine.Object.FindFirstObjectByType<DayNightController>();
+                if (dnc != null)
                 {
-                    if (!isOpen) OpenDoor();
-                }
-                else
-                {
-                    if (isOpen) CloseDoor();
-                }
-            }
-        }
-        else if (openOnApproach)
-        {
-            if (_playerTransform == null) FindPlayer();
-
-            if (_playerTransform != null)
-            {
-                float dist = Vector3.Distance(transform.position, _playerTransform.position);
-                bool isNear = dist <= triggerDistance;
-
-                if (isNear)
-                {
-                    _lastPlayerNearTime = Time.time;
-                    if (!isOpen)
+                    if (dnc.IsDay)
                     {
-                        OpenDoor();
+                        if (!isOpen) OpenDoor();
+                    }
+                    else
+                    {
+                        if (isOpen) CloseDoor();
                     }
                 }
-                else if (autoClose && isOpen)
+            }
+            else if (openOnApproach)
+            {
+                if (_playerTransform == null) FindPlayer();
+
+                if (_playerTransform != null)
                 {
-                    if (Time.time >= _lastPlayerNearTime + autoCloseDelay)
+                    float dist = Vector3.Distance(transform.position, _playerTransform.position);
+                    bool isNear = dist <= triggerDistance;
+
+                    if (isNear)
                     {
-                        CloseDoor();
+                        _lastPlayerNearTime = Time.time;
+                        if (!isOpen)
+                        {
+                            OpenDoor();
+                        }
+                    }
+                    else if (autoClose && isOpen)
+                    {
+                        if (Time.time >= _lastPlayerNearTime + autoCloseDelay)
+                        {
+                            CloseDoor();
+                        }
                     }
                 }
             }
@@ -333,6 +349,15 @@ public class DoubleSlidingDoor : MonoBehaviour
         OnOpened?.Invoke();
     }
 
+    /// <summary>
+    /// Commands door to open and marks it as managed externally so proximity auto-close never overrides it.
+    /// </summary>
+    public void OpenByManager()
+    {
+        isManagedExternally = true;
+        OpenDoor();
+    }
+
     [ContextMenu("Close Door")]
     public void CloseDoor()
     {
@@ -347,6 +372,23 @@ public class DoubleSlidingDoor : MonoBehaviour
             ApplyProgress(0f);
         }
         OnClosed?.Invoke();
+    }
+
+    /// <summary>
+    /// Commands door to close and marks it as managed externally so proximity auto-open never overrides it.
+    /// </summary>
+    public void CloseByManager()
+    {
+        isManagedExternally = true;
+        CloseDoor();
+    }
+
+    /// <summary>
+    /// Releases the external manager override so normal player proximity rules apply.
+    /// </summary>
+    public void ReleaseManagerOverride()
+    {
+        isManagedExternally = false;
     }
 
     [ContextMenu("Toggle Door")]
