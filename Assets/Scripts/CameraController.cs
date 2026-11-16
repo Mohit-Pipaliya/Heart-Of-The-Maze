@@ -223,6 +223,13 @@ public class CameraController : MonoBehaviour
             return;
         }
 
+        // ─── LADDER MODE: camera locked behind player while climbing ──────────
+        if (_isLadderMode && Application.isPlaying)
+        {
+            RunLadderCamera();
+            return;
+        }
+
         if (target == null) return;
 
         bool isAiming = false;
@@ -313,6 +320,140 @@ public class CameraController : MonoBehaviour
             transform.position = desiredPosition;
         }
 
+        transform.rotation = rotation;
+    }
+
+    // ─── Ladder Camera Mode ───────────────────────────────────────────────────
+    // Jab player ladder chadh raha ho tab camera player ke peeche close distance pe lock ho jata hai.
+    // Mouse input block ho jata hai, aur camera smoothly player ke peeche aa jata hai.
+
+    [Header("── Ladder Camera Position Settings (Climb Mode) ──")]
+    [Tooltip("Camera Distance (Pichhe / Door-i): Player se camera kitna peeche rahega. Default: 1.6f")]
+    [SerializeField] private float ladderDistance = 1.6f;
+
+    [Tooltip("Daye (+) / Baye (-) Offset: Right (+) ya Left (-) camera position shift. Default: 0f")]
+    [SerializeField] private float ladderDayeBayeOffset = 0f;
+
+    [Tooltip("Upar (+) / Neeche (-) Offset: Camera ki height adjustment. Default: 0.75f")]
+    [SerializeField] private float ladderUparNeecheOffset = 0.75f;
+
+    [Tooltip("Aage (+) / Pichhe (-) Offset: Forward (+) ya Backward (-) camera position shift. Default: 0f")]
+    [SerializeField] private float ladderAagePichheOffset = 0f;
+
+    [Tooltip("Optional combined 3D Vector position offset (X: Daye/Baye, Y: Upar/Neeche, Z: Aage/Pichhe)")]
+    [SerializeField] private Vector3 ladderOffset = new Vector3(0f, 0f, 0f);
+
+    [Header("── Ladder Camera Rotation Settings (Axes) ──")]
+    [Tooltip("X Axis (Pitch Angle): Upar / Neeche dekhne ka angle (degrees). Default: 14f")]
+    [SerializeField] private float ladderRotationX = 14f;
+
+    [Tooltip("Y Axis (Yaw Angle Offset): Daye / Baye ghoomne ka angle offset (degrees). 0 = seedha peeth ke peeche, +/- angle = side angled view. Default: 0f")]
+    [SerializeField] private float ladderRotationY = 0f;
+
+    [Tooltip("Z Axis (Roll Angle): Camera ko tircha / tilt karne ka angle (degrees). Default: 0f")]
+    [SerializeField] private float ladderRotationZ = 0f;
+
+    [Tooltip("Optional combined 3D Vector axis rotation (X: Pitch, Y: Yaw, Z: Roll)")]
+    [SerializeField] private Vector3 ladderRotation = Vector3.zero;
+
+    private bool _isLadderMode = false;
+
+    public float LadderDistance { get => ladderDistance; set => ladderDistance = value; }
+    public float LadderDayeBayeOffset { get => ladderDayeBayeOffset; set => ladderDayeBayeOffset = value; }
+    public float LadderUparNeecheOffset { get => ladderUparNeecheOffset; set => ladderUparNeecheOffset = value; }
+    public float LadderAagePichheOffset { get => ladderAagePichheOffset; set => ladderAagePichheOffset = value; }
+    public float LadderPitch { get => ladderRotationX; set => ladderRotationX = value; }
+    public float LadderRotationX { get => ladderRotationX; set => ladderRotationX = value; }
+    public float LadderRotationY { get => ladderRotationY; set => ladderRotationY = value; }
+    public float LadderRotationZ { get => ladderRotationZ; set => ladderRotationZ = value; }
+    public Vector3 LadderOffset { get => ladderOffset; set => ladderOffset = value; }
+    public Vector3 LadderRotation { get => ladderRotation; set => ladderRotation = value; }
+
+    /// <summary>
+    /// Ladder chadhna shuru → camera player ke PEECHE lock ho jata hai.
+    /// playerTransform: player ka transform (facing ladder direction already set hai).
+    /// </summary>
+    public void EnterLadderMode(Transform playerTransform)
+    {
+        _isLadderMode = true;
+        if (playerTransform != null)
+        {
+            // Player ladder face kar raha hai.
+            // Camera ko player ki PEETH (back) se dikhana hai.
+            //
+            // Camera position formula:  desiredPos = target - (Euler(pitch,yaw,0)*forward) * dist
+            // Matlab camera wahan hota hai jo yaw OPPOSITE direction mein ho player ke relative.
+            //
+            // Player facing yaw = playerYaw  (e.g. 270° = west)
+            // Camera peeche banana ke liye:  camera yaw = playerYaw + 180°
+            // Phir desiredPos = target - forward(playerYaw+180) * dist
+            //                 = target - (-forward(playerYaw)) * dist
+            //                 = target + forward(playerYaw) * dist
+            //                 = player ke peeche (same direction player face kar raha hai) ✓
+            float playerYaw = playerTransform.eulerAngles.y;
+            float targetYaw = playerYaw + 180f + ladderRotationY + ladderRotation.y;
+            mouseX = targetYaw;
+            mouseY = ladderRotationX + ladderRotation.x;
+        }
+    }
+
+    /// <summary>
+    /// Ladder se utarna → normal free-look camera wapas.
+    /// </summary>
+    public void ExitLadderMode()
+    {
+        _isLadderMode = false;
+        // mouseX / mouseY wahi rehenge jahan the — seamless transition
+    }
+
+    private void RunLadderCamera()
+    {
+        if (target == null) return;
+
+        // Ladder mode mein mouse input bilkul block — camera lock rehega peeche
+        // (koi mouse X/Y delta nahi lete)
+        // Recoil aur shake bhi apply nahi karte ladder pe
+
+        // Smooth pitch recovery to desired ladder pitch (X-axis rotation)
+        float targetPitch = ladderRotationX + ladderRotation.x;
+        mouseY = Mathf.Lerp(mouseY, targetPitch, Time.deltaTime * 5f);
+
+        // Yaw (Y-axis rotation): player ki PEETH + Y axis rotation offset
+        float desiredYaw = target.eulerAngles.y + 180f + ladderRotationY + ladderRotation.y;
+        mouseX = Mathf.LerpAngle(mouseX, desiredYaw, Time.deltaTime * 6f);
+
+        // Roll (Z-axis rotation): camera horizon tilt
+        float currentRoll = ladderRotationZ + ladderRotation.z;
+
+        Quaternion rotation = Quaternion.Euler(mouseY, mouseX, currentRoll);
+
+        float scale = target.lossyScale.y;
+
+        // Calculate offsets relative to camera orientation:
+        // X = Daye (+) / Baye (-)
+        // Y = Upar (+) / Neeche (-)
+        // Z = Aage (+) / Pichhe (-)
+        float sideX   = (ladderDayeBayeOffset   + ladderOffset.x) * scale;
+        float heightY = (ladderUparNeecheOffset + ladderOffset.y) * scale;
+        float fwdZ    = (ladderAagePichheOffset + ladderOffset.z) * scale;
+
+        Vector3 actualTargetOffset = target.position 
+                                     + (Vector3.up * heightY) 
+                                     + (rotation * new Vector3(sideX, 0f, fwdZ));
+
+        float scaledDist = ladderDistance * scale;
+        Vector3 desiredPos = actualTargetOffset - (rotation * Vector3.forward * scaledDist);
+
+        // Smooth camera move + collision
+        int mask = collisionMask.value != 0 ? collisionMask.value : ~LayerMask.GetMask("Player", "Ignore Raycast");
+        Vector3 dir = (desiredPos - actualTargetOffset).normalized;
+        if (Physics.SphereCast(actualTargetOffset, 0.18f, dir, out RaycastHit hit, scaledDist, mask, QueryTriggerInteraction.Ignore))
+        {
+            float clampedDist = Mathf.Clamp(hit.distance - 0.12f, minDistance, scaledDist);
+            desiredPos = actualTargetOffset - (rotation * Vector3.forward * clampedDist);
+        }
+
+        transform.position = Vector3.SmoothDamp(transform.position, desiredPos, ref currentPosVelocity, positionSmoothTime);
         transform.rotation = rotation;
     }
 

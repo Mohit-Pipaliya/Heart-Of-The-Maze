@@ -85,6 +85,22 @@ public class SpiderEnemy : MonoBehaviour
     [Tooltip("Player spider ke andar na ghus sake")]
     public bool enableAntiPenetration = true;
 
+    [Header("─── Terrain Surface & Slope Alignment (Chipak ke chalna) ────")]
+    [Tooltip("Spider ko terrain slope ke hisaab se tilt karna (Pitch/Roll) aur zameen pe chipka ke chalana")]
+    public bool enableTerrainAlignment = true;
+
+    [Tooltip("Layers considered solid ground for spider terrain alignment")]
+    public LayerMask groundLayer = ~0;
+
+    [Tooltip("Terrain slope par spider body ke tilt hone ki speed")]
+    public float slopeAlignSpeed = 14f;
+
+    [Tooltip("Zameen se chipke rehne ki snapping speed (anti-floating / anti-sinking)")]
+    public float groundSnapSpeed = 22f;
+
+    [Tooltip("Spider ki body ka zameen se vertical offset")]
+    public float groundOffset = 0.0f;
+
     [Tooltip("Agar TRUE karenge toh CapsuleCollider ke size ko script override karegi. FALSE rakhne par aapki apni collider settings use hongi.")]
     public bool overrideColliderDimensions = false;
 
@@ -188,10 +204,17 @@ public class SpiderEnemy : MonoBehaviour
         safeDistance = Mathf.Max(0.5f, safeDistance);
         bodyColliderRadius = Mathf.Max(0.1f, bodyColliderRadius);
         bodyColliderHeight = Mathf.Max(0.1f, bodyColliderHeight);
+        slopeAlignSpeed = Mathf.Max(1f, slopeAlignSpeed);
+        groundSnapSpeed = Mathf.Max(1f, groundSnapSpeed);
 
         // Live-sync with NavMeshAgent in Play Mode
         if (Application.isPlaying && agent != null && agent.enabled)
         {
+            agent.baseOffset = groundOffset;
+            if (enableTerrainAlignment)
+            {
+                agent.updateRotation = false;
+            }
             agent.stoppingDistance = stoppingDistance;
             agent.acceleration = acceleration;
             if (overrideAgentDimensions)
@@ -370,9 +393,10 @@ public class SpiderEnemy : MonoBehaviour
 
         if (agent != null)
         {
+            agent.baseOffset = groundOffset;
             if (!agent.isOnNavMesh)
             {
-                if (UnityEngine.AI.NavMesh.SamplePosition(transform.position, out UnityEngine.AI.NavMeshHit hit, 25f, UnityEngine.AI.NavMesh.AllAreas))
+                if (UnityEngine.AI.NavMesh.SamplePosition(transform.position, out UnityEngine.AI.NavMeshHit hit, 35f, UnityEngine.AI.NavMesh.AllAreas))
                 {
                     agent.Warp(hit.position);
                 }
@@ -382,6 +406,11 @@ public class SpiderEnemy : MonoBehaviour
             agent.acceleration = acceleration;
             agent.stoppingDistance = stoppingDistance;
             agent.obstacleAvoidanceType = ObstacleAvoidanceType.HighQualityObstacleAvoidance;
+
+            if (enableTerrainAlignment)
+            {
+                agent.updateRotation = false;
+            }
 
             if (overrideAgentDimensions)
             {
@@ -457,7 +486,14 @@ public class SpiderEnemy : MonoBehaviour
 
     private void Update()
     {
-        if (isDead) return;
+        if (isDead)
+        {
+            ProcessTerrainAlignment();
+            return;
+        }
+
+        // ─── Terrain Surface Clamping & Slope Alignment (Chipak ke chalna) ────
+        ProcessTerrainAlignment();
 
         // Active Anti-Penetration: Player can NEVER walk or clip inside spider!
         if (enableAntiPenetration && player != null)
@@ -624,8 +660,8 @@ public class SpiderEnemy : MonoBehaviour
             agent.velocity = Vector3.zero;
         }
 
-        // Smooth look-at player during attack
-        if (player != null)
+        // Smooth look-at player during attack (if terrain alignment disabled fallback)
+        if (player != null && !enableTerrainAlignment)
         {
             Vector3 direction = (player.position - transform.position).normalized;
             direction.y = 0;
@@ -771,6 +807,106 @@ public class SpiderEnemy : MonoBehaviour
 
         // Despawn after configurable delay
         Destroy(gameObject, corpseDespawnDelay);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  TERRAIN SURFACE & SLOPE ALIGNMENT (Chipak ke chalna)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    private static readonly RaycastHit[] s_SpiderHits = new RaycastHit[8];
+
+    private void ProcessTerrainAlignment()
+    {
+        if (!enableTerrainAlignment) return;
+
+        // Keep NavMeshAgent baseOffset locked to groundOffset so spider NEVER falls through the terrain
+        if (agent != null && agent.enabled && agent.isOnNavMesh)
+        {
+            agent.baseOffset = groundOffset;
+        }
+
+        Vector3 center = (agent != null && agent.enabled && agent.isOnNavMesh) ? agent.nextPosition : transform.position;
+        Vector3 fwd    = transform.forward;
+        Vector3 right  = transform.right;
+
+        // Sample within safe radius (3.2 meters) around center
+        float sampleDist = 3.2f;
+        float rayUp = 2.5f;
+        float rayDown = 4.0f;
+
+        Vector3 pCenter = center;
+        Vector3 pFront  = center + fwd * sampleDist;
+        Vector3 pBack   = center - fwd * sampleDist;
+        Vector3 pLeft   = center - right * sampleDist;
+        Vector3 pRight  = center + right * sampleDist;
+
+        int mask = (groundLayer.value != 0) ? (groundLayer.value | (1 << 0)) : ~LayerMask.GetMask("Enemy", "Player", "Ignore Raycast");
+
+        Vector3 normalSum = Vector3.zero;
+        int hitCount = 0;
+
+        if (SampleGroundRay(pCenter, center.y, rayUp, rayDown, mask, out Vector3 nrm)) { normalSum += nrm; hitCount++; }
+        if (SampleGroundRay(pFront,  center.y, rayUp, rayDown, mask, out nrm)) { normalSum += nrm; hitCount++; }
+        if (SampleGroundRay(pBack,   center.y, rayUp, rayDown, mask, out nrm)) { normalSum += nrm; hitCount++; }
+        if (SampleGroundRay(pLeft,   center.y, rayUp, rayDown, mask, out nrm)) { normalSum += nrm; hitCount++; }
+        if (SampleGroundRay(pRight,  center.y, rayUp, rayDown, mask, out nrm)) { normalSum += nrm; hitCount++; }
+
+        Vector3 avgNormal = (hitCount > 0) ? (normalSum / hitCount).normalized : Vector3.up;
+
+        // Determine desired horizontal heading:
+        Vector3 desiredHeading = transform.forward;
+        if (_isAttacking && player != null)
+        {
+            Vector3 toPlayer = player.position - center;
+            toPlayer.y = 0f;
+            if (toPlayer.sqrMagnitude > 0.01f) desiredHeading = toPlayer.normalized;
+        }
+        else if (agent != null && agent.enabled && agent.velocity.sqrMagnitude > 0.1f)
+        {
+            Vector3 vel = agent.velocity;
+            vel.y = 0f;
+            if (vel.sqrMagnitude > 0.01f) desiredHeading = vel.normalized;
+        }
+        else if (agent != null && agent.enabled && agent.hasPath && !agent.isStopped)
+        {
+            Vector3 toCorner = agent.steeringTarget - center;
+            toCorner.y = 0f;
+            if (toCorner.sqrMagnitude > 0.01f) desiredHeading = toCorner.normalized;
+        }
+
+        // Project desired heading onto terrain slope plane
+        Vector3 projectedForward = Vector3.ProjectOnPlane(desiredHeading, avgNormal).normalized;
+        if (projectedForward.sqrMagnitude > 0.001f)
+        {
+            Quaternion targetRotation = Quaternion.LookRotation(projectedForward, avgNormal);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, Time.deltaTime * slopeAlignSpeed);
+        }
+    }
+
+    private bool SampleGroundRay(Vector3 pos, float centerY, float up, float down, int mask, out Vector3 normal)
+    {
+        normal = Vector3.up;
+        Vector3 origin = pos + Vector3.up * up;
+        float dist = up + down;
+        int count = Physics.RaycastNonAlloc(origin, Vector3.down, s_SpiderHits, dist, mask, QueryTriggerInteraction.Ignore);
+        float closestDist = float.MaxValue;
+        bool found = false;
+
+        for (int i = 0; i < count; i++)
+        {
+            Transform ht = s_SpiderHits[i].transform;
+            if (ht == null || ht == transform || ht.IsChildOf(transform)) continue;
+            // Strict sanity check: only consider hits near the current surface level (rejecting void/deep falloff)
+            if (Mathf.Abs(s_SpiderHits[i].point.y - centerY) > 2.8f) continue;
+
+            if (s_SpiderHits[i].distance < closestDist)
+            {
+                closestDist = s_SpiderHits[i].distance;
+                normal = s_SpiderHits[i].normal;
+                found = true;
+            }
+        }
+        return found;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

@@ -184,6 +184,10 @@ public class ZombieLocomotion : MonoBehaviour
         if (_zombieAI != null && _zombieAI.IsDead)
         {
             if (_anim != null) _anim.speed = 1f;
+            if (enableGroundSnapping)
+            {
+                ProcessGroundSnapping();
+            }
             return;
         }
 
@@ -208,24 +212,31 @@ public class ZombieLocomotion : MonoBehaviour
     // ─── 1. Ground Snapping Engine ───────────────────────────────────────────
     private void ProcessGroundSnapping()
     {
-        // On a NavMesh the agent is already on the floor. Raycasting here hits the
-        // zombie's own capsule and ratchets the body upward.
-        if (_agent != null && _agent.enabled && _agent.isOnNavMesh)
+        float scale = Mathf.Max(1f, transform.lossyScale.y / 1.8f);
+        float searchDist = Mathf.Max(maxGroundRayDistance * scale, 8f * scale);
+
+        // If sliding/crawling on belly, handle crawl slope alignment and belly clamping
+        if (_zombieAI != null && _zombieAI.IsSliding && !_zombieAI.IsDead)
         {
-            _isGrounded = true;
-            if (_agent.baseOffset != 0f)
-                _agent.baseOffset = 0f;
+            ProcessCrawlSlopeAlignment(scale);
             return;
         }
 
-        if (TryGetGroundPoint(transform.position, 8f, out Vector3 ground))
+        if (TryGetGroundPoint(transform.position, searchDist, out Vector3 ground, out Vector3 groundNormal))
         {
             _isGrounded = true;
-            Vector3 currentPos = transform.position;
-            float targetY = ground.y + groundOffset;
-            // Only pull toward real ground. Never climb onto a body or prop.
-            if (targetY < currentPos.y + 0.05f)
+            float targetY = ground.y + (groundOffset * scale);
+
+            if (_agent != null && _agent.enabled && _agent.isOnNavMesh)
             {
+                // Smoothly adjust baseOffset to bridge difference between NavMesh polygon elevation and visual terrain
+                float heightError = targetY - _agent.nextPosition.y;
+                heightError = Mathf.Clamp(heightError, -3.0f * scale, 3.0f * scale);
+                _agent.baseOffset = Mathf.Lerp(_agent.baseOffset, heightError, Time.deltaTime * groundSnapSpeed);
+            }
+            else
+            {
+                Vector3 currentPos = transform.position;
                 currentPos.y = Mathf.Lerp(currentPos.y, targetY, Time.deltaTime * groundSnapSpeed);
                 transform.position = currentPos;
             }
@@ -236,15 +247,79 @@ public class ZombieLocomotion : MonoBehaviour
         }
     }
 
+    private void ProcessCrawlSlopeAlignment(float scale)
+    {
+        float fwdOffset = 1.2f * scale;
+        float backOffset = 0.8f * scale;
+        Vector3 chestSample = transform.position + transform.forward * fwdOffset;
+        Vector3 hipsSample  = transform.position - transform.forward * backOffset;
+        float searchDist = 6f * scale;
+
+        bool hitChest = TryGetGroundPoint(chestSample, searchDist, out Vector3 chestPt, out Vector3 chestNrm);
+        bool hitHips  = TryGetGroundPoint(hipsSample,  searchDist, out Vector3 hipsPt,  out Vector3 hipsNrm);
+
+        if (hitChest && hitHips)
+        {
+            _isGrounded = true;
+            // 1. Align body rotation along slope tangent (chest to hips)
+            Vector3 crawlDir = (chestPt - hipsPt).normalized;
+            Vector3 avgNormal = ((chestNrm + hipsNrm) * 0.5f).normalized;
+            if (crawlDir.sqrMagnitude > 0.001f)
+            {
+                Quaternion targetRot = Quaternion.LookRotation(crawlDir, avgNormal);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * 12f);
+            }
+
+            // 2. Clamp belly to terrain surface
+            float bellyY = (chestPt.y + hipsPt.y) * 0.5f + (groundOffset * scale);
+            if (_agent != null && _agent.enabled && _agent.isOnNavMesh)
+            {
+                float heightError = bellyY - _agent.nextPosition.y;
+                heightError = Mathf.Clamp(heightError, -3.0f * scale, 3.0f * scale);
+                _agent.baseOffset = Mathf.Lerp(_agent.baseOffset, heightError, Time.deltaTime * groundSnapSpeed);
+            }
+            else
+            {
+                Vector3 currentPos = transform.position;
+                currentPos.y = Mathf.Lerp(currentPos.y, bellyY, Time.deltaTime * groundSnapSpeed);
+                transform.position = currentPos;
+            }
+        }
+        else if (hitChest || hitHips)
+        {
+            Vector3 singlePt = hitChest ? chestPt : hipsPt;
+            float targetY = singlePt.y + (groundOffset * scale);
+            if (_agent != null && _agent.enabled && _agent.isOnNavMesh)
+            {
+                float heightError = targetY - _agent.nextPosition.y;
+                _agent.baseOffset = Mathf.Lerp(_agent.baseOffset, Mathf.Clamp(heightError, -3.0f * scale, 3.0f * scale), Time.deltaTime * groundSnapSpeed);
+            }
+            else
+            {
+                Vector3 currentPos = transform.position;
+                currentPos.y = Mathf.Lerp(currentPos.y, targetY, Time.deltaTime * groundSnapSpeed);
+                transform.position = currentPos;
+            }
+        }
+    }
+
     private static readonly RaycastHit[] GroundHits = new RaycastHit[16];
 
     public static bool TryGetGroundPoint(Vector3 around, float distance, out Vector3 point)
     {
-        Vector3 origin = around + Vector3.up * 3.5f;
-        int count = Physics.RaycastNonAlloc(origin, Vector3.down, GroundHits, distance + 3.5f, ~0, QueryTriggerInteraction.Ignore);
+        return TryGetGroundPoint(around, distance, out point, out _);
+    }
+
+    public static bool TryGetGroundPoint(Vector3 around, float distance, out Vector3 point, out Vector3 normal)
+    {
+        normal = Vector3.up;
+        point = around;
+        float upOffset = Mathf.Max(3.5f, distance * 0.4f);
+        Vector3 origin = around + Vector3.up * upOffset;
+        float rayDist = distance + upOffset;
+        int count = Physics.RaycastNonAlloc(origin, Vector3.down, GroundHits, rayDist, ~0, QueryTriggerInteraction.Ignore);
         float closest = float.MaxValue;
         bool found = false;
-        point = around;
 
         for (int i = 0; i < count; i++)
         {
@@ -256,6 +331,7 @@ public class ZombieLocomotion : MonoBehaviour
             {
                 closest = GroundHits[i].distance;
                 point = GroundHits[i].point;
+                normal = GroundHits[i].normal;
                 found = true;
             }
         }
@@ -265,6 +341,7 @@ public class ZombieLocomotion : MonoBehaviour
         if (NavMesh.SamplePosition(around, out NavMeshHit navHit, distance, NavMesh.AllAreas))
         {
             point = navHit.position;
+            normal = Vector3.up;
             return true;
         }
 

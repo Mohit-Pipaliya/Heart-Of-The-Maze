@@ -39,6 +39,8 @@ using UnityEngine;
 public class PlayerController : MonoBehaviour
 {
     public static PlayerController Instance { get; private set; }
+    public CharacterController CharacterController => _cc;
+    public Animator Animator => _anim;
 
     // ─── Inspector Fields ──────────────────────────────────────────────────────
     [Header("Movement")]

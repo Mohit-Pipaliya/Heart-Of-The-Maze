@@ -92,6 +92,10 @@ public class ZombieFootIK : MonoBehaviour
         {
             groundLayer = ~LayerMask.GetMask("Player", "Ignore Raycast");
         }
+        else
+        {
+            groundLayer |= (1 << 0);
+        }
     }
 
     private void Start()
@@ -176,12 +180,13 @@ public class ZombieFootIK : MonoBehaviour
         if (leftToes != null) lowest = Mathf.Min(lowest, leftToes.position.y);
         if (rightToes != null) lowest = Mathf.Min(lowest, rightToes.position.y);
 
-        if (!ZombieLocomotion.TryGetGroundPoint(transform.position, 6f, out Vector3 ground))
+        float scale = Mathf.Max(1f, transform.lossyScale.y / 1.8f);
+        if (!ZombieLocomotion.TryGetGroundPoint(transform.position, 8f * scale, out Vector3 ground))
             return;
 
-        float error = lowest - (ground.y + footBottomOffset);
+        float error = lowest - (ground.y + footBottomOffset * scale);
         if (Mathf.Abs(error) < 0.02f) return;
-        error = Mathf.Clamp(error, -1.4f, 1.4f);
+        error = Mathf.Clamp(error, -2.5f * scale, 2.5f * scale);
 
         Vector3 body = _anim.bodyPosition;
         body.y -= error;
@@ -191,11 +196,16 @@ public class ZombieFootIK : MonoBehaviour
     private bool TryFootGround(Vector3 footPos, out RaycastHit groundHit)
     {
         groundHit = default;
-        Vector3 origin = footPos + Vector3.up * raycastUpDistance;
-        float length = raycastUpDistance + raycastDownDistance;
-        int count = Physics.RaycastNonAlloc(origin, Vector3.down, FootHits, length, groundLayer, QueryTriggerInteraction.Ignore);
+        float scale = Mathf.Max(1f, transform.lossyScale.y / 1.8f);
+        float upDist = raycastUpDistance * scale;
+        float length = (raycastUpDistance + raycastDownDistance) * scale;
+        Vector3 origin = footPos + Vector3.up * upDist;
+        int effectiveMask = (groundLayer.value != 0) ? (groundLayer.value | (1 << 0)) : ~LayerMask.GetMask("Player", "Enemy", "Ignore Raycast");
+
+        int count = Physics.RaycastNonAlloc(origin, Vector3.down, FootHits, length, effectiveMask, QueryTriggerInteraction.Ignore);
         float closest = float.MaxValue;
         bool found = false;
+        float tolerance = 2.2f * scale;
 
         for (int i = 0; i < count; i++)
         {
@@ -204,7 +214,7 @@ public class ZombieFootIK : MonoBehaviour
             if (hitTransform == transform || hitTransform.IsChildOf(transform)) continue;
             if (hitTransform.GetComponentInParent<ZombieAI>() != null) continue;
             if (hitTransform.GetComponentInParent<PlayerController>() != null) continue;
-            if (Mathf.Abs(FootHits[i].point.y - footPos.y) > 0.45f) continue;
+            if (Mathf.Abs(FootHits[i].point.y - footPos.y) > tolerance) continue;
             if (FootHits[i].distance < closest)
             {
                 closest = FootHits[i].distance;
@@ -220,12 +230,13 @@ public class ZombieFootIK : MonoBehaviour
     {
         Vector3 footAnimPos = _anim.GetIKPosition(foot);
         Quaternion footAnimRot = _anim.GetIKRotation(foot);
+        float scale = Mathf.Max(1f, transform.lossyScale.y / 1.8f);
 
         if (TryFootGround(footAnimPos, out RaycastHit hit))
         {
             currentWeight = Mathf.MoveTowards(currentWeight, 1f, Time.deltaTime * ikWeightSpeed);
 
-            targetPos = hit.point + Vector3.up * footBottomOffset;
+            targetPos = hit.point + Vector3.up * (footBottomOffset * scale);
 
             Quaternion surfaceRot = Quaternion.FromToRotation(Vector3.up, hit.normal);
             targetRot = surfaceRot * footAnimRot;
@@ -248,13 +259,15 @@ public class ZombieFootIK : MonoBehaviour
 
     private void AdjustPelvisHeight(float leftOffset, float rightOffset)
     {
+        float scale = Mathf.Max(1f, transform.lossyScale.y / 1.8f);
         // Find lower foot offset relative to character root
         float lowerOffset = Mathf.Min(leftOffset, rightOffset);
         float targetPelvisDrop = 0f;
 
         if (lowerOffset < 0f)
         {
-            targetPelvisDrop = Mathf.Clamp(lowerOffset * pelvisDropMultiplier, -maxPelvisDrop, 0f);
+            float maxDrop = maxPelvisDrop * scale;
+            targetPelvisDrop = Mathf.Clamp(lowerOffset * pelvisDropMultiplier, -maxDrop, 0f);
         }
 
         _currentPelvisOffset = Mathf.Lerp(_currentPelvisOffset, targetPelvisDrop, Time.deltaTime * pelvisSpeed);
