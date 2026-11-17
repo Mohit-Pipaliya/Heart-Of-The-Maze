@@ -1828,8 +1828,16 @@ public class HealthBar : MonoBehaviour
         c.renderMode = RenderMode.WorldSpace;
 
         float yOffset = (barType == BarType.Spider) ? 1.8f : 2.2f;
-        barRoot.transform.localPosition = new Vector3(0f, yOffset, 0f);
-        barRoot.transform.localScale = Vector3.one * 0.0075f;
+
+        // Compensate for parent scale (e.g. Spider model has root scale 40, 40, 40)
+        Vector3 parentScale = enemy.transform.lossyScale;
+        if (parentScale.sqrMagnitude < 0.0001f) parentScale = enemy.transform.localScale;
+        float invX = Mathf.Abs(parentScale.x) > 0.0001f ? (1f / parentScale.x) : 1f;
+        float invY = Mathf.Abs(parentScale.y) > 0.0001f ? (1f / parentScale.y) : 1f;
+        float invZ = Mathf.Abs(parentScale.z) > 0.0001f ? (1f / parentScale.z) : 1f;
+
+        barRoot.transform.localPosition = new Vector3(0f, yOffset * invY, 0f);
+        barRoot.transform.localScale = new Vector3(0.0075f * invX, 0.0075f * invY, 0.0075f * invZ);
 
         HealthBar hb = barRoot.GetComponent<HealthBar>();
         hb.type = barType;

@@ -31,16 +31,29 @@ public static class HealthBarPrefabBuilder
     [MenuItem("Tools/Theme Health Bar/Bake Health Bars Into Enemy Prefabs")]
     public static void BakeHealthBarsIntoEnemyPrefabs()
     {
+        // ── Zombie prefabs ──────────────────────────────────────────────────────
         string[] zombiePrefabs = new string[]
         {
             "Assets/Prefeb/Enemy/FemaleZombie_Enemy.prefab",
             "Assets/Prefeb/Enemy/Zombie Police.prefab"
         };
 
-        string spiderPrefab = "Assets/Prefeb/Enemy/SpiderSkin1_1 Variant.prefab";
+        // ── Spider prefabs (all skins used in-scene, root scale = 40) ───────────
+        // NOTE: Main Scene uses Assets/Animations/Spider Animation/Prefabs/SpiderSkin1_1.prefab
+        //       (guid: 1c7b72cab93810942baa9d780067397c). AttachToEnemy compensates for scale 40.
+        string[] spiderPrefabs = new string[]
+        {
+            "Assets/Animations/Spider Animation/Prefabs/SpiderSkin1_1.prefab",
+            "Assets/Animations/Spider Animation/Prefabs/SpiderSkin1_2.prefab",
+            "Assets/Animations/Spider Animation/Prefabs/SpiderSkin2_1.prefab",
+            "Assets/Animations/Spider Animation/Prefabs/SpiderSkin2_2.prefab",
+            "Assets/Animations/Spider Animation/Prefabs/SpiderSkin3_1.prefab",
+            "Assets/Animations/Spider Animation/Prefabs/SpiderSkin3_2.prefab",
+        };
 
         int bakedCount = 0;
 
+        // ── Bake Zombie bars ────────────────────────────────────────────────────
         foreach (var path in zombiePrefabs)
         {
             GameObject enemyContents = PrefabUtility.LoadPrefabContents(path);
@@ -48,9 +61,7 @@ public static class HealthBarPrefabBuilder
             {
                 HealthBar existing = enemyContents.GetComponentInChildren<HealthBar>(true);
                 if (existing != null)
-                {
                     Object.DestroyImmediate(existing.gameObject);
-                }
 
                 HealthBar hb = HealthBar.AttachToEnemy(enemyContents, HealthBar.BarType.Zombie, 1000f);
                 if (hb != null)
@@ -61,25 +72,41 @@ public static class HealthBarPrefabBuilder
                 }
                 PrefabUtility.UnloadPrefabContents(enemyContents);
             }
+            else
+            {
+                Debug.LogWarning($"[HealthBarPrefabBuilder] Could not load prefab: '{path}'");
+            }
         }
 
-        GameObject spiderContents = PrefabUtility.LoadPrefabContents(spiderPrefab);
-        if (spiderContents != null)
+        // ── Bake Spider bars (with scale-40 compensation) ───────────────────────
+        foreach (var path in spiderPrefabs)
         {
-            HealthBar existing = spiderContents.GetComponentInChildren<HealthBar>(true);
-            if (existing != null)
+            if (!System.IO.File.Exists(path) && !UnityEditor.AssetDatabase.AssetPathToGUID(path).Equals(""))
             {
-                Object.DestroyImmediate(existing.gameObject);
+                // Check via AssetDatabase if the file exists
             }
 
-            HealthBar hb = HealthBar.AttachToEnemy(spiderContents, HealthBar.BarType.Spider, 1000f);
-            if (hb != null)
+            GameObject spiderContents = PrefabUtility.LoadPrefabContents(path);
+            if (spiderContents != null)
             {
-                PrefabUtility.SaveAsPrefabAsset(spiderContents, spiderPrefab);
-                bakedCount++;
-                Debug.Log($"<color=#00FF88>[HealthBarPrefabBuilder] Baked Spider Health Bar into '{spiderPrefab}'</color>");
+                HealthBar existing = spiderContents.GetComponentInChildren<HealthBar>(true);
+                if (existing != null)
+                    Object.DestroyImmediate(existing.gameObject);
+
+                // AttachToEnemy automatically compensates for the spider's (40,40,40) root scale
+                HealthBar hb = HealthBar.AttachToEnemy(spiderContents, HealthBar.BarType.Spider, 1000f);
+                if (hb != null)
+                {
+                    PrefabUtility.SaveAsPrefabAsset(spiderContents, path);
+                    bakedCount++;
+                    Debug.Log($"<color=#00FF88>[HealthBarPrefabBuilder] Baked Spider Health Bar into '{path}'</color>");
+                }
+                PrefabUtility.UnloadPrefabContents(spiderContents);
             }
-            PrefabUtility.UnloadPrefabContents(spiderContents);
+            else
+            {
+                Debug.LogWarning($"[HealthBarPrefabBuilder] Could not load spider prefab: '{path}'");
+            }
         }
 
         AssetDatabase.SaveAssets();
@@ -92,8 +119,10 @@ public static class HealthBarPrefabBuilder
     {
         EditorApplication.delayCall += () =>
         {
-            string testPath = $"{UI_PREFAB_DIR}/ZombieHealthBar.prefab";
-            if (!System.IO.File.Exists(testPath))
+            // Check both ZombieHealthBar and SpiderHealthBar UI prefabs exist
+            string zombieTest = $"{UI_PREFAB_DIR}/ZombieHealthBar.prefab";
+            string spiderTest = $"{UI_PREFAB_DIR}/SpiderHealthBar.prefab";
+            if (!System.IO.File.Exists(zombieTest) || !System.IO.File.Exists(spiderTest))
             {
                 Debug.Log("[HealthBarPrefabBuilder] Generating missing UI Health Bar prefabs...");
                 CreateAllPrefabs();
