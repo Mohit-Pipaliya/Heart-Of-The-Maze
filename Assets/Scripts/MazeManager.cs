@@ -237,10 +237,12 @@ public class MazeManager : MonoBehaviour
 
             // 1. Outgoing block moves to reserve slot with identity rotation
             outgoingBlock.transform.SetPositionAndRotation(reservePos, Quaternion.identity);
+            SyncStandWithBlock(outgoingBlockNum);
 
             // 2. Incoming block moves to active Glade slot and rotates so its corridor faces Glade
             int optimalAngle = GetOptimalGladeRotation(incomingBlockNum);
             PositionBlockAtGladeSlot(incomingBlock, optimalAngle);
+            SyncStandWithBlock(incomingBlockNum);
 
             currentActiveBlockNumber = incomingBlockNum;
 
@@ -279,6 +281,51 @@ public class MazeManager : MonoBehaviour
     }
 
     /// <summary>
+    /// Synchronizes the position and rotation of the Stand corresponding to blockNum
+    /// so that it always remains placed outside the secret room door on the right side!
+    /// </summary>
+    private void SyncStandWithBlock(int blockNum)
+    {
+        var stands = UnityEngine.Object.FindObjectsByType<PlateStandInteraction>(FindObjectsSortMode.None);
+        if (stands == null) return;
+
+        foreach (var stand in stands)
+        {
+            if (stand.standID == blockNum)
+            {
+                stand.InitializeTargetDoor();
+                if (stand.targetDoor != null)
+                {
+                    Transform dt = stand.targetDoor.transform;
+                    Vector3 worldPos = dt.position + dt.TransformDirection(new Vector3(40.4f, 0f, 67.5f));
+                    float targetY = 4.1f;
+                    switch (blockNum)
+                    {
+                        case 1: targetY = 4.1f; break;
+                        case 2: targetY = 4.0f; break;
+                        case 3: targetY = 4.3f; break;
+                        case 4: targetY = 5.3f; break;
+                        case 5: targetY = 4.8f; break;
+                        case 6: targetY = 4.2f; break;
+                        case 7: targetY = 4.7f; break;
+                        case 8: targetY = 4.5f; break;
+                    }
+                    worldPos.y = targetY;
+                    float rotY = (dt.eulerAngles.y + 90f) % 360f;
+
+                    Transform root = stand.transform;
+                    while (root.parent != null && root.parent.name.ToLower().Contains("stand") && !root.parent.name.ToLower().Contains("maze stands"))
+                    {
+                        root = root.parent;
+                    }
+                    root.SetPositionAndRotation(worldPos, Quaternion.Euler(0f, rotY, 0f));
+                }
+                break;
+            }
+        }
+    }
+
+    /// <summary>
     /// Optimal cardinal rotation angle (0, 90, 180, 270) for each of the 8 blocks
     /// so that its main entrance is ALWAYS situated on the East edge facing the Glade!
     /// </summary>
@@ -309,6 +356,7 @@ public class MazeManager : MonoBehaviour
         {
             int optimalAngle = GetOptimalGladeRotation(initialBlockNum);
             PositionBlockAtGladeSlot(activeBlock, optimalAngle);
+            SyncStandWithBlock(initialBlockNum);
 
             for (int i = 0; i < mazeBlocks.Length; i++)
             {

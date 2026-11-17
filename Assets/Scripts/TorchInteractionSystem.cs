@@ -386,7 +386,7 @@ public class TorchInteractionSystem : MonoBehaviour
         if (other.CompareTag("Player") && currentState == TorchState.OnGround)
         {
             playerInRange = true;
-            if (pickupPromptUI != null) pickupPromptUI.SetActive(true);
+            if (pickupPromptUI != null) pickupPromptUI.SetActive(false);
             
             // Auto-assign player references if they were empty
             if (playerAnimator == null) playerAnimator = other.GetComponentInChildren<Animator>();
@@ -400,6 +400,14 @@ public class TorchInteractionSystem : MonoBehaviour
         {
             playerInRange = false;
             if (pickupPromptUI != null) pickupPromptUI.SetActive(false);
+        }
+    }
+
+    private void OnGUI()
+    {
+        if (playerInRange && currentState == TorchState.OnGround)
+        {
+            GameHUDPrompt.DrawPromptBox("[E] Pick Up Mashal (Torch)");
         }
     }
 }

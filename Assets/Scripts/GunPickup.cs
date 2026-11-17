@@ -65,9 +65,10 @@ public class GunPickup : MonoBehaviour
                 playerEquipSystem = sys;
                 playerController = other.GetComponentInParent<PlayerController>();
 
+                // Keep old raw canvas text inactive so golden-yellow HUD box is used
                 if (pickupPrompt != null)
                 {
-                    pickupPrompt.SetActive(true);
+                    pickupPrompt.SetActive(false);
                 }
             }
         }
@@ -88,6 +89,14 @@ public class GunPickup : MonoBehaviour
                     pickupPrompt.SetActive(false);
                 }
             }
+        }
+    }
+
+    private void OnGUI()
+    {
+        if (playerInRange)
+        {
+            GameHUDPrompt.DrawPromptBox("[E] Pick Up M4");
         }
     }
 }

@@ -215,7 +215,7 @@ public class MagazinePickup : MonoBehaviour
 
             if (pickupPrompt != null && pickupPrompt != gameObject && !pickupPrompt.transform.IsChildOf(transform))
             {
-                pickupPrompt.SetActive(true);
+                pickupPrompt.SetActive(false);
             }
         }
     }
@@ -236,6 +236,14 @@ public class MagazinePickup : MonoBehaviour
                     pickupPrompt.SetActive(false);
                 }
             }
+        }
+    }
+
+    private void OnGUI()
+    {
+        if (_playerInRange && !_isPickedUp)
+        {
+            GameHUDPrompt.DrawPromptBox("[E] Pick Up Magazine");
         }
     }
 }

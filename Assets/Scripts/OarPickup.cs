@@ -106,7 +106,7 @@ public class OarPickup : MonoBehaviour
             _playerController = other.GetComponentInParent<PlayerController>() ?? other.GetComponent<PlayerController>();
 
         _playerInRange = true;
-        if (pickupPromptUI != null) pickupPromptUI.SetActive(true);
+        if (pickupPromptUI != null) pickupPromptUI.SetActive(false);
     }
 
     private void OnTriggerExit(Collider other)
@@ -114,6 +114,14 @@ public class OarPickup : MonoBehaviour
         if (!other.CompareTag("Player")) return;
         _playerInRange = false;
         if (pickupPromptUI != null) pickupPromptUI.SetActive(false);
+    }
+
+    private void OnGUI()
+    {
+        if (_playerInRange && !_isPickingUp && !_isPickedUp)
+        {
+            GameHUDPrompt.DrawPromptBox("[E] Pick Up Oar");
+        }
     }
 
     // ─── Pickup Sequence ───────────────────────────────────────────────────────

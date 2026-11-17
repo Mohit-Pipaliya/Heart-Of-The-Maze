@@ -403,9 +403,9 @@ public class BoatSystem : MonoBehaviour
         {
             _playerNear = true;
 
-            // Show canvas UI if assigned
-            if (driveBoatUI != null)  driveBoatUI.SetActive(hasOar);
-            if (collectOarUI != null) collectOarUI.SetActive(!hasOar);
+            // Keep old raw canvas UI inactive so golden-yellow HUD box is used
+            if (driveBoatUI != null)  driveBoatUI.SetActive(false);
+            if (collectOarUI != null) collectOarUI.SetActive(false);
 
             if (Input.GetKeyDown(KeyCode.B) || Input.GetKeyDown(KeyCode.E))
             {
@@ -440,46 +440,31 @@ public class BoatSystem : MonoBehaviour
 
     private void OnGUI()
     {
-        if (!_playerNear || _isOccupied || _isEntering || _isExiting) return;
+        if (_isEntering || _isExiting) return;
+
+        if (_isOccupied)
+        {
+            GameHUDPrompt.DrawPromptBox("[W/S] Paddle Forward / Back   |   [A/D] Steer   |   [B] Exit Boat");
+            return;
+        }
+
+        if (!_playerNear) return;
 
         bool hasOar = !requireOar || (oarPickup != null && oarPickup.IsPickedUp);
 
-        // Don't duplicate if canvas UI is active unless flashing warning
-        if (driveBoatUI != null && driveBoatUI.activeSelf && hasOar) return;
-        if (collectOarUI != null && collectOarUI.activeSelf && !hasOar && _oarWarningTimer <= 0f) return;
-
         string prompt;
-        Color promptColor;
-
         if (!hasOar)
         {
             prompt = _oarWarningTimer > 0f 
                 ? "⚠️ OAR REQUIRED! Please Collect The Oar First" 
                 : "Collect The Oar First";
-            promptColor = _oarWarningTimer > 0f ? new Color(1f, 0.3f, 0.2f) : new Color(1f, 0.8f, 0.25f);
         }
         else
         {
-            prompt = "Press B to Board Boat";
-            promptColor = Color.white;
+            prompt = "[ B ] Board Boat";
         }
 
-        GUIStyle style = new GUIStyle();
-        style.fontSize = 24;
-        style.fontStyle = FontStyle.Bold;
-        style.alignment = TextAnchor.MiddleCenter;
-
-        float sw = Screen.width;
-        float sh = Screen.height;
-        Rect r = new Rect(0, sh * 0.82f, sw, 50);
-
-        // Shadow
-        style.normal.textColor = new Color(0, 0, 0, 0.9f);
-        GUI.Label(new Rect(r.x + 2, r.y + 2, r.width, r.height), prompt, style);
-
-        // Foreground
-        style.normal.textColor = promptColor;
-        GUI.Label(r, prompt, style);
+        GameHUDPrompt.DrawPromptBox(prompt);
     }
 
     // ─── Boat Movement (Drive / Steer) ─────────────────────────────────────────
@@ -584,9 +569,16 @@ public class BoatSystem : MonoBehaviour
         if (boatFwd.sqrMagnitude < 0.001f) boatFwd = Vector3.forward;
         Quaternion uprightSeatRot = Quaternion.LookRotation(boatFwd, Vector3.up);
 
-        // 3. Direct snap to boat seat standing up (No climb animation!)
-        _playerTransform.position = seatTarget.position;
-        _playerTransform.rotation = uprightSeatRot;
+        // 3. Step-by-step BoatClimb: Smoothly climb from boatNearPoint over the gunwale to boat seat
+        if (_playerAnimator != null)
+        {
+            _playerAnimator.ResetTrigger(_hashClimb);
+            _playerAnimator.SetTrigger(_hashClimb);
+            _playerAnimator.CrossFadeInFixedTime(climbStateName, 0.12f, 0, 0f);
+        }
+
+        // Smooth climb motion arc from current position to seatTarget (step vala motion)
+        yield return StartCoroutine(SyncClimbMotion(_playerAnimator, _playerTransform, seatTarget, 0.75f, 0.35f, uprightSeatRot));
 
         // 4. Parent player to unscaled mount at seat
         _runtimeMount.position = seatTarget.position;
@@ -620,7 +612,7 @@ public class BoatSystem : MonoBehaviour
         _isEntering = false;
         UpdateSeatedCamera(true);
 
-        Debug.Log("<color=#00FF88><b>[BoatSystem]</b></color> Player boarded boat and seated directly!");
+        Debug.Log("<color=#00FF88><b>[BoatSystem]</b></color> Player stepped into boat, climbed onto seat, and seated!");
     }
 
     // ─── Exit Boat Sequence ────────────────────────────────────────────────────
@@ -661,14 +653,25 @@ public class BoatSystem : MonoBehaviour
 
         yield return new WaitForSeconds(Mathf.Max(0.5f, idleAfterSitUpDuration));
 
-        // 2. Unparent and direct snap player outside to exit point (No unclimb animation!)
+        // 2. Step-by-step BoatUnclimb: Unparent and smoothly step down to exit target point
         Transform exitTarget = boatNearDownPoint != null ? boatNearDownPoint : (boatNearPoint != null ? boatNearPoint : transform);
         _playerTransform.SetParent(null);
-        _playerTransform.position = exitTarget.position;
+
         Vector3 exitFwd = exitTarget.forward;
         exitFwd.y = 0f;
-        if (exitFwd.sqrMagnitude > 0.001f)
-            _playerTransform.rotation = Quaternion.LookRotation(exitFwd.normalized, Vector3.up);
+        Quaternion exitRot = (exitFwd.sqrMagnitude > 0.001f)
+            ? Quaternion.LookRotation(exitFwd.normalized, Vector3.up)
+            : _playerTransform.rotation;
+
+        if (_playerAnimator != null)
+        {
+            _playerAnimator.ResetTrigger(_hashUnclimb);
+            _playerAnimator.SetTrigger(_hashUnclimb);
+            _playerAnimator.CrossFadeInFixedTime(unclimbStateName, 0.12f, 0, 0f);
+        }
+
+        // Smooth unclimb arc to land firmly on ground/dock (step vala motion)
+        yield return StartCoroutine(SyncClimbMotion(_playerAnimator, _playerTransform, exitTarget, 0.75f, 0.25f, exitRot));
 
         // 3. Drop Oar immediately as player stands outside
         if (oarPickup == null)
@@ -686,7 +689,7 @@ public class BoatSystem : MonoBehaviour
         _isOccupied = false;
         _isExiting  = false;
 
-        Debug.Log("<color=#00FF88><b>[BoatSystem]</b></color> Player stood up, exited boat, and dropped oar!");
+        Debug.Log("<color=#00FF88><b>[BoatSystem]</b></color> Player stood up, unclogged/unclimbed with step down to ground!");
     }
 
     // ─── Motion Helpers ────────────────────────────────────────────────────────

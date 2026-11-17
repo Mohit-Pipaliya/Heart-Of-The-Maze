@@ -230,6 +230,13 @@ public class CameraController : MonoBehaviour
             return;
         }
 
+        // ─── STAND PUZZLE MODE: dedicated side-profile camera ─────────────────
+        if (_isStandMode && Application.isPlaying)
+        {
+            RunStandCamera();
+            return;
+        }
+
         if (target == null) return;
 
         bool isAiming = false;
@@ -320,7 +327,15 @@ public class CameraController : MonoBehaviour
             transform.position = desiredPosition;
         }
 
-        transform.rotation = rotation;
+        if (_exitStandBlendTimer > 0f)
+        {
+            _exitStandBlendTimer -= Time.deltaTime;
+            transform.rotation = Quaternion.Slerp(transform.rotation, rotation, Time.deltaTime * 8f);
+        }
+        else
+        {
+            transform.rotation = rotation;
+        }
     }
 
     // ─── Ladder Camera Mode ───────────────────────────────────────────────────
@@ -454,7 +469,15 @@ public class CameraController : MonoBehaviour
         }
 
         transform.position = Vector3.SmoothDamp(transform.position, desiredPos, ref currentPosVelocity, positionSmoothTime);
-        transform.rotation = rotation;
+        if (_exitStandBlendTimer > 0f)
+        {
+            _exitStandBlendTimer -= Time.deltaTime;
+            transform.rotation = Quaternion.Slerp(transform.rotation, rotation, Time.deltaTime * 8f);
+        }
+        else
+        {
+            transform.rotation = rotation;
+        }
     }
 
     // ─── Boat Camera Core ────────────────────────────────────────────────────
@@ -498,5 +521,128 @@ public class CameraController : MonoBehaviour
         transform.rotation = Quaternion.Slerp(transform.rotation, rotation, Time.deltaTime * 10f);
         mouseX = _currentBoatYaw;
         mouseY = _boatPitch;
+    }
+
+    // ─── Stand Interaction Camera (Side View & Puzzle View) ──────────────────
+    [Header("── Stand Interaction Camera Settings ──")]
+    [Tooltip("Horizontal distance back from the stand socket (meters) to view the FULL plate")]
+    [SerializeField] public float standCamDistance = 3.5f;
+
+    [Tooltip("Vertical height above the stand socket (meters) to view the FULL plate")]
+    [SerializeField] public float standCamHeight = 3.8f;
+
+    [Tooltip("Target look-at height offset above stand socket (meters)")]
+    [SerializeField] public float standCamFocusOffset = 0.05f;
+
+    [Tooltip("Side distance from the stand focus point (meters)")]
+    [SerializeField] private float standCamSideOffset = 2.1f;
+
+    [Tooltip("Camera height above ground (meters) - shows upper body of player + stand")]
+    [SerializeField] private float standCamHeightOffset = 1.35f;
+
+    [Tooltip("Forward/back offset relative to player facing the stand")]
+    [SerializeField] private float standCamForwardOffset = -0.2f;
+
+    private bool _isStandMode = false;
+    private Transform _standSocketTransform;
+    private Transform _standPlayerTransform;
+    private Transform _cameraStandPoint;
+    private Vector3 _standCamVelocity = Vector3.zero;
+
+    private float _exitStandBlendTimer = 0f;
+
+    public void EnterStandMode(Transform standSocket, Transform playerTransform, Transform cameraStandPoint = null)
+    {
+        _isStandMode = true;
+        _standSocketTransform = standSocket;
+        _standPlayerTransform = playerTransform != null ? playerTransform : target;
+        _cameraStandPoint = cameraStandPoint;
+        _standCamVelocity = Vector3.zero;
+        _exitStandBlendTimer = 0f;
+    }
+
+    public void ExitStandMode()
+    {
+        _isStandMode = false;
+        _standSocketTransform = null;
+        _standPlayerTransform = null;
+        _cameraStandPoint = null;
+        _exitStandBlendTimer = 0.8f;
+
+        if (target == null)
+        {
+            GameObject p = GameObject.FindGameObjectWithTag("Player");
+            if (p != null) target = p.transform;
+            else
+            {
+                var pc = UnityEngine.Object.FindFirstObjectByType<PlayerController>();
+                if (pc != null) target = pc.transform;
+            }
+        }
+
+        if (target != null)
+        {
+            mouseX = target.eulerAngles.y;
+            mouseY = 15f;
+        }
+    }
+
+    private void RunStandCamera()
+    {
+        Vector3 standSocketPos = (_standSocketTransform != null) ? _standSocketTransform.position : transform.position;
+
+        // Player direction relative to socket (direction towards player standpoint)
+        Vector3 awayDir = (_standPlayerTransform != null) ? (_standPlayerTransform.position - standSocketPos) : Vector3.forward;
+        awayDir.y = 0f;
+        if (awayDir.sqrMagnitude < 0.01f) awayDir = Vector3.forward;
+        awayDir.Normalize();
+
+        // Optimal camera position so the FULL circular plate, rim, and arrows are completely visible!
+        // ("plate puri dikhe vese kardo")
+        Vector3 idealCamPos = standSocketPos + awayDir * standCamDistance + Vector3.up * standCamHeight;
+        Vector3 targetCamPos = idealCamPos;
+
+        if (_cameraStandPoint != null)
+        {
+            Vector3 rawStandPointPos = _cameraStandPoint.position;
+            float rawDistAbove = rawStandPointPos.y - standSocketPos.y;
+
+            // Agar scale 500x ki wajah se standpoint extreme height par ho (> 6m ya < 1.2m),
+            // toh idealCamPos use karein taaki plate poori frame mein crisp aur complete dikhe:
+            if (rawDistAbove > 5.5f || rawDistAbove < 1.2f)
+            {
+                targetCamPos = idealCamPos;
+            }
+            else
+            {
+                // Ensure horizontal distance from socket is sufficient taaki camera plate ke bohot paas zoom-in hoke cut na ho
+                Vector2 horizDiff = new Vector2(rawStandPointPos.x - standSocketPos.x, rawStandPointPos.z - standSocketPos.z);
+                if (horizDiff.magnitude < standCamDistance * 0.75f)
+                {
+                    targetCamPos = idealCamPos;
+                }
+                else
+                {
+                    targetCamPos = rawStandPointPos;
+                }
+            }
+        }
+
+        // Look directly at the center of the stand socket / plate dial
+        Vector3 focusPoint = standSocketPos + Vector3.up * standCamFocusOffset;
+        Vector3 standLookDir = focusPoint - targetCamPos;
+        Quaternion standTargetRot = (standLookDir.sqrMagnitude > 0.01f)
+            ? Quaternion.LookRotation(standLookDir.normalized, Vector3.up)
+            : Quaternion.Euler(48f, (_standPlayerTransform != null ? _standPlayerTransform.eulerAngles.y + 180f : 0f), 0f);
+
+        transform.position = Vector3.SmoothDamp(transform.position, targetCamPos, ref _standCamVelocity, 0.2f);
+        transform.rotation = Quaternion.Slerp(transform.rotation, standTargetRot, Time.deltaTime * 10f);
+
+        // Sync mouse yaw aur pitch taaki exit hone par camera smooth return ho
+        if (target != null)
+        {
+            mouseX = target.eulerAngles.y;
+            mouseY = 15f;
+        }
     }
 }

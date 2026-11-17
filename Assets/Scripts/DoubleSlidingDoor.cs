@@ -223,12 +223,11 @@ public class DoubleSlidingDoor : MonoBehaviour
             }
         }
 
-        // Normal double door: Left door goes in -direction, Right door goes in +direction
-        Vector3 leftDir = -baseDir;
-        Vector3 rightDir = baseDir;
-
-        _leftOpenPos = _leftClosedPos + (leftDir * distLeft);
-        _rightOpenPos = _rightClosedPos + (rightDir * distRight);
+        // Normal double door: Left door goes in -direction, Right door goes in +direction.
+        // Use Mathf.Abs so that even if leftSlideDistance was authored as negative in the Inspector (e.g. -1.15),
+        // it strictly slides to the LEFT (-baseDir), and right door strictly slides to the RIGHT (+baseDir).
+        _leftOpenPos = _leftClosedPos - (baseDir * Mathf.Abs(distLeft));
+        _rightOpenPos = _rightClosedPos + (baseDir * Mathf.Abs(distRight));
     }
 
     private void FindPlayer()
@@ -356,6 +355,45 @@ public class DoubleSlidingDoor : MonoBehaviour
     {
         isManagedExternally = true;
         OpenDoor();
+    }
+
+    /// <summary>
+    /// Commands the door to permanently unlock and smoothly slide open when the Plate Puzzle is solved!
+    /// Bypasses proximity auto-close, day/night lock, and external manager blocks.
+    /// </summary>
+    public void OpenFromPlatePuzzle()
+    {
+        isManagedExternally = true;
+        openOnApproach = false;
+        autoClose = false;
+        controlledByDayNight = false;
+        lockAtNight = false;
+
+        Initialize();
+        CalculateOpenPositions();
+        isOpen = true;
+        PlayAudio(openSound);
+
+        if (!Application.isPlaying)
+        {
+            _currentProgress = 1f;
+            ApplyProgress(1f);
+        }
+
+        // If door or any child has an Animator, notify it too
+        var animators = GetComponentsInChildren<Animator>(true);
+        foreach (var anim in animators)
+        {
+            if (anim != null)
+            {
+                anim.SetBool("IsOpen", true);
+                anim.SetBool("Open", true);
+                anim.SetTrigger("Open");
+            }
+        }
+
+        OnOpened?.Invoke();
+        Debug.Log($"<color=#00FF88><b>[DoubleSlidingDoor]</b> '{name}' opened from Plate Puzzle!</color>");
     }
 
     [ContextMenu("Close Door")]
@@ -497,25 +535,25 @@ public class DoubleSlidingDoor : MonoBehaviour
             if (scaleFactor < 0.001f) scaleFactor = 1f;
         }
 
-        float distLeft = (separateDistances ? leftSlideDistance : slideDistance) / scaleFactor;
-        float distRight = (separateDistances ? rightSlideDistance : slideDistance) / scaleFactor;
+        float distLeft = (separateDistances ? Mathf.Abs(leftSlideDistance) : Mathf.Abs(slideDistance)) / scaleFactor;
+        float distRight = (separateDistances ? Mathf.Abs(rightSlideDistance) : Mathf.Abs(slideDistance)) / scaleFactor;
 
-        // Left Door open direction (Yellow)
+        // Left Door open direction (Yellow - slides to the left in -baseDir)
         if (leftDoor != null)
         {
-            Vector3 worldLeft = transform.TransformPoint(Vector3.zero);
-            Vector3 worldLeftTarget = transform.TransformPoint(-baseDir * distLeft);
+            Vector3 worldLeft = transform.TransformPoint(_leftClosedPos);
+            Vector3 worldLeftTarget = transform.TransformPoint(_leftClosedPos - (baseDir * distLeft));
 
             Gizmos.color = Color.yellow;
             Gizmos.DrawLine(worldLeft, worldLeftTarget);
             Gizmos.DrawWireSphere(worldLeftTarget, 0.2f);
         }
 
-        // Right Door open direction (Cyan)
+        // Right Door open direction (Cyan - slides to the right in +baseDir)
         if (rightDoor != null)
         {
-            Vector3 worldRight = transform.TransformPoint(Vector3.zero);
-            Vector3 worldRightTarget = transform.TransformPoint(baseDir * distRight);
+            Vector3 worldRight = transform.TransformPoint(_rightClosedPos);
+            Vector3 worldRightTarget = transform.TransformPoint(_rightClosedPos + (baseDir * distRight));
 
             Gizmos.color = Color.cyan;
             Gizmos.DrawLine(worldRight, worldRightTarget);

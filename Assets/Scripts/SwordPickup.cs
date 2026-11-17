@@ -77,7 +77,7 @@ public class SwordPickup : MonoBehaviour
 
                 if (pickupPrompt != null)
                 {
-                    pickupPrompt.SetActive(true);
+                    pickupPrompt.SetActive(false);
                 }
             }
         }
@@ -98,6 +98,14 @@ public class SwordPickup : MonoBehaviour
                     pickupPrompt.SetActive(false);
                 }
             }
+        }
+    }
+
+    private void OnGUI()
+    {
+        if (playerInRange)
+        {
+            GameHUDPrompt.DrawPromptBox("[E] Pick Up Sword");
         }
     }
 }

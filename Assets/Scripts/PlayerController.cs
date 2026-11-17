@@ -155,6 +155,7 @@ public class PlayerController : MonoBehaviour
     private static readonly int HashHit         = Animator.StringToHash("Hit");
     private static readonly int HashDie         = Animator.StringToHash("Die");
     private static readonly int HashFire        = Animator.StringToHash("Fire");
+    private static readonly int HashSeatIdle    = Animator.StringToHash("SeatIdle");
 
     // Weapon states
     private enum WeaponState { Unarmed = 0, Sword = 1, Gun = 2, Torch = 3 }
@@ -173,6 +174,7 @@ public class PlayerController : MonoBehaviour
     private Vector3 _velocity;
     private bool _isGrounded;
     public bool isFrozen = false;
+    [HideInInspector] public bool isCarryingObject = false;
 
     /// <summary>While true, player root Y is pinned after Animator runs (stops pickup clips pulling body into terrain).</summary>
     private bool _lockWorldPosition;
@@ -208,8 +210,16 @@ public class PlayerController : MonoBehaviour
         _anim   = GetComponent<Animator>();
         _cc     = GetComponent<CharacterController>();
         _health = maxHealth;
+        var initPlayerBar = Object.FindFirstObjectByType<HealthBar>();
+        if (initPlayerBar != null && initPlayerBar.type == HealthBar.BarType.Player)
+        {
+            initPlayerBar.SetMaxHealth(maxHealth);
+            initPlayerBar.SetHealth(_health);
+        }
         _swordSystem = GetComponentInChildren<SwordEquipSystem>();
         _gunSystem = GetComponentInChildren<GunEquipSystem>();
+        if (_torchSystem == null)
+            _torchSystem = GetComponentInChildren<TorchInteractionSystem>() ?? FindFirstObjectByType<TorchInteractionSystem>();
 
         if (_swordSystem != null && _swordSystem.sword != null)
         {
@@ -428,7 +438,17 @@ public class PlayerController : MonoBehaviour
             ApplyFootIKWeights();
             return;
         }
-        if (isFrozen) return;
+
+        // Agar player boat me baitha hai (SeatIdle), tab terrain Foot IK off rakhein
+        bool isSittingInBoat = _anim.GetBool(HashSeatIdle);
+        if (isSittingInBoat)
+        {
+            _leftFootIKWeight  = Mathf.MoveTowards(_leftFootIKWeight,  0f, Time.deltaTime * footIKBlendSpeed);
+            _rightFootIKWeight = Mathf.MoveTowards(_rightFootIKWeight, 0f, Time.deltaTime * footIKBlendSpeed);
+            ApplyFootIKWeights();
+            return;
+        }
+
         // Jump ke dauraan IK off
         if (!_isGrounded) 
         {
@@ -496,6 +516,11 @@ public class PlayerController : MonoBehaviour
         if (isFrozen)
         {
             _velocity = Vector3.zero; // Prevent physics drifting while frozen
+            // Jab player frozen ho (pickup, place, boat climb), pair zameen ke neeche na dhasne paye
+            if (_cc != null && _cc.enabled && !_anim.GetBool(HashSeatIdle))
+            {
+                CompensateAnimatedBodyBelowGround();
+            }
         }
 
         if (_lockWorldPosition && _cc != null && _cc.enabled)
@@ -808,7 +833,7 @@ public class PlayerController : MonoBehaviour
 
     private void HandleWeaponSwitch()
     {
-        if (_isEquipping || _isSequenceRunning || _isSwordAttacking) return;
+        if (_isEquipping || _isSequenceRunning || _isSwordAttacking || isCarryingObject) return;
 
         // Press 1: Jo bhi weapon hath mein hai, uska unequip animation chalao → Unarmed
         if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1))
@@ -1378,6 +1403,12 @@ public class PlayerController : MonoBehaviour
         _health -= damage;
         _health  = Mathf.Max(_health, 0);
 
+        var playerBar = Object.FindFirstObjectByType<HealthBar>();
+        if (playerBar != null && playerBar.type == HealthBar.BarType.Player)
+        {
+            playerBar.SetHealth(_health);
+        }
+
         if (_health <= 0)
         {
             Die();
@@ -1553,12 +1584,13 @@ public class PlayerController : MonoBehaviour
 
     /// <summary>
     /// Weapon pickup ke liye: currently equipped weapon ko unequip karta hai
-    /// aur tab tak wait karta hai jab tak weapon holster/back pe nahi chala jaata.
-    /// Ground pickup shuru hone se pehle isko use karein.
+    /// aur tab tak wait karta hai jab tak weapon unequip animation POORI COMPLETE na ho jaye
+    /// aur weapon holster/back pe nahi chala jaata.
+    /// Ground pickup shuru hone se pehle isko use karein taaki unequip ke BAAD hi pickup shuru ho.
     /// </summary>
     public IEnumerator UnequipCurrentWeaponForPickup()
     {
-        // Agar kuch bhi equipped nahi hai ya already sequence chal raha hai toh seedha return karo
+        // Agar kuch bhi equipped nahi hai toh seedha return karo
         if (_currentWeapon == WeaponState.Unarmed) yield break;
 
         _isSequenceRunning = true;
@@ -1568,26 +1600,88 @@ public class PlayerController : MonoBehaviour
         {
             yield return RunUnequipAnimation();
             _swordSystem.StartUnequip();
-            while (_swordSystem.CurrentState != SwordEquipSystem.SwordState.OnBack) yield return null;
+
+            // Step 1: Wait for sword system to physically move sword to back (with timeout safety)
+            float swordTimeout = 0f;
+            while (_swordSystem.CurrentState != SwordEquipSystem.SwordState.OnBack && swordTimeout < 1.0f)
+            {
+                swordTimeout += Time.deltaTime;
+                yield return null;
+            }
+
+            // Step 2: Wait for UnequipSword animation in Animator to finish completely
+            int unequipSwordHash = Animator.StringToHash("UnequipSword");
+            float timer = 0f;
+            const float maxWait = 2.5f;
+            while (timer < maxWait)
+            {
+                timer += Time.deltaTime;
+                if (_anim != null)
+                {
+                    AnimatorStateInfo stateInfo = _anim.GetCurrentAnimatorStateInfo(0);
+                    // Agar animation finish hone wali ho (normalizedTime >= 0.88) ya already exit ho chuki ho
+                    if (stateInfo.shortNameHash == unequipSwordHash && stateInfo.normalizedTime >= 0.88f)
+                        break;
+                    if (stateInfo.shortNameHash != unequipSwordHash && timer > 0.45f)
+                        break;
+                }
+                yield return null;
+            }
         }
         else if (_currentWeapon == WeaponState.Gun && _gunSystem != null)
         {
             yield return RunGunUnequipAnimation();
             _gunSystem.StartUnequip();
-            while (_gunSystem.CurrentState != GunEquipSystem.GunState.Holstered) yield return null;
+
+            // Step 1: Wait for gun system to physically holster gun (with timeout safety)
+            float gunTimeout = 0f;
+            while (_gunSystem.CurrentState != GunEquipSystem.GunState.Holstered && gunTimeout < 1.0f)
+            {
+                gunTimeout += Time.deltaTime;
+                yield return null;
+            }
+
+            // Step 2: Wait for UnequipGun animation in Animator to finish completely
+            int unequipGunHash = Animator.StringToHash("UnequipGun");
+            float timer = 0f;
+            const float maxWait = 2.8f;
+            while (timer < maxWait)
+            {
+                timer += Time.deltaTime;
+                if (_anim != null)
+                {
+                    AnimatorStateInfo stateInfo = _anim.GetCurrentAnimatorStateInfo(0);
+                    if (stateInfo.shortNameHash == unequipGunHash && stateInfo.normalizedTime >= 0.85f)
+                        break;
+                    if (stateInfo.shortNameHash != unequipGunHash && timer > 0.45f)
+                        break;
+                }
+                yield return null;
+            }
         }
         else if (_currentWeapon == WeaponState.Torch && _torchSystem != null)
         {
             yield return RunTorchUnequipAnimation();
             _torchSystem.StartUnequip();
-            while (_torchSystem.currentState != TorchInteractionSystem.TorchState.Placed) yield return null;
+            float torchTimeout = 0f;
+            while (_torchSystem.currentState != TorchInteractionSystem.TorchState.Placed && torchTimeout < 1.0f) 
+            {
+                torchTimeout += Time.deltaTime;
+                yield return null;
+            }
+
+            yield return new WaitForSeconds(0.3f);
         }
 
+        // Sabhi weapons ke baad character ko cleanly Unarmed state par le aao
         _currentWeapon = WeaponState.Unarmed;
-        _anim.SetInteger(HashWeaponState, 0);
-        _anim.applyRootMotion = false;
-        _anim.CrossFadeInFixedTime("Locomotion", 0.15f, 0, 0f);
-        yield return new WaitForSeconds(0.15f);
+        if (_anim != null)
+        {
+            _anim.SetInteger(HashWeaponState, 0);
+            _anim.applyRootMotion = false;
+            _anim.CrossFadeInFixedTime("UnarmedLocomotion", 0.12f, 0, 0f);
+        }
+        yield return new WaitForSeconds(0.12f);
         _isSequenceRunning = false;
     }
 
@@ -1660,6 +1754,9 @@ public class PlayerController : MonoBehaviour
 
     /// <summary>Returns the player's current health (0–maxHealth).</summary>
     public int Health { get { return _health; } }
+
+    /// <summary>Returns the player's max health.</summary>
+    public int MaxHealth { get { return maxHealth; } }
 
     /// <summary>Returns true if the player is dead.</summary>
     public bool IsDead { get { return _isDead; } }

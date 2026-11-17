@@ -930,7 +930,23 @@ public class LadderClimbSystem : MonoBehaviour
         bool nearBottom = (playerY < 50f) && (_inTrigger1 || _inTrigger2 || distToT1 <= Mathf.Max(proximityRadius, 25f) || distToT2 <= Mathf.Max(proximityRadius, 25f));
         bool nearTop    = (playerY >= 50f) && (_inTrigger4 || _inTrigger3 || distToT4 <= Mathf.Max(proximityRadius, 25f) || distToT3 <= Mathf.Max(proximityRadius, 25f));
 
-        if (currentState == ClimbState.Idle)
+        bool isClimbingState = (currentState == ClimbState.Climbing || currentState == ClimbState.MountingUp || currentState == ClimbState.MountingDown);
+        bool inClimbPosition = isClimbingState || (_inTrigger2 || _inTrigger3 || distToT2 <= 2.5f || distToT3 <= 2.5f);
+
+        if (inClimbPosition)
+        {
+            // Jab player W ya S press karke climb kare tab UI chhip jaye (hide)
+            // Aur jaise hi W ya S press karna bandh karde tab turant wapas dikhe
+            bool isPressingClimbKeys = Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.S) ||
+                                       Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.DownArrow) ||
+                                       Mathf.Abs(Input.GetAxisRaw("Vertical")) > 0.15f;
+
+            if (!isPressingClimbKeys)
+            {
+                DrawCustomPromptBox("[W] Climb Up  |  [S] Climb Down");
+            }
+        }
+        else if (currentState == ClimbState.Idle)
         {
             if (nearBottom)
             {
@@ -941,10 +957,6 @@ public class LadderClimbSystem : MonoBehaviour
                 DrawCustomPromptBox("[ C ] Climb Down");
             }
         }
-        else if (currentState == ClimbState.Climbing)
-        {
-            DrawCustomPromptBox("[W] Climb Up  |  [S] Climb Down");
-        }
     }
 
     private void DrawCustomPromptBox(string msg)
@@ -952,8 +964,8 @@ public class LadderClimbSystem : MonoBehaviour
         float w = 340f;
         float h = 48f;
         float x = (Screen.width - w) * 0.5f;
-        // Position at lower-screen third (exact location of the former white text)
-        float y = Screen.height * 0.70f;
+        // Position at bottom center of the screen
+        float y = Screen.height - h - 35f;
 
         // 1. Semi-transparent dark background
         GUI.color = new Color(0.04f, 0.04f, 0.06f, 0.88f);
