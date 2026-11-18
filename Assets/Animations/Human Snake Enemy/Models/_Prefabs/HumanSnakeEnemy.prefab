@@ -3815,10 +3815,10 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.5
-  m_Height: 2
+  m_Radius: 1
+  m_Height: 2.8
   m_Direction: 1
-  m_Center: {x: 0, y: 1, z: 0}
+  m_Center: {x: 0, y: 1.4, z: 0}
 --- !u!82 &5353713951703196840
 AudioSource:
   m_ObjectHideFlags: 0
@@ -3970,7 +3970,7 @@ MonoBehaviour:
   enableVFX: 1
   enableHitFlash: 1
   player: {fileID: 0}
-  showDebugGizmos: 1
+  showDebugGizmos: 0
   attackRangeColor: {r: 1, g: 0.2, b: 0.2, a: 0.6}
   stoppingDistanceColor: {r: 0.2, g: 1, b: 0.4, a: 0.6}
   aggroDistanceColor: {r: 1, g: 0.9, b: 0.2, a: 0.35}
