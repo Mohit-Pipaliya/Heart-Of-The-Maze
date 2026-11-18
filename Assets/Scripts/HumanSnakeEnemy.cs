@@ -141,7 +141,7 @@ public class HumanSnakeEnemy : MonoBehaviour
     public Transform player;
 
     [Header("─── Scene View Debug Gizmos ─────────────────────────────────")]
-    public bool showDebugGizmos = true;
+    public bool showDebugGizmos = false;
     public Color attackRangeColor = new Color(1f, 0.2f, 0.2f, 0.6f);
     public Color stoppingDistanceColor = new Color(0.2f, 1f, 0.4f, 0.6f);
     public Color aggroDistanceColor = new Color(1f, 0.9f, 0.2f, 0.35f);
@@ -538,15 +538,35 @@ public class HumanSnakeEnemy : MonoBehaviour
             }
         }
 
-        // Hit stun check
-        if (anim != null)
+        // Hit stun / Attack action in progress check
+        if (IsPlayingAttackOrHit())
         {
-            AnimatorStateInfo stateInfo = anim.GetCurrentAnimatorStateInfo(0);
-            if (stateInfo.IsTag("Hit") || Time.time < _hitStunUntil)
+            if (agent != null && agent.enabled && agent.isOnNavMesh)
             {
-                if (agent != null && agent.enabled) agent.isStopped = true;
-                return;
+                agent.isStopped = true;
+                agent.velocity = Vector3.zero;
             }
+
+            // Keep facing player smoothly during attack windup
+            if (player != null && !isDead)
+            {
+                Vector3 toPlayer = player.position - transform.position;
+                toPlayer.y = 0f;
+                if (toPlayer.sqrMagnitude > 0.01f)
+                {
+                    Quaternion targetRot = Quaternion.LookRotation(toPlayer.normalized);
+                    transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * rotationSpeed * 1.5f);
+                }
+            }
+
+            _animSpeedTarget = 0f;
+            _animSpeedCurrent = Mathf.Lerp(_animSpeedCurrent, 0f, Time.deltaTime * 10f);
+            if (anim != null)
+            {
+                anim.SetFloat(hashSpeed, _animSpeedCurrent);
+                anim.SetFloat(hashLocomotion, 0f);
+            }
+            return;
         }
 
         // Territory & Aggro Decision (Player inside trigger area = chase, inside attackRange = attack)
@@ -656,6 +676,17 @@ public class HumanSnakeEnemy : MonoBehaviour
         }
     }
 
+    public bool IsPlayingAttackOrHit()
+    {
+        if (_isAttacking || Time.time < _hitStunUntil) return true;
+        if (anim != null)
+        {
+            AnimatorStateInfo state = anim.GetCurrentAnimatorStateInfo(0);
+            if (state.IsTag("Hit") || state.IsTag("Attack")) return true;
+        }
+        return false;
+    }
+
     private void AttackPlayer()
     {
         _isChasing = false;
@@ -672,46 +703,72 @@ public class HumanSnakeEnemy : MonoBehaviour
             }
         }
 
-        if (_isAttacking && agent != null && agent.enabled)
+        if (agent != null && agent.enabled && agent.isOnNavMesh)
         {
             agent.isStopped = true;
             agent.velocity = Vector3.zero;
         }
-        else if (agent != null && agent.enabled && agent.isOnNavMesh)
-        {
-            agent.isStopped = false;
-            agent.speed = walkSpeed;
-            agent.stoppingDistance = stoppingDistance;
-            if (player != null) agent.SetDestination(player.position);
-        }
 
         if (!_isAttacking && Time.time >= lastAttackTime + attackCooldown)
         {
-            if (anim != null)
-            {
-                // Trigger primary Attack (Spider style)
-                anim.ResetTrigger(hashAttack);
-                anim.SetTrigger(hashAttack);
-
-                // Also trigger snake-specific attack cycle
-                _attackCounter = (_attackCounter + 1) % 4;
-                switch (_attackCounter)
-                {
-                    case 0: anim.ResetTrigger(hashAttack1); anim.SetTrigger(hashAttack1); break;
-                    case 1: anim.ResetTrigger(hashAttack2); anim.SetTrigger(hashAttack2); break;
-                    case 2: anim.ResetTrigger(hashAttack3); anim.SetTrigger(hashAttack3); break;
-                    case 3: anim.ResetTrigger(hashTailWhipRight); anim.SetTrigger(hashTailWhipRight); break;
-                }
-            }
             lastAttackTime = Time.time;
-            StartCoroutine(DealDamageAfterDelay(damageHitDelay));
+            StartCoroutine(ExecuteAttackRoutine());
         }
     }
 
-    private IEnumerator DealDamageAfterDelay(float delay)
+    private IEnumerator ExecuteAttackRoutine()
     {
         _isAttacking = true;
-        yield return new WaitForSeconds(delay);
+
+        if (agent != null && agent.enabled && agent.isOnNavMesh)
+        {
+            agent.isStopped = true;
+            agent.velocity = Vector3.zero;
+        }
+
+        int attackIndex = _attackCounter % 4;
+        _attackCounter++;
+
+        float totalDuration = 0.95f;
+        float hitDelay = damageHitDelay;
+
+        if (anim != null)
+        {
+            // Reset all attack triggers
+            anim.ResetTrigger(hashAttack);
+            anim.ResetTrigger(hashAttack1);
+            anim.ResetTrigger(hashAttack2);
+            anim.ResetTrigger(hashAttack3);
+            anim.ResetTrigger(hashTailWhipRight);
+
+            switch (attackIndex)
+            {
+                case 0:
+                    anim.SetTrigger(hashAttack1);
+                    anim.SetTrigger(hashAttack); // Spider-style compatibility
+                    totalDuration = 0.90f;
+                    hitDelay = 0.38f;
+                    break;
+                case 1:
+                    anim.SetTrigger(hashAttack2);
+                    totalDuration = 0.90f;
+                    hitDelay = 0.38f;
+                    break;
+                case 2:
+                    anim.SetTrigger(hashAttack3);
+                    totalDuration = 1.20f;
+                    hitDelay = 0.50f;
+                    break;
+                case 3:
+                    anim.SetTrigger(hashTailWhipRight);
+                    totalDuration = 1.10f;
+                    hitDelay = 0.45f;
+                    break;
+            }
+        }
+
+        // Wait until attack strikes
+        yield return new WaitForSeconds(hitDelay);
 
         if (!isDead && player != null && Vector3.Distance(transform.position, player.position) <= attackRange + damageReachTolerance)
         {
@@ -730,6 +787,11 @@ public class HumanSnakeEnemy : MonoBehaviour
                 }
             }
         }
+
+        // Wait for remaining swing / recovery so attack animation finishes completely
+        float remaining = Mathf.Max(0.05f, totalDuration - hitDelay);
+        yield return new WaitForSeconds(remaining);
+
         _isAttacking = false;
     }
 
@@ -793,18 +855,26 @@ public class HumanSnakeEnemy : MonoBehaviour
         {
             Die();
         }
-        else if (anim != null)
+        else
         {
-            anim.ResetTrigger(hashHit);
-            anim.SetTrigger(hashHit);
-            anim.ResetTrigger(hashGotHit);
-            anim.SetTrigger(hashGotHit);
+            _isAttacking = false; // Cancels active attack windup on hit flinch
+            if (anim != null)
+            {
+                anim.ResetTrigger(hashHit);
+                anim.SetTrigger(hashHit);
+                anim.ResetTrigger(hashGotHit);
+                anim.SetTrigger(hashGotHit);
+            }
         }
     }
 
-    private void Die()
+    public void Die()
     {
+        if (isDead) return;
         isDead = true;
+        _isAttacking = false;
+        _isChasing = false;
+
         if (agent != null)
         {
             agent.isStopped = true;
@@ -1020,7 +1090,7 @@ public class HumanSnakeEnemy : MonoBehaviour
     //  SCENE GIZMOS
     // ═══════════════════════════════════════════════════════════════════════════
 
-    private void OnDrawGizmos()
+    private void OnDrawGizmosSelected()
     {
         if (!showDebugGizmos) return;
 

@@ -8,32 +8,32 @@ using UnityEngine.AI;
 /// <summary>
 /// HumanSnakeAutoSetup
 /// ===================
-/// Single 1-Click Setup for HumanSnakeEnemy:
-/// 1. Configures Animator Controller (Speed, Attack, Hit, Die parameters & transitions like Spider)
-/// 2. Configures Prefab (Animator, NavMeshAgent, CapsuleCollider, HumanSnakeEnemy script, Layer, HitBox)
-/// 3. Spawns / Sets up HumanSnakeEnemy in the active Scene
+/// 1-Click Setup for HumanSnakeEnemy:
+/// 1. Configures Animator Controller:
+///    - Locomotion BlendTree (Idle, Walk, Chase) with Speed & locomotion parameters
+///    - Combat Attack animations: attack1, attack2, attack3, tailWhipRight, tailWhipLeft
+///    - Damage / Hit reaction: gotHit, Hit (with Hit tag and stun)
+///    - Death animation: death, Die (with Dead tag, holds corpse pose)
+///    - Clean AnyState transitions and return transitions back to Locomotion
+/// 2. Configures Prefab (Animator, NavMeshAgent, CapsuleCollider scaled for 12x, HumanSnakeEnemy script)
+/// 3. Spawns / Sets up HumanSnakeEnemy in active Scene
 /// 4. Creates / links SnakeTrigger zone
 /// 5. Snaps enemy to Terrain surface
-/// 6. Selects it in Hierarchy so all components appear directly in the Inspector!
+/// 6. Custom Inspector with 1-Click Setup & Live Combat Testing buttons
 /// </summary>
 public static class HumanSnakeAutoSetup
 {
-    private const string ControllerPath = "Assets/Animator/HumanSnakeEnemy.controller";
-    private const string PrefabPath     = "Assets/Animations/Human Snake Enemy/Models/_Prefabs/HumanSnakeEnemy.prefab";
+    public const string ControllerPath = "Assets/Animator/HumanSnakeEnemy.controller";
+    public const string PrefabPath     = "Assets/Animations/Human Snake Enemy/Models/_Prefabs/HumanSnakeEnemy.prefab";
+    public const string FbxPathDemo    = "Assets/Animations/Human Snake Enemy/Models/Models/SerpentWarrior Demo.fbx";
+    public const string FbxPathEnemy   = "Assets/Animations/Human Snake Enemy/Models/Models/HumanSnakeEnemy.fbx";
 
     [MenuItem("Tools/Heart Of The Maze/⚡ 1-Click Setup Human Snake Enemy", false, 1)]
+    [MenuItem("Tools/Snake/⚡ Setup Human Snake Enemy (Complete)", false, 1)]
     public static void OneClickSetupAll()
     {
-        // ── Step 1: Configure Animator Controller (Spider Style) ──
-        AnimatorController ac = AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath);
-        if (ac != null)
-        {
-            ConfigureAnimator(ac);
-        }
-        else
-        {
-            Debug.LogWarning($"[HumanSnakeAutoSetup] Animator controller not found at {ControllerPath}");
-        }
+        // ── Step 1: Configure Animator Controller ──
+        ConfigureAnimatorOnly();
 
         // ── Step 2: Configure Prefab Asset ──
         ConfigurePrefab();
@@ -41,7 +41,7 @@ public static class HumanSnakeAutoSetup
         // ── Step 3: Setup / Spawn in Active Scene ──
         GameObject sceneSnakeObj = SetupSceneInstance();
 
-        // ── Step 4: Ping & Select in Hierarchy so Inspector shows everything ──
+        // ── Step 4: Ping & Select in Hierarchy ──
         if (sceneSnakeObj != null)
         {
             Selection.activeGameObject = sceneSnakeObj;
@@ -49,18 +49,193 @@ public static class HumanSnakeAutoSetup
         }
 
         string msg = "🎉 Human Snake Enemy Setup 100% Complete!\n\n" +
-                     "✅ Animator Controller: Speed, Attack, Hit, Die parameters & transitions configured.\n" +
-                     "✅ Scene & Inspector: HumanSnakeEnemy tuned with all combat & terrain settings.\n" +
+                     "✅ Animator Controller: All 16 animations connected!\n" +
+                     "   • Locomotion: Idle, Walk, Chase BlendTree\n" +
+                     "   • Attacks: attack1, attack2, attack3, tailWhipRight\n" +
+                     "   • Damage Reaction: gotHit / Hit\n" +
+                     "   • Death: death / Die\n" +
+                     "✅ Combat AI: Automatic 4-attack rotation, hit stun, damage reach & look-at.\n" +
+                     "✅ Physics: Collider tuned for 12x model scale (player can walk up without invisible wall).\n" +
                      "✅ Territory: SnakeTrigger zone auto-linked.\n" +
                      "✅ Terrain Snapped: Zameen par chipka diya gaya hai.\n\n" +
-                     "Inspector me ab aap saare parameters live dekh sakte hain!";
+                     "Inspector me ab aap live controls aur test buttons dekh sakte hain!";
 
         EditorUtility.DisplayDialog("Human Snake 1-Click Setup", msg, "Awesome!");
     }
 
+    [MenuItem("Tools/Snake/🎬 Setup Animator Controller Only", false, 2)]
+    public static void ConfigureAnimatorOnly()
+    {
+        AnimatorController ac = AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath);
+        if (ac == null)
+        {
+            ac = AnimatorController.CreateAnimatorControllerAtPath(ControllerPath);
+            Debug.Log($"<color=#00FF88>[HumanSnakeAutoSetup]</color> Created new AnimatorController at {ControllerPath}");
+        }
+
+        ConfigureAnimator(ac);
+    }
+
+    public static void ConfigureAnimator(AnimatorController ac)
+    {
+        if (ac == null) return;
+        Undo.RegisterCompleteObjectUndo(ac, "Configure HumanSnake Animator Controller");
+
+        // 1. Ensure All Parameters
+        AddParameter(ac, "Speed", AnimatorControllerParameterType.Float);
+        AddParameter(ac, "locomotion", AnimatorControllerParameterType.Float);
+        AddParameter(ac, "Attack", AnimatorControllerParameterType.Trigger);
+        AddParameter(ac, "attack1", AnimatorControllerParameterType.Trigger);
+        AddParameter(ac, "attack2", AnimatorControllerParameterType.Trigger);
+        AddParameter(ac, "attack3", AnimatorControllerParameterType.Trigger);
+        AddParameter(ac, "tailWhipRight", AnimatorControllerParameterType.Trigger);
+        AddParameter(ac, "tailWhipLeft", AnimatorControllerParameterType.Trigger);
+        AddParameter(ac, "Hit", AnimatorControllerParameterType.Trigger);
+        AddParameter(ac, "gotHit", AnimatorControllerParameterType.Trigger);
+        AddParameter(ac, "Die", AnimatorControllerParameterType.Trigger);
+        AddParameter(ac, "death", AnimatorControllerParameterType.Trigger);
+        AddParameter(ac, "Jump", AnimatorControllerParameterType.Trigger);
+        AddParameter(ac, "dodge", AnimatorControllerParameterType.Trigger);
+        AddParameter(ac, "taunt", AnimatorControllerParameterType.Trigger);
+        AddParameter(ac, "idleBreak", AnimatorControllerParameterType.Trigger);
+
+        // 2. Load Clips from FBX
+        AnimationClip[] clips = AssetDatabase.LoadAllAssetsAtPath(FbxPathDemo).OfType<AnimationClip>().ToArray();
+        if (clips == null || clips.Length == 0)
+            clips = AssetDatabase.LoadAllAssetsAtPath(FbxPathEnemy).OfType<AnimationClip>().ToArray();
+
+        AnimationClip idleClip         = FindClip(clips, "idle");
+        AnimationClip idleBreakClip    = FindClip(clips, "idleBreak");
+        AnimationClip walkClip         = FindClip(clips, "walk");
+        AnimationClip walkBackClip     = FindClip(clips, "walkBack");
+        AnimationClip attack1Clip      = FindClip(clips, "attack1");
+        AnimationClip attack2Clip      = FindClip(clips, "attack2");
+        AnimationClip attack3Clip      = FindClip(clips, "attack3");
+        AnimationClip tailWhipRightClip= FindClip(clips, "tailWhipRight");
+        AnimationClip tailWhipLeftClip = FindClip(clips, "tailWhipLeft");
+        AnimationClip gotHitClip       = FindClip(clips, "gotHit");
+        AnimationClip deathClip        = FindClip(clips, "death");
+        AnimationClip dodgeClip        = FindClip(clips, "dodge");
+        AnimationClip tauntClip        = FindClip(clips, "taunt");
+        AnimationClip tongueFlickClip  = FindClip(clips, "tonugeFlick") ?? FindClip(clips, "tongue");
+
+        if (ac.layers.Length == 0)
+        {
+            ac.AddLayer("Base Layer");
+        }
+
+        var layers = ac.layers;
+        layers[0].iKPass = true;
+        ac.layers = layers;
+
+        AnimatorStateMachine sm = ac.layers[0].stateMachine;
+
+        // 3. Find or Create States
+        AnimatorState locomotionState   = FindOrCreateState(sm, "Locomotion", new Vector3(300, 100, 0));
+        AnimatorState attack1State      = FindOrCreateState(sm, "attack1", new Vector3(600, -80, 0));
+        AnimatorState attack2State      = FindOrCreateState(sm, "attack2", new Vector3(600, -20, 0));
+        AnimatorState attack3State      = FindOrCreateState(sm, "attack3", new Vector3(600, 40, 0));
+        AnimatorState tailWhipState     = FindOrCreateState(sm, "tail whip right", new Vector3(600, 100, 0));
+        AnimatorState hitState          = FindOrCreateState(sm, "hit reaction", new Vector3(600, 180, 0));
+        AnimatorState deathState        = FindOrCreateState(sm, "death", new Vector3(600, 260, 0));
+        AnimatorState idleBreakState    = FindOrCreateState(sm, "idle break", new Vector3(600, 320, 0));
+        AnimatorState tauntState        = FindOrCreateState(sm, "taunt", new Vector3(600, 380, 0));
+
+        // Assign clips
+        if (attack1Clip != null) attack1State.motion = attack1Clip;
+        if (attack2Clip != null) attack2State.motion = attack2Clip;
+        if (attack3Clip != null) attack3State.motion = attack3Clip;
+        if (tailWhipRightClip != null) tailWhipState.motion = tailWhipRightClip;
+        if (gotHitClip != null) hitState.motion = gotHitClip;
+        if (deathClip != null) deathState.motion = deathClip;
+        if (idleBreakClip != null) idleBreakState.motion = idleBreakClip;
+        if (tauntClip != null) tauntState.motion = tauntClip;
+
+        // Set State Tags
+        locomotionState.tag = "Locomotion";
+        attack1State.tag    = "Attack";
+        attack2State.tag    = "Attack";
+        attack3State.tag    = "Attack";
+        tailWhipState.tag   = "Attack";
+        hitState.tag        = "Hit";
+        deathState.tag      = "Dead";
+
+        // Default State = Locomotion
+        sm.defaultState = locomotionState;
+
+        // 4. Configure Locomotion BlendTree
+        BlendTree tree = locomotionState.motion as BlendTree;
+        if (tree == null)
+        {
+            tree = new BlendTree
+            {
+                name = "Locomotion Blend Tree",
+                blendType = BlendTreeType.Simple1D,
+                blendParameter = "Speed",
+                useAutomaticThresholds = false
+            };
+            locomotionState.motion = tree;
+            AssetDatabase.AddObjectToAsset(tree, ac);
+        }
+
+        tree.blendParameter = "Speed";
+        tree.useAutomaticThresholds = false;
+
+        // Clear children and configure: 0 = Idle, 2.2 = Walk, 5.2 = Chase Slither
+        while (tree.children.Length > 0)
+        {
+            tree.RemoveChild(0);
+        }
+
+        if (idleClip != null)
+            tree.AddChild(idleClip, 0.0f);
+        if (walkClip != null)
+        {
+            tree.AddChild(walkClip, 2.2f);
+            tree.AddChild(walkClip, 5.2f); // At 5.2 run speed, faster stride
+        }
+
+        // 5. Clean up duplicate AnyState Transitions and re-add exact transitions
+        sm.anyStateTransitions = new AnimatorStateTransition[0];
+
+        // AnyState -> Attacks
+        AddAnyStateTriggerTransition(sm, attack1State, "attack1", 0.1f);
+        AddAnyStateTriggerTransition(sm, attack1State, "Attack", 0.1f);
+        AddAnyStateTriggerTransition(sm, attack2State, "attack2", 0.1f);
+        AddAnyStateTriggerTransition(sm, attack3State, "attack3", 0.1f);
+        AddAnyStateTriggerTransition(sm, tailWhipState, "tailWhipRight", 0.1f);
+
+        // AnyState -> Hit Reaction
+        AddAnyStateTriggerTransition(sm, hitState, "Hit", 0.05f);
+        AddAnyStateTriggerTransition(sm, hitState, "gotHit", 0.05f);
+
+        // AnyState -> Death
+        AddAnyStateTriggerTransition(sm, deathState, "Die", 0.08f);
+        AddAnyStateTriggerTransition(sm, deathState, "death", 0.08f);
+
+        // AnyState -> Idle Break & Taunt
+        AddAnyStateTriggerTransition(sm, idleBreakState, "idleBreak", 0.15f);
+        AddAnyStateTriggerTransition(sm, tauntState, "taunt", 0.15f);
+
+        // 6. Ensure Return Transitions back to Locomotion
+        EnsureExitTransitionTo(attack1State, locomotionState, 0.85f, 0.15f);
+        EnsureExitTransitionTo(attack2State, locomotionState, 0.85f, 0.15f);
+        EnsureExitTransitionTo(attack3State, locomotionState, 0.85f, 0.15f);
+        EnsureExitTransitionTo(tailWhipState, locomotionState, 0.85f, 0.15f);
+        EnsureExitTransitionTo(hitState, locomotionState, 0.80f, 0.15f);
+        EnsureExitTransitionTo(idleBreakState, locomotionState, 0.90f, 0.20f);
+        EnsureExitTransitionTo(tauntState, locomotionState, 0.90f, 0.20f);
+
+        // Death has NO exit transitions
+        deathState.transitions = new AnimatorStateTransition[0];
+
+        EditorUtility.SetDirty(ac);
+        AssetDatabase.SaveAssets();
+        Debug.Log("<color=#00FF88><b>[HumanSnakeAutoSetup] Successfully configured HumanSnakeEnemy Animator Controller!</b></color>");
+    }
+
     private static GameObject SetupSceneInstance()
     {
-        // 1. Find existing Snake in scene or spawn from prefab
         HumanSnakeEnemy existingSnake = Object.FindFirstObjectByType<HumanSnakeEnemy>();
         GameObject snakeObj = existingSnake != null ? existingSnake.gameObject : null;
 
@@ -101,10 +276,8 @@ public static class HumanSnakeAutoSetup
             Undo.RegisterFullObjectHierarchyUndo(snakeObj, "Configure Human Snake Enemy");
         }
 
-        // 2. Configure all components & Inspector values
         ConfigureGameObjectComponents(snakeObj);
 
-        // 3. Ensure Territory Trigger Zone exists in scene & connect it
         Collider trigger = EnsureSceneTriggerZone(snakeObj.transform.position);
         HumanSnakeEnemy snakeScript = snakeObj.GetComponent<HumanSnakeEnemy>();
         if (snakeScript != null)
@@ -112,7 +285,6 @@ public static class HumanSnakeAutoSetup
             if (trigger != null) snakeScript.territoryTrigger = trigger;
             if (playerObj != null) snakeScript.player = playerObj.transform;
 
-            // Snap to terrain surface immediately
             snakeScript.SnapToGroundImmediate();
             EditorUtility.SetDirty(snakeScript);
         }
@@ -141,7 +313,7 @@ public static class HumanSnakeAutoSetup
         NavMeshAgent agent = go.GetComponent<NavMeshAgent>();
         if (agent == null) agent = go.AddComponent<NavMeshAgent>();
         agent.speed = 2.2f;
-        agent.angularSpeed = 0f; // Handled smoothly by script rotation
+        agent.angularSpeed = 0f;
         agent.acceleration = 14f;
         agent.stoppingDistance = 2.4f;
         agent.radius = 0.5f;
@@ -149,16 +321,17 @@ public static class HumanSnakeAutoSetup
         agent.baseOffset = 0f;
         agent.obstacleAvoidanceType = ObstacleAvoidanceType.HighQualityObstacleAvoidance;
 
-        // 4. CapsuleCollider (Physical body)
+        // 4. CapsuleCollider (Scale-adjusted so player can approach without invisible wall)
         CapsuleCollider col = go.GetComponent<CapsuleCollider>();
         if (col == null) col = go.AddComponent<CapsuleCollider>();
         col.direction = 1; // Y-axis
-        col.radius = 0.5f;
-        col.height = 2.0f;
-        col.center = new Vector3(0f, 1.0f, 0f);
+        float scaleFactor = go.transform.lossyScale.y > 0.001f ? go.transform.lossyScale.y : 1f;
+        col.radius = Mathf.Max(0.08f, 1.0f / scaleFactor);
+        col.height = Mathf.Max(0.25f, 2.8f / scaleFactor);
+        col.center = new Vector3(0f, 1.4f / scaleFactor, 0f);
         col.isTrigger = false;
 
-        // 5. Rigidbody Safety
+        // 5. Rigidbody
         Rigidbody rb = go.GetComponent<Rigidbody>();
         if (rb != null)
         {
@@ -175,7 +348,7 @@ public static class HumanSnakeAutoSetup
         audio.maxDistance = 35f;
         audio.rolloffMode = AudioRolloffMode.Linear;
 
-        // 7. HumanSnakeEnemy Script (Exact Spider-style Inspector parameters)
+        // 7. HumanSnakeEnemy Script
         HumanSnakeEnemy snake = go.GetComponent<HumanSnakeEnemy>();
         if (snake == null) snake = go.AddComponent<HumanSnakeEnemy>();
 
@@ -203,7 +376,7 @@ public static class HumanSnakeAutoSetup
         snake.enableAudio = true;
         snake.enableVFX = true;
         snake.enableHitFlash = true;
-        snake.showDebugGizmos = true;
+        snake.showDebugGizmos = false;
 
         GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
         if (playerObj != null) snake.player = playerObj.transform;
@@ -233,114 +406,6 @@ public static class HumanSnakeAutoSetup
         }
     }
 
-    public static void ConfigureAnimator(AnimatorController ac)
-    {
-        Undo.RegisterCompleteObjectUndo(ac, "Configure HumanSnake Animator Spider Style");
-
-        // Primary parameters (Spider style)
-        AddParameter(ac, "Speed", AnimatorControllerParameterType.Float);
-        AddParameter(ac, "Attack", AnimatorControllerParameterType.Trigger);
-        AddParameter(ac, "Hit", AnimatorControllerParameterType.Trigger);
-        AddParameter(ac, "Die", AnimatorControllerParameterType.Trigger);
-        AddParameter(ac, "Jump", AnimatorControllerParameterType.Trigger);
-
-        // Fallback / legacy compatibility parameters
-        AddParameter(ac, "locomotion", AnimatorControllerParameterType.Float);
-        AddParameter(ac, "attack1", AnimatorControllerParameterType.Trigger);
-        AddParameter(ac, "attack2", AnimatorControllerParameterType.Trigger);
-        AddParameter(ac, "attack3", AnimatorControllerParameterType.Trigger);
-        AddParameter(ac, "gotHit", AnimatorControllerParameterType.Trigger);
-        AddParameter(ac, "death", AnimatorControllerParameterType.Trigger);
-        AddParameter(ac, "idleBreak", AnimatorControllerParameterType.Trigger);
-
-        if (ac.layers.Length == 0) return;
-
-        var layers = ac.layers;
-        layers[0].iKPass = true;
-        ac.layers = layers;
-
-        AnimatorStateMachine sm = ac.layers[0].stateMachine;
-
-        // Find primary states
-        AnimatorState locomotionState = FindState(sm, "Locomotion") ?? FindState(sm, "walk") ?? FindState(sm, "idle");
-        AnimatorState attack1State    = FindState(sm, "attack1");
-        AnimatorState hitState        = FindState(sm, "hit reaction") ?? FindState(sm, "gotHit") ?? FindState(sm, "hit");
-        AnimatorState deathState      = FindState(sm, "death") ?? FindState(sm, "die");
-
-        if (locomotionState != null)
-        {
-            sm.defaultState = locomotionState;
-        }
-
-        // Tag Hit & Dead states
-        if (hitState != null) hitState.tag = "Hit";
-        if (deathState != null) deathState.tag = "Dead";
-
-        // AnyState -> Attack
-        if (attack1State != null)
-        {
-            bool hasAttackTrans = sm.anyStateTransitions.Any(t => t.destinationState == attack1State &&
-                t.conditions.Any(c => c.parameter == "Attack"));
-            if (!hasAttackTrans)
-            {
-                var trans = sm.AddAnyStateTransition(attack1State);
-                trans.AddCondition(AnimatorConditionMode.If, 0, "Attack");
-                trans.hasExitTime = false;
-                trans.duration = 0.1f;
-                trans.canTransitionToSelf = false;
-            }
-
-            if (locomotionState != null && !attack1State.transitions.Any(t => t.destinationState == locomotionState))
-            {
-                var exitTrans = attack1State.AddTransition(locomotionState);
-                exitTrans.hasExitTime = true;
-                exitTrans.exitTime = 0.85f;
-                exitTrans.duration = 0.2f;
-            }
-        }
-
-        // AnyState -> Hit
-        if (hitState != null)
-        {
-            bool hasHitTrans = sm.anyStateTransitions.Any(t => t.destinationState == hitState &&
-                t.conditions.Any(c => c.parameter == "Hit"));
-            if (!hasHitTrans)
-            {
-                var trans = sm.AddAnyStateTransition(hitState);
-                trans.AddCondition(AnimatorConditionMode.If, 0, "Hit");
-                trans.hasExitTime = false;
-                trans.duration = 0.05f;
-                trans.canTransitionToSelf = false;
-            }
-
-            if (locomotionState != null && !hitState.transitions.Any(t => t.destinationState == locomotionState))
-            {
-                var exitTrans = hitState.AddTransition(locomotionState);
-                exitTrans.hasExitTime = true;
-                exitTrans.exitTime = 0.85f;
-                exitTrans.duration = 0.15f;
-            }
-        }
-
-        // AnyState -> Die
-        if (deathState != null)
-        {
-            bool hasDieTrans = sm.anyStateTransitions.Any(t => t.destinationState == deathState &&
-                t.conditions.Any(c => c.parameter == "Die"));
-            if (!hasDieTrans)
-            {
-                var trans = sm.AddAnyStateTransition(deathState);
-                trans.AddCondition(AnimatorConditionMode.If, 0, "Die");
-                trans.hasExitTime = false;
-                trans.duration = 0.08f;
-                trans.canTransitionToSelf = false;
-            }
-        }
-
-        EditorUtility.SetDirty(ac);
-        AssetDatabase.SaveAssets();
-    }
-
     public static Collider EnsureSceneTriggerZone(Vector3? centerPosition = null)
     {
         GameObject triggerObj = GameObject.Find("SnakeTrigger");
@@ -360,7 +425,6 @@ public static class HumanSnakeAutoSetup
             box.center = new Vector3(0f, 7f, 0f);
 
             triggerObj.AddComponent<SnakeTriggerZone>();
-
             Undo.RegisterCreatedObjectUndo(triggerObj, "Create SnakeTrigger");
         }
 
@@ -380,16 +444,112 @@ public static class HumanSnakeAutoSetup
         }
     }
 
-    private static AnimatorState FindState(AnimatorStateMachine root, string keyword)
+    private static AnimationClip FindClip(AnimationClip[] clips, string name)
+    {
+        if (clips == null) return null;
+        return clips.FirstOrDefault(c => c.name.Equals(name, System.StringComparison.OrdinalIgnoreCase)) ??
+               clips.FirstOrDefault(c => c.name.ToLower().Contains(name.ToLower()));
+    }
+
+    private static AnimatorState FindOrCreateState(AnimatorStateMachine root, string stateName, Vector3 pos)
     {
         foreach (var child in root.states)
         {
-            if (child.state.name.ToLower().Contains(keyword.ToLower()))
+            if (child.state.name.Equals(stateName, System.StringComparison.OrdinalIgnoreCase))
             {
                 return child.state;
             }
         }
-        return null;
+        return root.AddState(stateName, pos);
+    }
+
+    private static void AddAnyStateTriggerTransition(AnimatorStateMachine sm, AnimatorState dest, string triggerName, float duration)
+    {
+        if (dest == null) return;
+        var trans = sm.AddAnyStateTransition(dest);
+        trans.AddCondition(AnimatorConditionMode.If, 0, triggerName);
+        trans.hasExitTime = false;
+        trans.duration = duration;
+        trans.canTransitionToSelf = false;
+    }
+
+    private static void EnsureExitTransitionTo(AnimatorState fromState, AnimatorState toState, float exitTime, float duration)
+    {
+        if (fromState == null || toState == null) return;
+        fromState.transitions = new AnimatorStateTransition[0];
+        var trans = fromState.AddTransition(toState);
+        trans.hasExitTime = true;
+        trans.exitTime = exitTime;
+        trans.duration = duration;
+    }
+}
+
+/// <summary>
+/// Custom Inspector for HumanSnakeEnemy:
+/// Provides 1-Click Setup and live combat test buttons directly in the Inspector!
+/// </summary>
+[CustomEditor(typeof(HumanSnakeEnemy))]
+public class HumanSnakeEnemyEditor : Editor
+{
+    public override void OnInspectorGUI()
+    {
+        HumanSnakeEnemy snake = (HumanSnakeEnemy)target;
+
+        EditorGUILayout.Space(8);
+        GUIStyle titleStyle = new GUIStyle(EditorStyles.boldLabel)
+        {
+            fontSize = 13,
+            alignment = TextAnchor.MiddleCenter
+        };
+        EditorGUILayout.LabelField("🐍 HUMAN SNAKE ENEMY — BOSS COMBAT & AI", titleStyle);
+        EditorGUILayout.HelpBox(
+            "1-Click Setup automatically configures:\n" +
+            "• Animator Controller: Locomotion BlendTree (Idle, Walk, Chase), Attack 1-3, Tail Whip, Hit Reaction, and Death.\n" +
+            "• NavMeshAgent, Body Collider (scaled for 12x), and Combat Hitbox.\n" +
+            "• SnakeTrigger zone & Player auto-binding.",
+            MessageType.Info);
+
+        EditorGUILayout.Space(4);
+        GUI.backgroundColor = new Color(0.15f, 0.85f, 0.35f, 1f);
+        if (GUILayout.Button("⚡ 1-CLICK SETUP ANIMATOR & ENEMY (All Animations & Combat)", GUILayout.Height(38)))
+        {
+            HumanSnakeAutoSetup.OneClickSetupAll();
+        }
+        GUI.backgroundColor = Color.white;
+
+        EditorGUILayout.Space(2);
+        EditorGUILayout.BeginHorizontal();
+        if (GUILayout.Button("🎬 Setup Animator Only", GUILayout.Height(26)))
+        {
+            HumanSnakeAutoSetup.ConfigureAnimatorOnly();
+        }
+        if (GUILayout.Button("🎯 Snap To Ground & Link Trigger", GUILayout.Height(26)))
+        {
+            snake.SnapToGroundImmediate();
+            Collider trig = HumanSnakeAutoSetup.EnsureSceneTriggerZone(snake.transform.position);
+            if (trig != null) snake.territoryTrigger = trig;
+            EditorUtility.SetDirty(snake);
+        }
+        EditorGUILayout.EndHorizontal();
+
+        if (Application.isPlaying)
+        {
+            EditorGUILayout.Space(6);
+            EditorGUILayout.LabelField("🎮 Live Combat Simulation", EditorStyles.boldLabel);
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("🗡️ Hit (50 Dmg)"))
+            {
+                snake.TakeDamage(50f);
+            }
+            if (GUILayout.Button("☠️ Kill (Die)"))
+            {
+                snake.Die();
+            }
+            EditorGUILayout.EndHorizontal();
+        }
+
+        EditorGUILayout.Space(6);
+        DrawDefaultInspector();
     }
 }
 #endif
