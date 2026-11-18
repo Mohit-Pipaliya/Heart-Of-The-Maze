@@ -78,7 +78,7 @@ public static class PlateStandPrefabSyncEditor
             if (psi != null)
             {
                 psi.cameraStandPoint = cam;
-                psi.startUnderground = false;
+                psi.startUnderground = true;
                 EditorUtility.SetDirty(psi);
             }
 

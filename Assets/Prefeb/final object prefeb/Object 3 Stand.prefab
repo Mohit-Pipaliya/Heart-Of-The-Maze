@@ -165,7 +165,7 @@ MonoBehaviour:
   standTargetArrow: {fileID: 3684558617631637764}
   playerStandPoint: {fileID: 478750387221642433}
   cameraStandPoint: {fileID: 2166475200932663539}
-  startUnderground: 0
+  startUnderground: 1
   undergroundDepth: 15
   riseDuration: 2.5
   riseCurve:

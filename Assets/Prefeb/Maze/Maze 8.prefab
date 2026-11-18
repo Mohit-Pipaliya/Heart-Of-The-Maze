@@ -8233,7 +8233,7 @@ PrefabInstance:
     - target: {fileID: 8811223344556600008, guid: 55dfdde97b2a4a6bba1be74c6ea6a363, type: 3}
       propertyPath: targetDoor
       value: 
-      objectReference: {fileID: 4777195048685781877}
+      objectReference: {fileID: 4792427823971656179}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

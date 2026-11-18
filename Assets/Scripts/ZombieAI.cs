@@ -92,14 +92,15 @@ public class ZombieAI : MonoBehaviour
     public Transform player;
 
     [Header("── UI Feedback ──")]
-    [Tooltip("Zombie ke sir ke upar health bar show karein jab damage ho ya player pass ho.")]
-    public bool showFloatingHealthBar = false;
+    [Tooltip("Show the world-space zombie health bar within 15m or for 4s after damage.")]
+    public bool showFloatingHealthBar = true;
 
     private NavMeshAgent _agent;
     private Animator _anim;
     private Collider _collider;
     private ZombieLocomotion _locomotion;
     private ZombieFootIK _footIK;
+    private HealthBar _floatingHealthBar;
 
     private State _currentState = State.Wander;
     public State CurrentState => _currentState;
@@ -245,6 +246,7 @@ public class ZombieAI : MonoBehaviour
         _lastKnown = _spawnPosition;
 
         AutoFindPlayer();
+        SetupFloatingHealthBar();
         if (player != null) _prevPlayerPos = player.position;
         EnsurePlayerCollision();
 
@@ -324,11 +326,35 @@ public class ZombieAI : MonoBehaviour
         if (PlayerController.Instance != null)
         {
             player = PlayerController.Instance.transform;
+            if (_floatingHealthBar != null)
+                _floatingHealthBar.SetProximityTarget(player);
             return;
         }
 
         GameObject pObj = GameObject.FindGameObjectWithTag("Player");
-        if (pObj != null) player = pObj.transform;
+        if (pObj != null)
+        {
+            player = pObj.transform;
+            if (_floatingHealthBar != null)
+                _floatingHealthBar.SetProximityTarget(player);
+        }
+    }
+
+    private void SetupFloatingHealthBar()
+    {
+        if (!showFloatingHealthBar)
+            return;
+
+        GameObject barObject = new GameObject("Zombie Health Bar", typeof(RectTransform));
+        barObject.SetActive(false);
+        barObject.transform.SetParent(transform, false);
+        barObject.transform.localPosition = Vector3.up * 2.1f;
+        _floatingHealthBar = barObject.AddComponent<HealthBar>();
+        _floatingHealthBar.barType = BarType.Zombie;
+        barObject.SetActive(true);
+        _floatingHealthBar.SetMaxHealth(maxHealth);
+        _floatingHealthBar.SetHealth(_currentHealth);
+        _floatingHealthBar.SetProximityTarget(player);
     }
 
     private void Update()
@@ -927,6 +953,8 @@ public class ZombieAI : MonoBehaviour
         if (_isDead) return;
 
         _currentHealth -= amount;
+        if (_floatingHealthBar != null)
+            _floatingHealthBar.SetHealth(_currentHealth);
 
         Vector3 fxPos = hitPoint == default ? (transform.position + Vector3.up * 1.1f) : hitPoint;
         VFXUtil.SpawnFadingLight(fxPos, new Color(1.0f, 0.04f, 0.02f), 4.5f, 3.2f, 0.08f);
@@ -1029,6 +1057,8 @@ public class ZombieAI : MonoBehaviour
         if (_isDead) return;
 
         _isDead = true;
+        if (_floatingHealthBar != null)
+            _floatingHealthBar.SetEnemyDead();
         _isSliding = false;
         _currentState = State.Dead;
         _currentHealth = 0f;

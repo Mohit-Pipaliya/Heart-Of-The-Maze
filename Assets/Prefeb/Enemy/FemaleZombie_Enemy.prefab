@@ -1054,7 +1054,7 @@ MonoBehaviour:
   screamSound: {fileID: 8300000, guid: da5807f60e8f24559bad0249406236a2, type: 3}
   walkSound: {fileID: 8300000, guid: 99ef62f5b491249ba87bb29a3c8b3776, type: 3}
   player: {fileID: 0}
-  showFloatingHealthBar: 0
+  showFloatingHealthBar: 1
 --- !u!114 &6798922965879167532
 MonoBehaviour:
   m_ObjectHideFlags: 0

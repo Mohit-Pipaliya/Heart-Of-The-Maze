@@ -153,6 +153,7 @@ public class PlateStandInteraction : MonoBehaviour
     private Transform _standRoot;
     private Vector3 _surfacePosition;
     private Vector3 _buriedPosition;
+    private bool _hasInitializedPositions = false;
     private bool _isUnderground = false;
     private bool _isRising = false;
     private bool _playerAtStandPoint = false;
@@ -231,6 +232,16 @@ public class PlateStandInteraction : MonoBehaviour
         }
     }
 
+    private void EnsurePositionsInitialized()
+    {
+        if (_hasInitializedPositions) return;
+        ResolveStandRoot();
+        if (_standRoot == null) _standRoot = transform;
+        _surfacePosition = _standRoot.position;
+        _buriedPosition = _surfacePosition + Vector3.down * Mathf.Abs(undergroundDepth);
+        _hasInitializedPositions = true;
+    }
+
     private void Awake()
     {
         ResolveStandRoot();
@@ -252,31 +263,50 @@ public class PlateStandInteraction : MonoBehaviour
 
         // Cache child references
         AutoFindReferences();
-    }
 
-    private void Start()
-    {
-        ResolveStandRoot();
-        if (_standRoot == null) _standRoot = transform;
-        _surfacePosition = _standRoot.position;
-        _buriedPosition = _surfacePosition + Vector3.down * Mathf.Abs(undergroundDepth);
+        // Calculate and cache surface and buried positions before any motion
+        EnsurePositionsInitialized();
 
-        // Pre-cache door and lock it from accidental proximity open
-        InitializeTargetDoor();
-
-        // Check if matching plate is already collected
+        // Core Rule: Stand MUST remain buried underground until its matching plate is collected!
         bool alreadyCollected = IsPlateCollected(standID) ||
             (PlatePickup.CurrentHeldPlate != null && (PlatePickup.CurrentHeldPlate.plateID == standID || standID == 0));
 
-        if (startUnderground && !alreadyCollected)
+        if (!alreadyCollected)
         {
             _standRoot.position = _buriedPosition;
             _isUnderground = true;
+            _isRising = false;
         }
         else
         {
             _standRoot.position = _surfacePosition;
             _isUnderground = false;
+            _isRising = false;
+        }
+    }
+
+    private void Start()
+    {
+        EnsurePositionsInitialized();
+
+        // Pre-cache door and lock it from accidental proximity open
+        InitializeTargetDoor();
+
+        // Re-verify if matching plate is already collected
+        bool alreadyCollected = IsPlateCollected(standID) ||
+            (PlatePickup.CurrentHeldPlate != null && (PlatePickup.CurrentHeldPlate.plateID == standID || standID == 0));
+
+        if (!alreadyCollected)
+        {
+            _standRoot.position = _buriedPosition;
+            _isUnderground = true;
+            _isRising = false;
+        }
+        else
+        {
+            _standRoot.position = _surfacePosition;
+            _isUnderground = false;
+            _isRising = false;
         }
 
         // Ensure trigger BoxCollider is on playerStandPoint
@@ -710,7 +740,7 @@ public class PlateStandInteraction : MonoBehaviour
         bool standVisible = !_isUnderground && !_isRising && !_isPlaced && !_isCompleted;
         UpdateStandPointGlow(standVisible);
 
-        if (_isCompleted || _isPlacing)
+        if (_isCompleted || _isPlacing || _isUnderground || _isRising)
         {
             if (s_ActivePromptOwner == this)
                 UpdateCanvasPrompt(false, "");
