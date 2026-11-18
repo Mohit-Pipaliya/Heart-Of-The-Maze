@@ -383,7 +383,6 @@ public class SpiderEnemy : MonoBehaviour
         if (anim != null) anim.applyRootMotion = false;
 
         currentHealth = maxHealth;
-        HealthBar.AttachToEnemy(gameObject, HealthBar.BarType.Spider, maxHealth);
         startPos = transform.position;
 
         // Snap to solid terrain surface immediately so spider NEVER spawns or walks under the terrain
@@ -746,17 +745,6 @@ public class SpiderEnemy : MonoBehaviour
         if (isDead) return;
 
         currentHealth -= amount;
-        currentHealth = Mathf.Max(0f, currentHealth);
-
-        var hb = GetComponentInChildren<HealthBar>();
-        if (hb == null)
-        {
-            hb = HealthBar.AttachToEnemy(gameObject, HealthBar.BarType.Spider, maxHealth);
-        }
-        if (hb != null)
-        {
-            hb.SetHealth(currentHealth);
-        }
         Debug.Log($"<color=#FF2222><b>[Spider Hit!]</b></color> Damage: {amount} | HP: {Mathf.Max(0f, currentHealth)}/{maxHealth}");
 
         // Instantly aggro and chase player if shot or struck, but only if player is in territory
@@ -942,6 +930,10 @@ public class SpiderEnemy : MonoBehaviour
         return found;
     }
 
+    // ── Terrain alignment smoothing state ──
+    private float _smoothedBaseOffset = 0f;
+    private float _smoothedBaseOffsetVel = 0f;
+
     private void ProcessTerrainAlignment()
     {
         if (!enableTerrainAlignment) return;
@@ -955,11 +947,12 @@ public class SpiderEnemy : MonoBehaviour
         float currentGroundY = curPos.y;
         bool hasGround = false;
 
-        Vector3 probeOrigin = curPos + Vector3.up * 4.0f;
+        // Probe origin ko 6 unit upar rakhenge taaki uneven terrain pe bhi miss na ho
+        Vector3 probeOrigin = curPos + Vector3.up * 6.0f;
         int mask = (groundLayer.value != 0) ? (groundLayer.value & ~LayerMask.GetMask("Enemy", "Player", "Ignore Raycast")) : ~LayerMask.GetMask("Enemy", "Player", "Ignore Raycast");
 
         // Raycast downward to locate ground, ignoring all of the spider's own colliders
-        RaycastHit[] hits = Physics.RaycastAll(probeOrigin, Vector3.down, 15.0f, mask, QueryTriggerInteraction.Ignore);
+        RaycastHit[] hits = Physics.RaycastAll(probeOrigin, Vector3.down, 20.0f, mask, QueryTriggerInteraction.Ignore);
         float closestDist = float.MaxValue;
         for (int i = 0; i < hits.Length; i++)
         {
@@ -973,12 +966,18 @@ public class SpiderEnemy : MonoBehaviour
             }
         }
 
-        if (!hasGround && Terrain.activeTerrain != null)
+        // Unity Terrain direct height sample (most accurate for terrain)
+        if (Terrain.activeTerrain != null)
         {
-            currentGroundY = Terrain.activeTerrain.SampleHeight(curPos) + Terrain.activeTerrain.transform.position.y;
-            hasGround = true;
+            float tY = Terrain.activeTerrain.SampleHeight(curPos) + Terrain.activeTerrain.transform.position.y;
+            if (!hasGround || tY > currentGroundY)
+            {
+                currentGroundY = tY;
+                hasGround = true;
+            }
         }
-        else if (!hasGround && NavMesh.SamplePosition(curPos, out NavMeshHit navGround, 10f, NavMesh.AllAreas))
+
+        if (!hasGround && NavMesh.SamplePosition(curPos, out NavMeshHit navGround, 10f, NavMesh.AllAreas))
         {
             currentGroundY = navGround.position.y;
             hasGround = true;
@@ -988,31 +987,49 @@ public class SpiderEnemy : MonoBehaviour
         {
             float targetGroundY = currentGroundY + groundOffset;
 
-            // Emergency Anti-Fall Rescue (sirf tab jab spider zameen se 4 meter se zyada niche gir jaye aur cooldown ke sath):
-            // Har frame Warp nahi karenge taaki spider ka chalna (movement) kabhi na ruke!
+            // Emergency Anti-Fall Rescue
             if (curPos.y < currentGroundY - 4.0f && Time.time > _lastRescueTime + 2.5f)
             {
                 _lastRescueTime = Time.time;
                 Vector3 rescuePos = new Vector3(curPos.x, targetGroundY, curPos.z);
                 if (agent != null && agent.enabled && agent.isOnNavMesh)
-                {
                     agent.Warp(rescuePos);
-                }
                 else
-                {
                     transform.position = rescuePos;
-                }
+
+                _smoothedBaseOffset = groundOffset;
+                _smoothedBaseOffsetVel = 0f;
             }
             else if (agent != null && agent.enabled && agent.isOnNavMesh)
             {
-                // Smoothly adjust baseOffset to keep all 8 spider legs locked onto the terrain surface without freezing movement
+                // ── FIX: baseOffset ko SmoothDamp se adjust karo (bobbing band hoga) ──
+                // heightError = kitna upar/niche adjust karna hai
                 float heightError = targetGroundY - agent.nextPosition.y;
-                heightError = Mathf.Clamp(heightError, -2.5f, 2.5f);
-                agent.baseOffset = Mathf.Lerp(agent.baseOffset, heightError, Time.deltaTime * groundSnapSpeed);
+
+                // Sirf small corrections (±1.5m) allow karo — badi jumps NavMesh khud handle karta hai
+                heightError = Mathf.Clamp(heightError, -1.5f, 1.5f);
+
+                // Dead zone: agar error bahut chhota hai toh bilkul mat touch karo (micro-oscillation hatane ke liye)
+                if (Mathf.Abs(heightError - _smoothedBaseOffset) < 0.02f)
+                {
+                    // Kuch mat karo — stable hai
+                }
+                else
+                {
+                    // SmoothDamp — spring-like smooth follow, koi overshoot nahi
+                    _smoothedBaseOffset = Mathf.SmoothDamp(
+                        _smoothedBaseOffset,
+                        heightError,
+                        ref _smoothedBaseOffsetVel,
+                        smoothTime: 0.25f,          // 0.25s lag — stable, no bobbing
+                        maxSpeed: 3.0f              // Max 3 unit/sec shift — slow enough to not oscillate
+                    );
+                    agent.baseOffset = _smoothedBaseOffset;
+                }
             }
             else
             {
-                curPos.y = Mathf.Lerp(curPos.y, targetGroundY, Time.deltaTime * groundSnapSpeed);
+                curPos.y = Mathf.Lerp(curPos.y, targetGroundY, Time.deltaTime * Mathf.Min(groundSnapSpeed, 8f));
                 transform.position = curPos;
             }
         }
@@ -1020,7 +1037,9 @@ public class SpiderEnemy : MonoBehaviour
         {
             if (agent != null && agent.enabled && agent.isOnNavMesh)
             {
-                agent.baseOffset = groundOffset;
+                // Ground nahi mila toh baseOffset ko dhheere dhheere groundOffset pe wapas lao
+                _smoothedBaseOffset = Mathf.SmoothDamp(_smoothedBaseOffset, groundOffset, ref _smoothedBaseOffsetVel, 0.3f);
+                agent.baseOffset = _smoothedBaseOffset;
             }
         }
 

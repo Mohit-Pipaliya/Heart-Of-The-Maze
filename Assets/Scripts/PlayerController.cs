@@ -210,12 +210,6 @@ public class PlayerController : MonoBehaviour
         _anim   = GetComponent<Animator>();
         _cc     = GetComponent<CharacterController>();
         _health = maxHealth;
-        var initPlayerBar = Object.FindFirstObjectByType<HealthBar>();
-        if (initPlayerBar != null && initPlayerBar.type == HealthBar.BarType.Player)
-        {
-            initPlayerBar.SetMaxHealth(maxHealth);
-            initPlayerBar.SetHealth(_health);
-        }
         _swordSystem = GetComponentInChildren<SwordEquipSystem>();
         _gunSystem = GetComponentInChildren<GunEquipSystem>();
         if (_torchSystem == null)
@@ -1402,12 +1396,6 @@ public class PlayerController : MonoBehaviour
 
         _health -= damage;
         _health  = Mathf.Max(_health, 0);
-
-        var playerBar = Object.FindFirstObjectByType<HealthBar>();
-        if (playerBar != null && playerBar.type == HealthBar.BarType.Player)
-        {
-            playerBar.SetHealth(_health);
-        }
 
         if (_health <= 0)
         {

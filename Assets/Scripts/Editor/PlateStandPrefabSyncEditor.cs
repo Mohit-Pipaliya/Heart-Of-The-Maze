@@ -18,7 +18,6 @@ public static class PlateStandPrefabSyncEditor
         EnsurePromptInScene();
         LinkSecretRoomDoorsToAllStands();
         PositionAllStandsAtSecretDoors();
-        AddStandsToMazePrefabs();
         Debug.Log("<color=#00FF88><b>[PlateStandPrefabSync] Complete Sync Finished! All 8 Stand prefabs & Scene UI are 100% ready!</b></color>");
     }
 
@@ -292,112 +291,6 @@ public static class PlateStandPrefabSyncEditor
         UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene());
         UnityEditor.SceneManagement.EditorSceneManager.SaveOpenScenes();
         Debug.Log($"<color=#00FF88><b>[PlateStandPrefabSync] Successfully positioned {positionedCount} stands at their Secret Room Doors and saved scene!</b></color>");
-    }
-
-    [MenuItem("Tools/Maze/Add All Stands Directly Into Maze Prefabs %#m")]
-    public static void AddStandsToMazePrefabs()
-    {
-        Vector3[] standLocalPositions = new Vector3[]
-        {
-            new Vector3(279.3f, 4.1f, 513.6f), // Maze 1
-            new Vector3(631.7f, 4.0f, 513.8f), // Maze 2
-            new Vector3(489.5f, 4.3f, 604.9f), // Maze 3
-            new Vector3(488.9f, 5.3f, 261.1f), // Maze 4
-            new Vector3(390.5f, 4.8f, 472.7f), // Maze 5
-            new Vector3(736.2f, 4.2f, 472.9f), // Maze 6
-            new Vector3(642.6f, 4.7f, 515.8f), // Maze 7
-            new Vector3(636.4f, 4.5f, 534.2f)  // Maze 8
-        };
-
-        float[] standRotationsY = new float[]
-        {
-            0f,   // Maze 1
-            0f,   // Maze 2
-            270f, // Maze 3
-            270f, // Maze 4
-            180f, // Maze 5
-            180f, // Maze 6
-            0f,   // Maze 7
-            0f    // Maze 8
-        };
-
-        int successCount = 0;
-        for (int i = 1; i <= 8; i++)
-        {
-            string mazePath = $"Assets/Prefeb/Maze/Maze {i}.prefab";
-            string standPath = $"Assets/Prefeb/final object prefeb/Object {i} Stand.prefab";
-
-            GameObject standPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(standPath);
-            if (standPrefab == null)
-            {
-                Debug.LogError($"[PlateStandPrefabSync] Stand prefab not found: {standPath}");
-                continue;
-            }
-
-            GameObject mazeContents = PrefabUtility.LoadPrefabContents(mazePath);
-            if (mazeContents == null)
-            {
-                Debug.LogError($"[PlateStandPrefabSync] Could not load maze prefab: {mazePath}");
-                continue;
-            }
-
-            Transform existingStand = mazeContents.transform.Find($"Object {i} Stand");
-            if (existingStand != null)
-            {
-                Object.DestroyImmediate(existingStand.gameObject);
-            }
-
-            GameObject standInst = (GameObject)PrefabUtility.InstantiatePrefab(standPrefab, mazeContents.transform);
-            standInst.name = $"Object {i} Stand";
-            standInst.transform.localPosition = standLocalPositions[i - 1];
-            standInst.transform.localRotation = Quaternion.Euler(0f, standRotationsY[i - 1], 0f);
-
-            PlateStandInteraction psi = standInst.GetComponentInChildren<PlateStandInteraction>(true);
-            if (psi != null)
-            {
-                psi.standID = i;
-                psi.displayName = $"Object {i} Stand";
-                psi.startUnderground = false;
-
-                // Also link targetDoor directly inside the maze prefab
-                DoubleSlidingDoor dsd = mazeContents.GetComponentInChildren<DoubleSlidingDoor>(true);
-                if (dsd != null)
-                {
-                    psi.targetDoor = dsd;
-                }
-
-                EditorUtility.SetDirty(psi);
-            }
-
-            PrefabUtility.SaveAsPrefabAsset(mazeContents, mazePath);
-            PrefabUtility.UnloadPrefabContents(mazeContents);
-            successCount++;
-            Debug.Log($"<color=#00FF88>[PlateStandPrefabSync] Successfully added Object {i} Stand into '{mazePath}' at local {standLocalPositions[i - 1]}!</color>");
-        }
-
-        AssetDatabase.SaveAssets();
-        AssetDatabase.Refresh();
-        Debug.Log($"<color=#00FF88><b>[PlateStandPrefabSync] Finished! Added all {successCount} stands directly into Maze 1..8 prefabs!</b></color>");
-    }
-
-    [InitializeOnLoadMethod]
-    private static void AutoSyncStandsIntoMazePrefabs()
-    {
-        EditorApplication.delayCall += () =>
-        {
-            string mazePath = "Assets/Prefeb/Maze/Maze 1.prefab";
-            GameObject mazeContents = PrefabUtility.LoadPrefabContents(mazePath);
-            if (mazeContents != null)
-            {
-                Transform stand = mazeContents.transform.Find("Object 1 Stand");
-                PrefabUtility.UnloadPrefabContents(mazeContents);
-                if (stand == null)
-                {
-                    Debug.Log("<color=#00FF88>[PlateStandPrefabSync] Auto-syncing stands into Maze 1..8 prefabs on editor reload...</color>");
-                    AddStandsToMazePrefabs();
-                }
-            }
-        };
     }
 }
 #endif

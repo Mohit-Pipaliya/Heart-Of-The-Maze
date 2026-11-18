@@ -235,7 +235,6 @@ public class ZombieAI : MonoBehaviour
     private void Start()
     {
         _currentHealth = maxHealth;
-        HealthBar.AttachToEnemy(gameObject, HealthBar.BarType.Zombie, maxHealth);
 
         if (_locomotion != null)
             _locomotion.SnapToGroundImmediate();
@@ -928,17 +927,6 @@ public class ZombieAI : MonoBehaviour
         if (_isDead) return;
 
         _currentHealth -= amount;
-        _currentHealth = Mathf.Max(0f, _currentHealth);
-
-        var hb = GetComponentInChildren<HealthBar>();
-        if (hb == null)
-        {
-            hb = HealthBar.AttachToEnemy(gameObject, HealthBar.BarType.Zombie, maxHealth);
-        }
-        if (hb != null)
-        {
-            hb.SetHealth(_currentHealth);
-        }
 
         Vector3 fxPos = hitPoint == default ? (transform.position + Vector3.up * 1.1f) : hitPoint;
         VFXUtil.SpawnFadingLight(fxPos, new Color(1.0f, 0.04f, 0.02f), 4.5f, 3.2f, 0.08f);
