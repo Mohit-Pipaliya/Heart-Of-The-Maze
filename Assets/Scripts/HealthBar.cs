@@ -1,11 +1,21 @@
 /*
- * HEALTH BAR — QUICK SETUP
- * Add a Player bar to a 600x80 RectTransform under a Screen Space - Overlay Canvas.
- * ZombieAI creates its own world-space Zombie bar when showFloatingHealthBar is enabled.
- * The bar builds its own layers and particle pool; empty sprite slots use generated art.
- * Use SetMaxHealth(value) and SetHealth(value) from your health logic.
+ * HEALTH BAR — THEMED UI SYSTEM
+ * ==============================
+ * Unity 6 uGUI + TextMeshPro responsive health bar system matching target SVG reference geometry.
+ *
+ * All 4 Themed Health Bars:
+ * 1. Player  (Top-Left Screen Space, 600x80): Brushed steel, carbon-fiber pattern, cyan accents, left bolt, red fill.
+ * 2. Zombie  (World Space / Screen Space, 400x44): Jagged wood/rust, skull icon, cracks, falling blood drops, dark red fill.
+ * 3. Spider  (World Space / Screen Space, 480x80): Chitin hex, spider icon, fangs below, web lines, neon green fill.
+ * 4. Boss    (Bottom-Center Screen Space, 700x96): Dual serpent heads, gold scales, red diamond jewel, emerald fill,
+ *             "NAGA — GUARDIAN OF THE HEART" title plate, phase notches, embers & smoke.
+ *
+ * API:
+ * - healthBar.SetMaxHealth(float maxHP)
+ * - healthBar.SetHealth(float currentHP)
  */
 using System;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -16,10 +26,10 @@ public class HealthBar : MonoBehaviour
     public float CurrentHealth => _targetHealth;
     public float MaxHealth => _maxHealth;
 
-    [Header("Bar")]
+    [Header("Bar Settings")]
     public BarType barType = BarType.Player;
 
-    [Header("Sprites (optional overrides)")]
+    [Header("Sprites (Optional overrides — empty uses procedural SVG art)")]
     public Sprite frame;
     public Sprite fill;
     public Sprite glow;
@@ -27,17 +37,20 @@ public class HealthBar : MonoBehaviour
     public Sprite endCapRight;
     public Sprite icon;
 
-    private const float BarWidth = 600f;
-    private const float BarHeight = 80f;
-    private const float WindowX = 44f;
-    private const float WindowY = 28f;
-    private const float WindowWidth = 520f;
-    private const float WindowHeight = 26f;
-    private const int ParticleCount = 24;
+    private const int ParticlePoolSize = 24;
     private const float DamageFillDuration = 0.3f;
     private const float DamageGhostDelay = 0.5f;
     private const float DamageGhostDuration = 0.9f;
 
+    // Dimensions
+    private float _barWidth = 600f;
+    private float _barHeight = 80f;
+    private float _windowX = 44f;
+    private float _windowY = 28f;
+    private float _windowWidth = 520f;
+    private float _windowHeight = 26f;
+
+    // Components & Layer Hierarchy
     private RectTransform _root;
     private RectTransform _fillRect;
     private RectTransform _ghostRect;
@@ -47,6 +60,7 @@ public class HealthBar : MonoBehaviour
     private RectTransform _sweepClipRect;
     private RectTransform _sweepRect;
     private RectTransform _sparkRoot;
+
     private Image _trackImage;
     private Image _fillImage;
     private Image _ghostImage;
@@ -54,20 +68,21 @@ public class HealthBar : MonoBehaviour
     private Image _healOverlayImage;
     private Image _glowImage;
     private Image _vignetteImage;
+
     private Canvas _worldCanvas;
     private CanvasGroup _canvasGroup;
     private Camera _worldCamera;
     private Transform _proximityTarget;
+
     private Image[] _segmentImages;
     private Image[] _particles;
     private Particle[] _particleStates;
-    private float[] _zombieDropTimers;
+
+    // Timers & States
+    private float[] _dropTimers;
     private Vector2 _baseAnchoredPosition;
     private Vector3 _baseScale;
-    private float _windowX = WindowX;
-    private float _windowY = WindowY;
-    private float _windowWidth = WindowWidth;
-    private float _windowHeight = WindowHeight;
+
     private float _maxHealth = 100f;
     private float _targetHealth = 100f;
     private float _displayHealth = 100f;
@@ -78,17 +93,22 @@ public class HealthBar : MonoBehaviour
     private float _ghostElapsed;
     private float _flashTimer;
     private float _shakeTimer;
+    private float _shakeIntensity = 3f;
     private float _healTimer;
     private float _vignetteTimer;
     private float _lastDamageTime = -9999f;
     private float _glitchTimer;
-    private float _visibilityAlpha;
+    private float _visibilityAlpha = 1f;
     private float _nextPlayerSearchTime;
     private float _nextCameraSearchTime;
-    private bool _isZombie;
+    private float _bubbleTimer;
+    private float _emberTimer;
+
+    private bool _isWorldSpace;
     private bool _enemyDead;
     private bool _ghostIsAnimating;
     private bool _built;
+    private float _prevHealthRatio = 1f;
 
     private struct Particle
     {
@@ -110,29 +130,39 @@ public class HealthBar : MonoBehaviour
             throw new InvalidOperationException("HealthBar requires a RectTransform.");
 
         _baseAnchoredPosition = _root.anchoredPosition;
-        if (barType == BarType.Player)
+        _baseScale = _root.localScale;
+
+        switch (barType)
         {
-            _baseScale = _root.localScale;
-            BuildPlayerBar();
-            _built = true;
-            SetMaxHealth(_maxHealth);
-            return;
+            case BarType.Player:
+                _barWidth = 600f; _barHeight = 80f;
+                _windowX = 44f; _windowY = 28f; _windowWidth = 520f; _windowHeight = 26f;
+                BuildPlayerBar();
+                break;
+
+            case BarType.Zombie:
+                _isWorldSpace = (GetComponentInParent<Canvas>() == null || GetComponentInParent<Canvas>().renderMode == RenderMode.WorldSpace);
+                _barWidth = 400f; _barHeight = 44f;
+                _windowX = 46f; _windowY = 14f; _windowWidth = 332f; _windowHeight = 16f;
+                BuildZombieBar();
+                break;
+
+            case BarType.Spider:
+                _isWorldSpace = (GetComponentInParent<Canvas>() == null || GetComponentInParent<Canvas>().renderMode == RenderMode.WorldSpace);
+                _barWidth = 480f; _barHeight = 80f;
+                _windowX = 52f; _windowY = 18f; _windowWidth = 376f; _windowHeight = 24f;
+                BuildSpiderBar();
+                break;
+
+            case BarType.Boss:
+                _barWidth = 700f; _barHeight = 96f;
+                _windowX = 100f; _windowY = 34f; _windowWidth = 500f; _windowHeight = 28f;
+                BuildBossBar();
+                break;
         }
 
-        if (barType == BarType.Zombie)
-        {
-            _isZombie = true;
-            _windowX = 46f;
-            _windowY = 14f;
-            _windowWidth = 332f;
-            _windowHeight = 16f;
-            BuildZombieBar();
-            _built = true;
-            SetMaxHealth(_maxHealth);
-            return;
-        }
-
-        throw new NotSupportedException(barType + " health bar is not implemented yet.");
+        _built = true;
+        SetMaxHealth(_maxHealth);
     }
 
     private void OnDestroy()
@@ -158,15 +188,28 @@ public class HealthBar : MonoBehaviour
             return;
 
         UpdateHealthMotion();
-        if (_isZombie)
+
+        switch (barType)
         {
-            UpdateZombieVisibility();
-            UpdateZombieBloodDrops();
+            case BarType.Player:
+                UpdateEffects();
+                break;
+
+            case BarType.Zombie:
+                UpdateWorldVisibility();
+                UpdateZombieBloodDrops();
+                break;
+
+            case BarType.Spider:
+                UpdateWorldVisibility();
+                UpdateSpiderBubbles();
+                break;
+
+            case BarType.Boss:
+                UpdateBossEmbersAndEffects();
+                break;
         }
-        else
-        {
-            UpdateEffects();
-        }
+
         UpdateParticles();
     }
 
@@ -185,6 +228,7 @@ public class HealthBar : MonoBehaviour
         _fillElapsed = 0f;
         _ghostElapsed = 0f;
         _ghostIsAnimating = false;
+        _prevHealthRatio = 1f;
         RefreshBarWidths();
     }
 
@@ -196,6 +240,9 @@ public class HealthBar : MonoBehaviour
             return;
 
         bool damaged = nextHealth < _targetHealth;
+        float oldRatio = _targetHealth / _maxHealth;
+        float newRatio = nextHealth / _maxHealth;
+
         _targetHealth = nextHealth;
         _displayStartHealth = _displayHealth;
         _fillElapsed = 0f;
@@ -206,15 +253,31 @@ public class HealthBar : MonoBehaviour
             _ghostElapsed = 0f;
             _ghostIsAnimating = true;
             _flashTimer = 0.1f;
-            if (_isZombie)
+            _lastDamageTime = Time.time;
+
+            if (barType == BarType.Zombie)
             {
-                _lastDamageTime = Time.time;
                 _glitchTimer = 0.15f;
             }
-            else
+            else if (barType == BarType.Spider)
+            {
+                _glitchTimer = 0.15f;
+                SpawnAcidBurst(newRatio);
+            }
+            else if (barType == BarType.Boss)
             {
                 _shakeTimer = 0.15f;
-                SpawnDamageSparks(nextHealth / _maxHealth);
+                _shakeIntensity = 3.5f;
+                SpawnDamageSparks(newRatio);
+
+                // Check phase notch crossings: 75%, 50%, 25%
+                CheckBossPhaseCrossing(oldRatio, newRatio);
+            }
+            else // Player
+            {
+                _shakeTimer = 0.15f;
+                _shakeIntensity = 3f;
+                SpawnDamageSparks(newRatio);
             }
         }
         else
@@ -222,12 +285,15 @@ public class HealthBar : MonoBehaviour
             _ghostHealth = nextHealth;
             _ghostStartHealth = nextHealth;
             _ghostIsAnimating = false;
-            if (!_isZombie)
+
+            if (barType == BarType.Player || barType == BarType.Boss)
             {
                 _healTimer = 0.4f;
-                SpawnHealParticles(nextHealth / _maxHealth);
+                SpawnHealParticles(newRatio);
             }
         }
+
+        _prevHealthRatio = newRatio;
     }
 
     public void SetProximityTarget(Transform target)
@@ -237,11 +303,10 @@ public class HealthBar : MonoBehaviour
 
     public void SetEnemyDead()
     {
-        if (!_isZombie)
-            return;
         _enemyDead = true;
         _visibilityAlpha = 0f;
-        _canvasGroup.alpha = 0f;
+        if (_canvasGroup != null)
+            _canvasGroup.alpha = 0f;
     }
 
     private static void ValidateHealthValue(float value, string parameterName)
@@ -250,129 +315,109 @@ public class HealthBar : MonoBehaviour
             throw new ArgumentOutOfRangeException(parameterName, "Health must be a finite number.");
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  BUILDER: PLAYER (600x80)
+    // ═══════════════════════════════════════════════════════════════════════════
+
     private void BuildPlayerBar()
     {
-        frame = frame != null ? frame : HealthBarSprites.GetPlayerFrame();
+        bool hasCustomFrame = this.frame != null;
+        frame = hasCustomFrame ? this.frame : HealthBarSprites.GetPlayerFrame();
         fill = fill != null ? fill : HealthBarSprites.GetPlayerFill();
         glow = glow != null ? glow : HealthBarSprites.GetPlayerGlow();
         endCapLeft = endCapLeft != null ? endCapLeft : HealthBarSprites.GetTransparent();
         endCapRight = endCapRight != null ? endCapRight : HealthBarSprites.GetTransparent();
         icon = icon != null ? icon : HealthBarSprites.GetPlayerIcon();
 
+        // 1. Glow behind
         _glowImage = CreateImage("Outer Glow", transform, glow, 36f, 20f, 536f, 42f);
         _glowImage.color = new Color(0.184f, 0.847f, 1f, 0.35f);
 
-        RectTransform mask = CreateRect("Fill Window Mask", transform, WindowX, WindowY, WindowWidth, WindowHeight);
+        // 2. Fill Window Mask with RectMask2D
+        RectTransform mask = CreateRect("Fill Window Mask", transform, _windowX, _windowY, _windowWidth, _windowHeight);
         mask.gameObject.AddComponent<RectMask2D>();
-        _trackImage = CreateImage("Dark Track", mask, HealthBarSprites.GetTrack(), 0f, 0f, WindowWidth, WindowHeight);
+
+        // 3. Track
+        _trackImage = CreateImage("Dark Track", mask, HealthBarSprites.GetTrack(), 0f, 0f, _windowWidth, _windowHeight);
         _trackImage.color = Color.white;
 
-        _ghostImage = CreateImage("Damage Ghost", mask, HealthBarSprites.GetPlayerFill(), 0f, 0f, WindowWidth, WindowHeight);
+        // 4. White Ghost Bar
+        _ghostImage = CreateImage("Damage Ghost", mask, HealthBarSprites.GetPlayerFill(), 0f, 0f, _windowWidth, _windowHeight);
         _ghostImage.color = new Color(1f, 1f, 1f, 0.38f);
         _ghostRect = (RectTransform)_ghostImage.transform;
 
-        _fillImage = CreateImage("Health Fill", mask, fill, 0f, 0f, WindowWidth, WindowHeight);
+        // 5. Fill
+        _fillImage = CreateImage("Health Fill", mask, fill, 0f, 0f, _windowWidth, _windowHeight);
         _fillRect = (RectTransform)_fillImage.transform;
-        _fillImage.color = Color.white;
 
-        Image greenOverlay = CreateImage("Healing Overlay", mask, HealthBarSprites.GetWhite(), 0f, 0f, WindowWidth, WindowHeight);
+        // 6. Healing Overlay
+        Image greenOverlay = CreateImage("Healing Overlay", mask, HealthBarSprites.GetWhite(), 0f, 0f, _windowWidth, _windowHeight);
         greenOverlay.color = new Color(0.302f, 1f, 0.533f, 0f);
         _healOverlayImage = greenOverlay;
         _healOverlayRect = (RectTransform)greenOverlay.transform;
 
-        Image highlight = CreateImage("Gloss Highlight", mask, HealthBarSprites.GetPlayerHighlight(), 0f, 0f, WindowWidth, 11f);
+        // 7. Gloss Highlight
+        Image highlight = CreateImage("Gloss Highlight", mask, HealthBarSprites.GetPlayerHighlight(), 0f, 0f, _windowWidth, 11f);
         highlight.color = Color.white;
         _highlightRect = (RectTransform)highlight.transform;
 
-        _sweepClipRect = CreateRect("Light Sweep Clip", mask, 0f, 0f, WindowWidth, WindowHeight);
+        // 8. Light Sweep
+        _sweepClipRect = CreateRect("Light Sweep Clip", mask, 0f, 0f, _windowWidth, _windowHeight);
         _sweepClipRect.gameObject.AddComponent<RectMask2D>();
-        _sweepRect = CreateRect("Light Sweep", _sweepClipRect, -70f, 0f, 70f, WindowHeight);
+        _sweepRect = CreateRect("Light Sweep", _sweepClipRect, -70f, 0f, 70f, _windowHeight);
         Image sweep = _sweepRect.gameObject.AddComponent<Image>();
         sweep.sprite = HealthBarSprites.GetPlayerSweep();
         sweep.raycastTarget = false;
 
+        // 9. Segments every 10%
         _segmentImages = new Image[9];
-        for (int i = 0; i < _segmentImages.Length; i++)
+        for (int i = 0; i < 9; i++)
         {
-            float x = WindowWidth * (i + 1) / 10f - 0.5f;
-            Image segment = CreateImage("Segment " + (i + 1), mask, HealthBarSprites.GetWhite(), x, 0f, 1f, WindowHeight);
-            segment.color = new Color(0f, 0f, 0f, 0.45f);
-            _segmentImages[i] = segment;
+            float x = _windowWidth * (i + 1) / 10f - 0.5f;
+            Image seg = CreateImage("Segment " + (i + 1), mask, HealthBarSprites.GetWhite(), x, 0f, 1f, _windowHeight);
+            seg.color = new Color(0f, 0f, 0f, 0.45f);
+            _segmentImages[i] = seg;
         }
 
-        Image leftCap = CreateImage("Left End Cap", mask, endCapLeft, 0f, 0f, 8f, WindowHeight);
-        leftCap.raycastTarget = false;
-        Image rightCap = CreateImage("Right End Cap", mask, endCapRight, WindowWidth - 8f, 0f, 8f, WindowHeight);
-        rightCap.raycastTarget = false;
-
-        _flashImage = CreateImage("Damage Flash", mask, HealthBarSprites.GetWhite(), 0f, 0f, WindowWidth, WindowHeight);
+        // 10. Damage Flash
+        _flashImage = CreateImage("Damage Flash", mask, HealthBarSprites.GetWhite(), 0f, 0f, _windowWidth, _windowHeight);
         _flashImage.color = new Color(1f, 1f, 1f, 0f);
         _flashRect = (RectTransform)_flashImage.transform;
 
-        Image frameImage = CreateImage("Frame", transform, frame, 0f, 0f, BarWidth, BarHeight);
-        frameImage.type = Image.Type.Sliced;
+        // 11. Frame on top
+        Image frameImage = CreateImage("Frame", transform, frame, 0f, 0f, _barWidth, _barHeight);
+        frameImage.type = hasCustomFrame ? Image.Type.Sliced : Image.Type.Simple;
 
-        _sparkRoot = CreateRect("VFX Particles", transform, 0f, 0f, BarWidth, BarHeight);
-        _particles = new Image[ParticleCount];
-        _particleStates = new Particle[ParticleCount];
-        Sprite particleSprite = HealthBarSprites.GetParticle();
-        for (int i = 0; i < ParticleCount; i++)
-        {
-            Image particle = CreateImage("Particle " + i, _sparkRoot, particleSprite, 0f, 0f, 4f, 4f);
-            particle.enabled = false;
-            _particles[i] = particle;
-        }
+        // 12. Particles Pool
+        SetupParticlePool(HealthBarSprites.GetParticle(), 4f);
 
+        // 13. Left Bolt Icon (Center 22, 40)
         Image iconImage = CreateImage("Player Icon", transform, icon, 12f, 30f, 20f, 20f);
         iconImage.raycastTarget = false;
+
+        // 14. Low Health Vignette
         CreateLowHealthVignette();
-        _baseScale = _root.localScale;
-        _baseAnchoredPosition = _root.anchoredPosition;
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  BUILDER: ZOMBIE (400x44)
+    // ═══════════════════════════════════════════════════════════════════════════
 
     private void BuildZombieBar()
     {
         frame = frame != null ? frame : HealthBarSprites.GetZombieFrame();
         fill = fill != null ? fill : HealthBarSprites.GetZombieFill();
         glow = glow != null ? glow : HealthBarSprites.GetZombieGlow();
-        endCapLeft = endCapLeft != null ? endCapLeft : HealthBarSprites.GetTransparent();
-        endCapRight = endCapRight != null ? endCapRight : HealthBarSprites.GetTransparent();
         icon = icon != null ? icon : HealthBarSprites.GetZombieIcon();
 
-        _root.anchorMin = new Vector2(0.5f, 0.5f);
-        _root.anchorMax = new Vector2(0.5f, 0.5f);
-        _root.pivot = new Vector2(0.5f, 0.5f);
-        _root.sizeDelta = new Vector2(400f, 44f);
-        _root.localScale = Vector3.one * 0.01f;
-
-        _worldCanvas = GetComponent<Canvas>();
-        if (_worldCanvas == null)
-            _worldCanvas = gameObject.AddComponent<Canvas>();
-        _worldCanvas.renderMode = RenderMode.WorldSpace;
-        _worldCanvas.worldCamera = Camera.main;
-        _worldCanvas.overrideSorting = true;
-        _worldCanvas.sortingOrder = 20;
-        _worldCamera = _worldCanvas.worldCamera;
-
-        CanvasScaler scaler = GetComponent<CanvasScaler>();
-        if (scaler == null)
-            scaler = gameObject.AddComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
-        scaler.scaleFactor = 1f;
-        scaler.referencePixelsPerUnit = 100f;
-
-        _canvasGroup = GetComponent<CanvasGroup>();
-        if (_canvasGroup == null)
-            _canvasGroup = gameObject.AddComponent<CanvasGroup>();
-        _canvasGroup.alpha = 0f;
-        _canvasGroup.interactable = false;
-        _canvasGroup.blocksRaycasts = false;
+        ConfigureWorldSpaceCanvas();
 
         _glowImage = CreateImage("Outer Glow", transform, glow, 38f, 6f, 348f, 32f);
         _glowImage.color = new Color(0.435f, 0.749f, 0.122f, 0.35f);
 
         RectTransform mask = CreateRect("Fill Window Mask", transform, _windowX, _windowY, _windowWidth, _windowHeight);
         mask.gameObject.AddComponent<RectMask2D>();
+
         _trackImage = CreateImage("Dark Track", mask, HealthBarSprites.GetTrack(), 0f, 0f, _windowWidth, _windowHeight);
         _trackImage.color = Color.white;
 
@@ -382,11 +427,6 @@ public class HealthBar : MonoBehaviour
 
         _fillImage = CreateImage("Health Fill", mask, fill, 0f, 0f, _windowWidth, _windowHeight);
         _fillRect = (RectTransform)_fillImage.transform;
-
-        Image greenOverlay = CreateImage("Healing Overlay", mask, HealthBarSprites.GetWhite(), 0f, 0f, _windowWidth, _windowHeight);
-        greenOverlay.color = new Color(0.302f, 1f, 0.533f, 0f);
-        _healOverlayImage = greenOverlay;
-        _healOverlayRect = (RectTransform)greenOverlay.transform;
 
         Image highlight = CreateImage("Gloss Highlight", mask, HealthBarSprites.GetPlayerHighlight(), 0f, 0f, _windowWidth, 7f);
         highlight.color = Color.white;
@@ -400,65 +440,202 @@ public class HealthBar : MonoBehaviour
         sweep.raycastTarget = false;
 
         _segmentImages = new Image[9];
-        for (int i = 0; i < _segmentImages.Length; i++)
+        for (int i = 0; i < 9; i++)
         {
             float x = _windowWidth * (i + 1) / 10f - 0.5f;
-            Image segment = CreateImage("Segment " + (i + 1), mask, HealthBarSprites.GetWhite(), x, 0f, 1f, _windowHeight);
-            segment.color = new Color(0f, 0f, 0f, 0.45f);
-            _segmentImages[i] = segment;
+            Image seg = CreateImage("Segment " + (i + 1), mask, HealthBarSprites.GetWhite(), x, 0f, 1f, _windowHeight);
+            seg.color = new Color(0f, 0f, 0f, 0.45f);
+            _segmentImages[i] = seg;
         }
-
-        Image leftCap = CreateImage("Left End Cap", mask, endCapLeft, 0f, 0f, 6f, _windowHeight);
-        leftCap.raycastTarget = false;
-        Image rightCap = CreateImage("Right End Cap", mask, endCapRight, _windowWidth - 6f, 0f, 6f, _windowHeight);
-        rightCap.raycastTarget = false;
 
         _flashImage = CreateImage("Damage Flash", mask, HealthBarSprites.GetWhite(), 0f, 0f, _windowWidth, _windowHeight);
         _flashImage.color = new Color(1f, 1f, 1f, 0f);
         _flashRect = (RectTransform)_flashImage.transform;
 
-        Image frameImage = CreateImage("Frame", transform, frame, 0f, 0f, 400f, 44f);
-        frameImage.type = Image.Type.Sliced;
+        Image frameImage = CreateImage("Frame", transform, frame, 0f, 0f, _barWidth, _barHeight);
+        frameImage.type = Image.Type.Simple;
 
-        _sparkRoot = CreateRect("VFX Particles", transform, 0f, 0f, 400f, 44f);
-        _particles = new Image[ParticleCount];
-        _particleStates = new Particle[ParticleCount];
-        for (int i = 0; i < ParticleCount; i++)
-        {
-            Image particle = CreateImage("Particle " + i, _sparkRoot, HealthBarSprites.GetZombieBloodDrop(), 0f, 0f, 4.4f, 4.4f);
-            particle.enabled = false;
-            _particles[i] = particle;
-        }
+        SetupParticlePool(HealthBarSprites.GetZombieBloodDrop(), 4.4f);
 
         Image iconImage = CreateImage("Zombie Icon", transform, icon, 10f, 9f, 24f, 26f);
         iconImage.raycastTarget = false;
-        _zombieDropTimers = new[] { 0f, 0.45f, 0.9f, 1.35f };
-        _baseScale = _root.localScale;
-        _baseAnchoredPosition = _root.anchoredPosition;
+
+        _dropTimers = new[] { 0f, 0.45f, 0.9f, 1.35f };
     }
 
-    private void CreateLowHealthVignette()
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  BUILDER: SPIDER (480x80)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    private void BuildSpiderBar()
     {
-        Canvas canvas = GetComponentInParent<Canvas>();
-        if (canvas == null)
-            throw new InvalidOperationException("HealthBar must be placed under a Canvas.");
-        Canvas rootCanvas = canvas.rootCanvas;
-        if (rootCanvas.renderMode != RenderMode.ScreenSpaceOverlay)
-            throw new InvalidOperationException("The Player health bar requires a Screen Space - Overlay root Canvas.");
+        frame = frame != null ? frame : HealthBarSprites.GetSpiderFrame();
+        fill = fill != null ? fill : HealthBarSprites.GetSpiderFill();
+        glow = glow != null ? glow : HealthBarSprites.GetSpiderGlow();
+        icon = icon != null ? icon : HealthBarSprites.GetSpiderIcon();
 
-        RectTransform rect = CreateRect("Player Low Health Vignette", rootCanvas.transform, 0f, 0f, 0f, 0f);
-        rect.anchorMin = Vector2.zero;
-        rect.anchorMax = Vector2.one;
-        rect.offsetMin = Vector2.zero;
-        rect.offsetMax = Vector2.zero;
-        rect.pivot = new Vector2(0.5f, 0.5f);
-        _vignetteImage = rect.gameObject.AddComponent<Image>();
-        _vignetteImage.sprite = HealthBarSprites.GetPlayerVignette();
-        _vignetteImage.color = new Color(1f, 0.078f, 0.157f, 0f);
-        _vignetteImage.raycastTarget = false;
-        _vignetteImage.enabled = false;
-        rect.SetAsLastSibling();
+        ConfigureWorldSpaceCanvas();
+
+        _glowImage = CreateImage("Outer Glow", transform, glow, 44f, 10f, 392f, 40f);
+        _glowImage.color = new Color(0.22f, 1f, 0.35f, 0.40f);
+
+        RectTransform mask = CreateRect("Fill Window Mask", transform, _windowX, _windowY, _windowWidth, _windowHeight);
+        mask.gameObject.AddComponent<RectMask2D>();
+
+        _trackImage = CreateImage("Dark Track", mask, HealthBarSprites.GetTrack(), 0f, 0f, _windowWidth, _windowHeight);
+        _trackImage.color = Color.white;
+
+        _ghostImage = CreateImage("Damage Ghost", mask, fill, 0f, 0f, _windowWidth, _windowHeight);
+        _ghostImage.color = new Color(1f, 1f, 1f, 0.38f);
+        _ghostRect = (RectTransform)_ghostImage.transform;
+
+        _fillImage = CreateImage("Health Fill", mask, fill, 0f, 0f, _windowWidth, _windowHeight);
+        _fillRect = (RectTransform)_fillImage.transform;
+
+        Image highlight = CreateImage("Gloss Highlight", mask, HealthBarSprites.GetPlayerHighlight(), 0f, 0f, _windowWidth, 10f);
+        highlight.color = Color.white;
+        _highlightRect = (RectTransform)highlight.transform;
+
+        _sweepClipRect = CreateRect("Light Sweep Clip", mask, 0f, 0f, _windowWidth, _windowHeight);
+        _sweepClipRect.gameObject.AddComponent<RectMask2D>();
+        _sweepRect = CreateRect("Light Sweep", _sweepClipRect, -70f, 0f, 70f, _windowHeight);
+        Image sweep = _sweepRect.gameObject.AddComponent<Image>();
+        sweep.sprite = HealthBarSprites.GetPlayerSweep();
+        sweep.raycastTarget = false;
+
+        _segmentImages = new Image[9];
+        for (int i = 0; i < 9; i++)
+        {
+            float x = _windowWidth * (i + 1) / 10f - 0.5f;
+            Image seg = CreateImage("Segment " + (i + 1), mask, HealthBarSprites.GetWhite(), x, 0f, 1f, _windowHeight);
+            seg.color = new Color(0f, 0f, 0f, 0.45f);
+            _segmentImages[i] = seg;
+        }
+
+        _flashImage = CreateImage("Damage Flash", mask, HealthBarSprites.GetWhite(), 0f, 0f, _windowWidth, _windowHeight);
+        _flashImage.color = new Color(1f, 1f, 1f, 0f);
+        _flashRect = (RectTransform)_flashImage.transform;
+
+        Image frameImage = CreateImage("Frame", transform, frame, 0f, 0f, _barWidth, _barHeight);
+        frameImage.type = Image.Type.Simple;
+
+        SetupParticlePool(HealthBarSprites.GetSpiderAcidDrop(), 4.0f);
+
+        Image iconImage = CreateImage("Spider Icon", transform, icon, 18f, 18f, 24f, 24f);
+        iconImage.raycastTarget = false;
+
+        _bubbleTimer = 0f;
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  BUILDER: BOSS (NAGA — GUARDIAN OF THE HEART, 700x96)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    private void BuildBossBar()
+    {
+        frame = frame != null ? frame : HealthBarSprites.GetBossFrame();
+        fill = fill != null ? fill : HealthBarSprites.GetBossFill();
+        glow = glow != null ? glow : HealthBarSprites.GetBossGlow();
+        endCapLeft = endCapLeft != null ? endCapLeft : HealthBarSprites.GetBossEndCapLeft();
+        endCapRight = endCapRight != null ? endCapRight : HealthBarSprites.GetBossEndCapRight();
+
+        // 1. Glow Behind
+        _glowImage = CreateImage("Outer Glow", transform, glow, 92f, 26f, 516f, 44f);
+        _glowImage.color = new Color(1f, 0.72f, 0.18f, 0.35f);
+
+        // 2. Fill Window Mask with RectMask2D
+        RectTransform mask = CreateRect("Fill Window Mask", transform, _windowX, _windowY, _windowWidth, _windowHeight);
+        mask.gameObject.AddComponent<RectMask2D>();
+
+        // 3. Dark Track
+        _trackImage = CreateImage("Dark Track", mask, HealthBarSprites.GetTrack(), 0f, 0f, _windowWidth, _windowHeight);
+        _trackImage.color = Color.white;
+
+        // 4. White Ghost Bar
+        _ghostImage = CreateImage("Damage Ghost", mask, fill, 0f, 0f, _windowWidth, _windowHeight);
+        _ghostImage.color = new Color(1f, 1f, 1f, 0.38f);
+        _ghostRect = (RectTransform)_ghostImage.transform;
+
+        // 5. Emerald Fill
+        _fillImage = CreateImage("Health Fill", mask, fill, 0f, 0f, _windowWidth, _windowHeight);
+        _fillRect = (RectTransform)_fillImage.transform;
+
+        // 6. Healing Overlay
+        Image greenOverlay = CreateImage("Healing Overlay", mask, HealthBarSprites.GetWhite(), 0f, 0f, _windowWidth, _windowHeight);
+        greenOverlay.color = new Color(0.302f, 1f, 0.533f, 0f);
+        _healOverlayImage = greenOverlay;
+        _healOverlayRect = (RectTransform)greenOverlay.transform;
+
+        // 7. Gloss Highlight
+        Image highlight = CreateImage("Gloss Highlight", mask, HealthBarSprites.GetPlayerHighlight(), 0f, 0f, _windowWidth, 11f);
+        highlight.color = Color.white;
+        _highlightRect = (RectTransform)highlight.transform;
+
+        // 8. Light Sweep
+        _sweepClipRect = CreateRect("Light Sweep Clip", mask, 0f, 0f, _windowWidth, _windowHeight);
+        _sweepClipRect.gameObject.AddComponent<RectMask2D>();
+        _sweepRect = CreateRect("Light Sweep", _sweepClipRect, -70f, 0f, 70f, _windowHeight);
+        Image sweep = _sweepRect.gameObject.AddComponent<Image>();
+        sweep.sprite = HealthBarSprites.GetPlayerSweep();
+        sweep.raycastTarget = false;
+
+        // 9. Segment lines
+        _segmentImages = new Image[9];
+        for (int i = 0; i < 9; i++)
+        {
+            float x = _windowWidth * (i + 1) / 10f - 0.5f;
+            Image seg = CreateImage("Segment " + (i + 1), mask, HealthBarSprites.GetWhite(), x, 0f, 1f, _windowHeight);
+            seg.color = new Color(0f, 0f, 0f, 0.45f);
+            _segmentImages[i] = seg;
+        }
+
+        // 10. Damage Flash
+        _flashImage = CreateImage("Damage Flash", mask, HealthBarSprites.GetWhite(), 0f, 0f, _windowWidth, _windowHeight);
+        _flashImage.color = new Color(1f, 1f, 1f, 0f);
+        _flashRect = (RectTransform)_flashImage.transform;
+
+        // 11. Gold Scale Frame on Top
+        Image frameImage = CreateImage("Frame", transform, frame, 0f, 0f, _barWidth, _barHeight);
+        frameImage.type = Image.Type.Simple;
+
+        // 12. Snake Head Endcaps
+        Image leftHead = CreateImage("Left Snake Head", transform, endCapLeft, 0f, 0f, 76f, 96f);
+        leftHead.raycastTarget = false;
+        Image rightHead = CreateImage("Right Snake Head", transform, endCapRight, 624f, 0f, 76f, 96f);
+        rightHead.raycastTarget = false;
+
+        // 13. Title Plate Above Bar
+        RectTransform plateRect = CreateRect("Title Plate", transform, 100f, -44f, 500f, 38f);
+        Image plateImg = plateRect.gameObject.AddComponent<Image>();
+        plateImg.sprite = HealthBarSprites.GetBossNamePlate();
+        plateImg.raycastTarget = false;
+
+        // Title Text with TextMeshPro
+        GameObject textObj = new GameObject("Boss Name", typeof(RectTransform));
+        textObj.layer = transform.gameObject.layer;
+        textObj.transform.SetParent(plateRect, false);
+        RectTransform textRect = (RectTransform)textObj.transform;
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+
+        TextMeshProUGUI tmp = textObj.AddComponent<TextMeshProUGUI>();
+        tmp.text = "NAGA — GUARDIAN OF THE HEART";
+        tmp.fontSize = 20;
+        tmp.fontStyle = FontStyles.Bold;
+        tmp.characterSpacing = 22f;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.color = new Color(0.961f, 0.827f, 0.416f, 1f); // #f5d36a
+        tmp.raycastTarget = false;
+
+        // 14. VFX Particle Pool (Embers & Smoke)
+        SetupParticlePool(HealthBarSprites.GetParticle(), 3.5f);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  VFX & MOTION UPDATES
+    // ═══════════════════════════════════════════════════════════════════════════
 
     private void UpdateHealthMotion()
     {
@@ -496,13 +673,17 @@ public class HealthBar : MonoBehaviour
         if (_fillRect == null || _ghostRect == null)
             return;
 
-        SetWidth(_fillRect, _windowWidth * Mathf.Clamp01(_displayHealth / _maxHealth));
-        SetWidth(_ghostRect, _windowWidth * Mathf.Clamp01(_ghostHealth / _maxHealth));
-        float displayedWidth = _windowWidth * Mathf.Clamp01(_displayHealth / _maxHealth);
-        SetWidth(_healOverlayRect, displayedWidth);
-        SetWidth(_highlightRect, displayedWidth);
-        SetWidth(_flashRect, displayedWidth);
-        SetWidth(_sweepClipRect, displayedWidth);
+        float ratio = Mathf.Clamp01(_displayHealth / _maxHealth);
+        float ghostRatio = Mathf.Clamp01(_ghostHealth / _maxHealth);
+
+        SetWidth(_fillRect, _windowWidth * ratio);
+        SetWidth(_ghostRect, _windowWidth * ghostRatio);
+
+        float displayedWidth = _windowWidth * ratio;
+        if (_healOverlayRect != null) SetWidth(_healOverlayRect, displayedWidth);
+        if (_highlightRect != null) SetWidth(_highlightRect, displayedWidth);
+        if (_flashRect != null) SetWidth(_flashRect, displayedWidth);
+        if (_sweepClipRect != null) SetWidth(_sweepClipRect, displayedWidth);
     }
 
     private static void SetWidth(RectTransform rect, float width)
@@ -512,25 +693,21 @@ public class HealthBar : MonoBehaviour
 
     private void UpdateEffects()
     {
-        float deltaTime = Time.deltaTime;
-        _flashTimer = Mathf.Max(0f, _flashTimer - deltaTime);
-        _shakeTimer = Mathf.Max(0f, _shakeTimer - deltaTime);
-        _healTimer = Mathf.Max(0f, _healTimer - deltaTime);
+        float dt = Time.deltaTime;
+        _flashTimer = Mathf.Max(0f, _flashTimer - dt);
+        _shakeTimer = Mathf.Max(0f, _shakeTimer - dt);
+        _healTimer = Mathf.Max(0f, _healTimer - dt);
 
-        float flashAlpha = _flashTimer > 0f ? 0.9f * (_flashTimer / 0.1f) : 0f;
-        _flashImage.color = new Color(1f, 1f, 1f, flashAlpha);
+        if (_flashImage != null)
+            _flashImage.color = new Color(1f, 1f, 1f, _flashTimer > 0f ? 0.9f * (_flashTimer / 0.1f) : 0f);
 
-        float healProgress = _healTimer / 0.4f;
-        _healOverlayImage.color = new Color(0.302f, 1f, 0.533f, 0.5f * healProgress);
+        if (_healOverlayImage != null)
+            _healOverlayImage.color = new Color(0.302f, 1f, 0.533f, 0.5f * (_healTimer / 0.4f));
 
         if (_shakeTimer > 0f)
-        {
-            _root.anchoredPosition = _baseAnchoredPosition + new Vector2(UnityEngine.Random.Range(-3f, 3f), UnityEngine.Random.Range(-3f, 3f));
-        }
+            _root.anchoredPosition = _baseAnchoredPosition + new Vector2(UnityEngine.Random.Range(-_shakeIntensity, _shakeIntensity), UnityEngine.Random.Range(-_shakeIntensity, _shakeIntensity));
         else
-        {
             _root.anchoredPosition = _baseAnchoredPosition;
-        }
 
         float healthRatio = Mathf.Clamp01(_targetHealth / _maxHealth);
         if (healthRatio < 0.25f)
@@ -538,85 +715,162 @@ public class HealthBar : MonoBehaviour
             float pulse = 1f + 0.015f * (1f - Mathf.Cos(2f * Mathf.PI * Time.time / 0.6f));
             _root.localScale = _baseScale * pulse;
             float glowAlpha = Mathf.Lerp(0.6f, 0.9f, (1f + Mathf.Sin(2f * Mathf.PI * Time.time / 0.6f)) * 0.5f);
-            _glowImage.color = Color.Lerp(new Color(0.184f, 0.847f, 1f, glowAlpha), new Color(0.302f, 1f, 0.533f, glowAlpha), _healTimer / 0.4f);
-            _vignetteTimer = Mathf.Repeat(Time.time, 1f);
-            _vignetteImage.enabled = true;
-            _vignetteImage.color = new Color(1f, 0.078f, 0.157f, _vignetteTimer <= 0.5f ? _vignetteTimer * 2f : (1f - _vignetteTimer) * 2f);
+            if (_glowImage != null)
+                _glowImage.color = Color.Lerp(new Color(0.184f, 0.847f, 1f, glowAlpha), new Color(0.302f, 1f, 0.533f, glowAlpha), _healTimer / 0.4f);
+
+            if (_vignetteImage != null)
+            {
+                _vignetteTimer = Mathf.Repeat(Time.time, 1f);
+                _vignetteImage.enabled = true;
+                _vignetteImage.color = new Color(1f, 0.078f, 0.157f, _vignetteTimer <= 0.5f ? _vignetteTimer * 2f : (1f - _vignetteTimer) * 2f);
+            }
         }
         else
         {
             _root.localScale = _baseScale;
-            float healGlow = _healTimer / 0.4f;
-            _glowImage.color = Color.Lerp(new Color(0.184f, 0.847f, 1f, 0.35f), new Color(0.302f, 1f, 0.533f, 0.8f), healGlow);
-            if (_vignetteImage.enabled)
+            if (_glowImage != null)
+                _glowImage.color = Color.Lerp(new Color(0.184f, 0.847f, 1f, 0.35f), new Color(0.302f, 1f, 0.533f, 0.8f), _healTimer / 0.4f);
+
+            if (_vignetteImage != null && _vignetteImage.enabled)
             {
                 _vignetteImage.enabled = false;
                 _vignetteImage.color = new Color(1f, 0.078f, 0.157f, 0f);
             }
         }
 
-        float sweepTime = Mathf.Repeat(Time.time, 3f) / 3f;
-        _sweepRect.anchoredPosition = new Vector2(Mathf.Lerp(-70f, WindowWidth, sweepTime), 0f);
+        if (_sweepRect != null)
+        {
+            float sweepTime = Mathf.Repeat(Time.time, 3f) / 3f;
+            _sweepRect.anchoredPosition = new Vector2(Mathf.Lerp(-70f, _windowWidth, sweepTime), 0f);
+        }
     }
 
-    private void UpdateZombieVisibility()
+    private void UpdateWorldVisibility()
     {
-        float deltaTime = Time.deltaTime;
-        _glitchTimer = Mathf.Max(0f, _glitchTimer - deltaTime);
-        _flashTimer = Mathf.Max(0f, _flashTimer - deltaTime);
-        _flashImage.color = new Color(1f, 1f, 1f, _flashTimer > 0f ? 0.9f * (_flashTimer / 0.1f) : 0f);
+        float dt = Time.deltaTime;
+        _glitchTimer = Mathf.Max(0f, _glitchTimer - dt);
+        _flashTimer = Mathf.Max(0f, _flashTimer - dt);
 
-        if (_proximityTarget == null && Time.time >= _nextPlayerSearchTime)
-        {
-            PlayerController player = PlayerController.Instance;
-            if (player != null)
-                _proximityTarget = player.transform;
-            _nextPlayerSearchTime = Time.time + 1f;
-        }
+        if (_flashImage != null)
+            _flashImage.color = new Color(1f, 1f, 1f, _flashTimer > 0f ? 0.9f * (_flashTimer / 0.1f) : 0f);
 
-        bool nearby = !_enemyDead && _proximityTarget != null &&
-                      (_proximityTarget.position - transform.position).sqrMagnitude <= 225f;
-        bool recentlyDamaged = Time.time - _lastDamageTime <= 4f;
-        if (_enemyDead)
+        if (_isWorldSpace)
         {
-            _visibilityAlpha = 0f;
-        }
-        else if (nearby || recentlyDamaged)
-        {
-            _visibilityAlpha = 1f;
+            if (_proximityTarget == null && Time.time >= _nextPlayerSearchTime)
+            {
+                PlayerController player = PlayerController.Instance;
+                if (player != null) _proximityTarget = player.transform;
+                _nextPlayerSearchTime = Time.time + 1f;
+            }
+
+            bool nearby = !_enemyDead && _proximityTarget != null && (_proximityTarget.position - transform.position).sqrMagnitude <= 225f;
+            bool recentlyDamaged = Time.time - _lastDamageTime <= 4f;
+
+            if (_enemyDead) _visibilityAlpha = 0f;
+            else if (nearby || recentlyDamaged) _visibilityAlpha = 1f;
+            else _visibilityAlpha = Mathf.Lerp(_visibilityAlpha, 0f, 1f - Mathf.Exp(-dt / 0.25f));
+
+            if (_worldCamera == null && Time.unscaledTime >= _nextCameraSearchTime)
+            {
+                _worldCamera = Camera.main;
+                if (_worldCanvas != null) _worldCanvas.worldCamera = _worldCamera;
+                _nextCameraSearchTime = Time.unscaledTime + 1f;
+            }
+            if (_worldCamera != null)
+            {
+                Vector3 toCamera = _worldCamera.transform.position - transform.position;
+                if (toCamera.sqrMagnitude > 0.001f)
+                    transform.rotation = Quaternion.LookRotation(toCamera, Vector3.up);
+            }
         }
         else
         {
-            _visibilityAlpha = Mathf.Lerp(_visibilityAlpha, 0f, 1f - Mathf.Exp(-deltaTime / 0.25f));
-        }
-
-        if (_worldCamera == null && Time.unscaledTime >= _nextCameraSearchTime)
-        {
-            _worldCamera = Camera.main;
-            _worldCanvas.worldCamera = _worldCamera;
-            _nextCameraSearchTime = Time.unscaledTime + 1f;
-        }
-        if (_worldCamera != null)
-        {
-            Vector3 toCamera = _worldCamera.transform.position - transform.position;
-            if (toCamera.sqrMagnitude > 0.001f)
-                transform.rotation = Quaternion.LookRotation(toCamera, Vector3.up);
+            _visibilityAlpha = 1f;
         }
 
         float flicker = _glitchTimer > 0f && UnityEngine.Random.value < 0.5f ? 0.35f : 1f;
-        _canvasGroup.alpha = _visibilityAlpha * flicker;
+        if (_canvasGroup != null)
+            _canvasGroup.alpha = _visibilityAlpha * flicker;
+
+        if (_sweepRect != null)
+        {
+            float sweepTime = Mathf.Repeat(Time.time, 3f) / 3f;
+            _sweepRect.anchoredPosition = new Vector2(Mathf.Lerp(-70f, _windowWidth, sweepTime), 0f);
+        }
     }
 
     private void UpdateZombieBloodDrops()
     {
-        for (int i = 0; i < _zombieDropTimers.Length; i++)
+        if (_dropTimers == null) return;
+        for (int i = 0; i < _dropTimers.Length; i++)
         {
-            _zombieDropTimers[i] -= Time.deltaTime;
-            if (_zombieDropTimers[i] > 0f)
-                continue;
-
+            _dropTimers[i] -= Time.deltaTime;
+            if (_dropTimers[i] > 0f) continue;
             SpawnParticle(new Vector2(96f + i * 80f, 40f), 2.2f, Color.white, 0f, 0f, 176f, 0.5f);
-            _zombieDropTimers[i] = 1.8f;
+            _dropTimers[i] = 1.8f;
+        }
+    }
+
+    private void UpdateSpiderBubbles()
+    {
+        _bubbleTimer += Time.deltaTime;
+        if (_bubbleTimer >= 0.35f)
+        {
+            _bubbleTimer = 0f;
+            float rx = UnityEngine.Random.Range(56f, 420f);
+            SpawnParticle(new Vector2(rx, 42f), 2.0f, new Color(0.54f, 1f, 0.48f, 0.85f),
+                UnityEngine.Random.Range(-5f, 5f), UnityEngine.Random.Range(18f, 32f), 0f, 1.2f);
+        }
+
+        if (_glowImage != null)
+        {
+            float pulse = Mathf.Lerp(0.35f, 0.65f, (1f + Mathf.Sin(Time.time * 3f)) * 0.5f);
+            _glowImage.color = new Color(0.22f, 1f, 0.35f, pulse);
+        }
+    }
+
+    private void UpdateBossEmbersAndEffects()
+    {
+        UpdateEffects();
+
+        _emberTimer += Time.deltaTime;
+        if (_emberTimer >= 0.22f)
+        {
+            _emberTimer = 0f;
+            float ex = UnityEngine.Random.Range(100f, 600f);
+            Color emberColor = UnityEngine.Random.value > 0.4f ? new Color(1f, 0.48f, 0.12f, 1f) : new Color(1f, 0.72f, 0.18f, 1f);
+            SpawnParticle(new Vector2(ex, 62f), 1.6f, emberColor,
+                UnityEngine.Random.Range(-15f, 15f), UnityEngine.Random.Range(35f, 75f), 10f, UnityEngine.Random.Range(0.8f, 1.5f));
+
+            if (UnityEngine.Random.value < 0.25f)
+            {
+                SpawnParticle(new Vector2(ex, 62f), 5.0f, new Color(0.7f, 0.7f, 0.7f, 0.22f),
+                    UnityEngine.Random.Range(-8f, 8f), UnityEngine.Random.Range(20f, 40f), 0f, 1.8f);
+            }
+        }
+    }
+
+    private void CheckBossPhaseCrossing(float oldRatio, float newRatio)
+    {
+        float[] phases = { 0.75f, 0.50f, 0.25f };
+        for (int i = 0; i < phases.Length; i++)
+        {
+            if (oldRatio > phases[i] && newRatio <= phases[i])
+            {
+                _shakeTimer = 0.25f;
+                _shakeIntensity = 5.0f;
+                break;
+            }
+        }
+    }
+
+    private void SpawnAcidBurst(float healthRatio)
+    {
+        Vector2 origin = new Vector2(_windowX + _windowWidth * healthRatio, _windowY + _windowHeight * 0.5f);
+        for (int i = 0; i < 12; i++)
+        {
+            SpawnParticle(origin, UnityEngine.Random.Range(1.5f, 2.8f), new Color(0.54f, 1f, 0.48f, 1f),
+                UnityEngine.Random.Range(-50f, 80f), UnityEngine.Random.Range(40f, 120f), 280f, UnityEngine.Random.Range(0.4f, 0.7f));
         }
     }
 
@@ -627,12 +881,9 @@ public class HealthBar : MonoBehaviour
         {
             Color color;
             float choice = UnityEngine.Random.value;
-            if (choice < 0.55f)
-                color = new Color(1f, 0.824f, 0.227f, 1f);
-            else if (choice < 0.88f)
-                color = new Color(1f, 0.604f, 0.122f, 1f);
-            else
-                color = Color.white;
+            if (choice < 0.55f) color = new Color(1f, 0.824f, 0.227f, 1f); // #ffd23a
+            else if (choice < 0.88f) color = new Color(1f, 0.604f, 0.122f, 1f); // #ff9a1f
+            else color = Color.white;
 
             SpawnParticle(origin, UnityEngine.Random.Range(1.2f, 2.6f), color,
                 UnityEngine.Random.Range(-30f, 100f), UnityEngine.Random.Range(40f, 170f),
@@ -651,12 +902,25 @@ public class HealthBar : MonoBehaviour
         }
     }
 
+    private void SetupParticlePool(Sprite particleSprite, float initialSize)
+    {
+        _sparkRoot = CreateRect("VFX Particles", transform, 0f, 0f, _barWidth, _barHeight);
+        _particles = new Image[ParticlePoolSize];
+        _particleStates = new Particle[ParticlePoolSize];
+        for (int i = 0; i < ParticlePoolSize; i++)
+        {
+            Image p = CreateImage("Particle " + i, _sparkRoot, particleSprite, 0f, 0f, initialSize, initialSize);
+            p.enabled = false;
+            _particles[i] = p;
+        }
+    }
+
     private void SpawnParticle(Vector2 origin, float radius, Color color, float velocityX, float velocityY, float gravity, float lifetime)
     {
+        if (_particleStates == null) return;
         for (int i = 0; i < _particleStates.Length; i++)
         {
-            if (_particleStates[i].Active)
-                continue;
+            if (_particleStates[i].Active) continue;
 
             _particleStates[i] = new Particle
             {
@@ -670,7 +934,6 @@ public class HealthBar : MonoBehaviour
                 Active = true
             };
             _particles[i].enabled = true;
-            _particles[i].sprite = _isZombie ? HealthBarSprites.GetZombieBloodDrop() : HealthBarSprites.GetParticle();
             _particles[i].rectTransform.sizeDelta = new Vector2(radius * 2f, radius * 2f);
             break;
         }
@@ -678,33 +941,89 @@ public class HealthBar : MonoBehaviour
 
     private void UpdateParticles()
     {
-        float deltaTime = Time.deltaTime;
+        if (_particleStates == null) return;
+        float dt = Time.deltaTime;
         for (int i = 0; i < _particleStates.Length; i++)
         {
-            Particle particle = _particleStates[i];
-            if (!particle.Active)
-                continue;
+            Particle p = _particleStates[i];
+            if (!p.Active) continue;
 
-            particle.Age += deltaTime;
-            if (particle.Age >= particle.Lifetime)
+            p.Age += dt;
+            if (p.Age >= p.Lifetime)
             {
-                particle.Active = false;
+                p.Active = false;
                 _particles[i].enabled = false;
-                _particleStates[i] = particle;
+                _particleStates[i] = p;
                 continue;
             }
 
-            float life = particle.Age / particle.Lifetime;
-            float rise = particle.VelocityY * particle.Age - 0.5f * particle.Gravity * particle.Age * particle.Age;
-            float x = particle.Position.x + particle.VelocityX * particle.Age;
-            float y = particle.Position.y - rise;
+            float life = p.Age / p.Lifetime;
+            float rise = p.VelocityY * p.Age - 0.5f * p.Gravity * p.Age * p.Age;
+            float x = p.Position.x + p.VelocityX * p.Age;
+            float y = p.Position.y - rise;
             RectTransform rect = _particles[i].rectTransform;
             rect.anchoredPosition = new Vector2(x, -y);
-            Color color = particle.Color;
-            color.a = 1f - life;
-            _particles[i].color = color;
-            _particleStates[i] = particle;
+            Color c = p.Color;
+            c.a = 1f - life;
+            _particles[i].color = c;
+            _particleStates[i] = p;
         }
+    }
+
+    private void ConfigureWorldSpaceCanvas()
+    {
+        _canvasGroup = GetComponent<CanvasGroup>();
+        if (_canvasGroup == null) _canvasGroup = gameObject.AddComponent<CanvasGroup>();
+
+        if (_isWorldSpace)
+        {
+            _root.anchorMin = new Vector2(0.5f, 0.5f);
+            _root.anchorMax = new Vector2(0.5f, 0.5f);
+            _root.pivot = new Vector2(0.5f, 0.5f);
+            _root.sizeDelta = new Vector2(_barWidth, _barHeight);
+            _root.localScale = Vector3.one * 0.01f;
+
+            _worldCanvas = GetComponent<Canvas>();
+            if (_worldCanvas == null) _worldCanvas = gameObject.AddComponent<Canvas>();
+            _worldCanvas.renderMode = RenderMode.WorldSpace;
+            _worldCanvas.worldCamera = Camera.main;
+            _worldCanvas.overrideSorting = true;
+            _worldCanvas.sortingOrder = 20;
+            _worldCamera = _worldCanvas.worldCamera;
+
+            CanvasScaler scaler = GetComponent<CanvasScaler>();
+            if (scaler == null) scaler = gameObject.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+            scaler.scaleFactor = 1f;
+
+            _canvasGroup.alpha = 0f;
+            _canvasGroup.interactable = false;
+            _canvasGroup.blocksRaycasts = false;
+        }
+        else
+        {
+            _canvasGroup.alpha = 1f;
+        }
+    }
+
+    private void CreateLowHealthVignette()
+    {
+        Canvas canvas = GetComponentInParent<Canvas>();
+        if (canvas == null) return;
+        Canvas rootCanvas = canvas.rootCanvas != null ? canvas.rootCanvas : canvas;
+
+        RectTransform rect = CreateRect("Player Low Health Vignette", rootCanvas.transform, 0f, 0f, 0f, 0f);
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        _vignetteImage = rect.gameObject.AddComponent<Image>();
+        _vignetteImage.sprite = HealthBarSprites.GetPlayerVignette();
+        _vignetteImage.color = new Color(1f, 0.078f, 0.157f, 0f);
+        _vignetteImage.raycastTarget = false;
+        _vignetteImage.enabled = false;
+        rect.SetAsLastSibling();
     }
 
     private static Image CreateImage(string objectName, Transform parent, Sprite sprite, float x, float y, float width, float height)

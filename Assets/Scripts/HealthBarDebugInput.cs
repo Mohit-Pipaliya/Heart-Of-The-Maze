@@ -8,17 +8,38 @@ public class HealthBarDebugInput : MonoBehaviour
     {
         if (healthBar == null)
             healthBar = GetComponent<HealthBar>();
-        if (healthBar == null)
-            throw new MissingComponentException("HealthBarDebugInput requires a HealthBar reference.");
     }
 
     private void Update()
     {
         if (Input.GetKeyDown(KeyCode.D))
-            healthBar.SetHealth(healthBar.CurrentHealth - healthBar.MaxHealth * 0.15f);
+        {
+            ApplyToBars(bar => bar.SetHealth(bar.CurrentHealth - bar.MaxHealth * 0.15f));
+        }
         else if (Input.GetKeyDown(KeyCode.H))
-            healthBar.SetHealth(healthBar.CurrentHealth + healthBar.MaxHealth * 0.25f);
+        {
+            ApplyToBars(bar => bar.SetHealth(bar.CurrentHealth + bar.MaxHealth * 0.25f));
+        }
         else if (Input.GetKeyDown(KeyCode.R))
-            healthBar.SetHealth(healthBar.MaxHealth);
+        {
+            ApplyToBars(bar => bar.SetHealth(bar.MaxHealth));
+        }
+    }
+
+    private void ApplyToBars(System.Action<HealthBar> action)
+    {
+        if (healthBar != null)
+        {
+            action(healthBar);
+        }
+        else
+        {
+            HealthBar[] allBars = FindObjectsByType<HealthBar>(FindObjectsSortMode.None);
+            for (int i = 0; i < allBars.Length; i++)
+            {
+                if (allBars[i] != null && allBars[i].gameObject.activeInHierarchy)
+                    action(allBars[i]);
+            }
+        }
     }
 }

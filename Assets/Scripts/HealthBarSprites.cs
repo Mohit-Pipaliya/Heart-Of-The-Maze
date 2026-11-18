@@ -3,6 +3,8 @@ using UnityEngine;
 public static class HealthBarSprites
 {
     private const int Supersample = 4;
+
+    // Cached procedural sprites
     private static Sprite _frame;
     private static Sprite _fill;
     private static Sprite _glow;
@@ -14,11 +16,33 @@ public static class HealthBarSprites
     private static Sprite _icon;
     private static Sprite _transparent;
     private static Sprite _vignette;
+
+    // Zombie
     private static Sprite _zombieFrame;
     private static Sprite _zombieFill;
     private static Sprite _zombieGlow;
     private static Sprite _zombieIcon;
     private static Sprite _zombieBloodDrop;
+
+    // Spider
+    private static Sprite _spiderFrame;
+    private static Sprite _spiderFill;
+    private static Sprite _spiderGlow;
+    private static Sprite _spiderIcon;
+    private static Sprite _spiderAcidDrop;
+
+    // Boss (Naga)
+    private static Sprite _bossFrame;
+    private static Sprite _bossFill;
+    private static Sprite _bossGlow;
+    private static Sprite _bossEndCapLeft;
+    private static Sprite _bossEndCapRight;
+    private static Sprite _bossNamePlate;
+    private static Sprite _bossSmokePuff;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  PLAYER SPRITES
+    // ═══════════════════════════════════════════════════════════════════════════
 
     public static Sprite GetPlayerFrame()
     {
@@ -32,9 +56,9 @@ public static class HealthBarSprites
         if (_fill == null)
             _fill = CreateGradientSprite(520, 26, new[]
             {
-                new Color32(255, 90, 110, 255),
-                new Color32(196, 21, 47, 255),
-                new Color32(122, 10, 29, 255)
+                new Color32(255, 90, 110, 255), // #ff5a6e (top)
+                new Color32(196, 21, 47, 255),  // #c4152f (mid)
+                new Color32(122, 10, 29, 255)   // #7a0a1d (bottom)
             });
         return _fill;
     }
@@ -60,39 +84,11 @@ public static class HealthBarSprites
         return _sweep;
     }
 
-    public static Sprite GetTrack()
-    {
-        if (_track == null)
-            _track = CreateSolidSprite(2, 2, new Color32(12, 16, 22, 255));
-        return _track;
-    }
-
-    public static Sprite GetWhite()
-    {
-        if (_white == null)
-            _white = CreateSolidSprite(2, 2, new Color32(255, 255, 255, 255));
-        return _white;
-    }
-
-    public static Sprite GetParticle()
-    {
-        if (_particle == null)
-            _particle = CreateCircleSprite();
-        return _particle;
-    }
-
     public static Sprite GetPlayerIcon()
     {
         if (_icon == null)
             _icon = CreatePlayerIcon();
         return _icon;
-    }
-
-    public static Sprite GetTransparent()
-    {
-        if (_transparent == null)
-            _transparent = CreateSolidSprite(1, 1, new Color32(255, 255, 255, 0));
-        return _transparent;
     }
 
     public static Sprite GetPlayerVignette()
@@ -101,6 +97,10 @@ public static class HealthBarSprites
             _vignette = CreatePlayerVignette();
         return _vignette;
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  ZOMBIE SPRITES
+    // ═══════════════════════════════════════════════════════════════════════════
 
     public static Sprite GetZombieFrame()
     {
@@ -114,8 +114,8 @@ public static class HealthBarSprites
         if (_zombieFill == null)
             _zombieFill = CreateGradientSprite(332, 16, new[]
             {
-                new Color32(176, 24, 24, 255),
-                new Color32(77, 7, 7, 255)
+                new Color32(176, 24, 24, 255), // #b01818
+                new Color32(77, 7, 7, 255)     // #4d0707
             });
         return _zombieFill;
     }
@@ -141,11 +141,145 @@ public static class HealthBarSprites
         return _zombieBloodDrop;
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  SPIDER SPRITES
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    public static Sprite GetSpiderFrame()
+    {
+        if (_spiderFrame == null)
+            _spiderFrame = CreateSpiderFrame();
+        return _spiderFrame;
+    }
+
+    public static Sprite GetSpiderFill()
+    {
+        if (_spiderFill == null)
+            _spiderFill = CreateGradientSprite(376, 24, new[]
+            {
+                new Color32(139, 255, 122, 255), // #8bff7a (top)
+                new Color32(37, 196, 59, 255),   // #25c43b (mid)
+                new Color32(13, 107, 32, 255)    // #0d6b20 (bottom)
+            });
+        return _spiderFill;
+    }
+
+    public static Sprite GetSpiderGlow()
+    {
+        if (_spiderGlow == null)
+            _spiderGlow = CreateSpiderGlow();
+        return _spiderGlow;
+    }
+
+    public static Sprite GetSpiderIcon()
+    {
+        if (_spiderIcon == null)
+            _spiderIcon = CreateSpiderIcon();
+        return _spiderIcon;
+    }
+
+    public static Sprite GetSpiderAcidDrop()
+    {
+        if (_spiderAcidDrop == null)
+            _spiderAcidDrop = CreateSpiderAcidDrop();
+        return _spiderAcidDrop;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  BOSS (NAGA) SPRITES
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    public static Sprite GetBossFrame()
+    {
+        if (_bossFrame == null)
+            _bossFrame = CreateBossFrame();
+        return _bossFrame;
+    }
+
+    public static Sprite GetBossFill()
+    {
+        if (_bossFill == null)
+            _bossFill = CreateBossFill();
+        return _bossFill;
+    }
+
+    public static Sprite GetBossGlow()
+    {
+        if (_bossGlow == null)
+            _bossGlow = CreateBossGlow();
+        return _bossGlow;
+    }
+
+    public static Sprite GetBossEndCapLeft()
+    {
+        if (_bossEndCapLeft == null)
+            _bossEndCapLeft = CreateSnakeHead(false);
+        return _bossEndCapLeft;
+    }
+
+    public static Sprite GetBossEndCapRight()
+    {
+        if (_bossEndCapRight == null)
+            _bossEndCapRight = CreateSnakeHead(true);
+        return _bossEndCapRight;
+    }
+
+    public static Sprite GetBossNamePlate()
+    {
+        if (_bossNamePlate == null)
+            _bossNamePlate = CreateBossNamePlate();
+        return _bossNamePlate;
+    }
+
+    public static Sprite GetBossSmokePuff()
+    {
+        if (_bossSmokePuff == null)
+            _bossSmokePuff = CreateBossSmokePuff();
+        return _bossSmokePuff;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  COMMON UTILITY SPRITES
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    public static Sprite GetTrack()
+    {
+        if (_track == null)
+            _track = CreateSolidSprite(2, 2, new Color32(12, 16, 22, 255));
+        return _track;
+    }
+
+    public static Sprite GetWhite()
+    {
+        if (_white == null)
+            _white = CreateSolidSprite(2, 2, new Color32(255, 255, 255, 255));
+        return _white;
+    }
+
+    public static Sprite GetParticle()
+    {
+        if (_particle == null)
+            _particle = CreateCircleSprite();
+        return _particle;
+    }
+
+    public static Sprite GetTransparent()
+    {
+        if (_transparent == null)
+            _transparent = CreateSolidSprite(1, 1, new Color32(255, 255, 255, 0));
+        return _transparent;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  PROCEDURAL GENERATORS — PLAYER
+    // ═══════════════════════════════════════════════════════════════════════════
+
     private static Sprite CreatePlayerFrame()
     {
         RasterCanvas raster = new RasterCanvas(600, 80);
         Vector2[] outer = { new Vector2(6, 4), new Vector2(576, 4), new Vector2(596, 76), new Vector2(6, 76) };
         Vector2[] hole = { new Vector2(44, 28), new Vector2(564, 28), new Vector2(564, 54), new Vector2(44, 54) };
+        
         raster.FillPolygonWithHole(outer, hole, (x, y) => SteelGradient(y));
         raster.StrokeClosedPolygon(outer, 1f, new Color32(5, 7, 10, 255));
         raster.StrokeClosedPolygon(hole, 1f, new Color32(5, 7, 10, 255));
@@ -161,15 +295,76 @@ public static class HealthBarSprites
 
         raster.FillRect(44, 24, 520, 2, new Color32(47, 216, 255, 255));
         raster.FillRect(44, 56, 520, 2, new Color32(47, 216, 255, 255));
+
         for (int i = 0; i < 26; i++)
         {
             int x = 52 + i * 20;
             int y = i % 5 == 0 ? 64 : 67;
             raster.StrokeLine(new Vector2(x, y), new Vector2(x, 72), 1.5f, new Color32(11, 13, 16, 255));
         }
+
         raster.StrokePolyline(new[] { new Vector2(546, 9), new Vector2(555, 15), new Vector2(546, 21) }, 2.5f, new Color32(47, 216, 255, 255));
         return raster.ToSprite();
     }
+
+    private static Color32 SteelGradient(float y)
+    {
+        float t = y / 80f;
+        if (t < 0.33f)
+            return Color32.Lerp(new Color32(212, 216, 222, 255), new Color32(138, 145, 157, 255), t / 0.33f);
+        if (t < 0.66f)
+            return Color32.Lerp(new Color32(138, 145, 157, 255), new Color32(58, 63, 72, 255), (t - 0.33f) / 0.33f);
+        return Color32.Lerp(new Color32(58, 63, 72, 255), new Color32(11, 13, 16, 255), (t - 0.66f) / 0.34f);
+    }
+
+    private static Sprite CreatePlayerGlow()
+    {
+        RasterCanvas raster = new RasterCanvas(536, 42);
+        for (int y = 0; y < 42; y++)
+        {
+            for (int x = 0; x < 536; x++)
+            {
+                float dx = Mathf.Max(0f, Mathf.Max(8f - x, x - 528f));
+                float dy = Mathf.Max(0f, Mathf.Max(8f - y, y - 34f));
+                float distance = Mathf.Sqrt(dx * dx + dy * dy);
+                float alpha = 1f - Mathf.Clamp01(distance / 7f);
+                if (x >= 8f && x < 528f && y >= 8f && y < 34f)
+                    alpha = 1f;
+                raster.SetPixel(x, y, new Color32(255, 255, 255, (byte)(alpha * 255f)));
+            }
+        }
+        return raster.ToSprite();
+    }
+
+    private static Sprite CreatePlayerIcon()
+    {
+        RasterCanvas raster = new RasterCanvas(20, 20);
+        raster.FillCircle(10, 10, 9.5f, new Color32(75, 82, 93, 255));
+        raster.StrokeCircle(10, 10, 9.5f, 2f, new Color32(11, 13, 16, 255));
+        raster.FillCircle(10, 10, 3.5f, new Color32(47, 216, 255, 255));
+        return raster.ToSprite();
+    }
+
+    private static Sprite CreatePlayerVignette()
+    {
+        RasterCanvas raster = new RasterCanvas(320, 180);
+        const float edgePixels = 110f / 6f;
+        for (int y = 0; y < 180; y++)
+        {
+            for (int x = 0; x < 320; x++)
+            {
+                float edgeDistance = Mathf.Min(Mathf.Min(x, 319 - x), Mathf.Min(y, 179 - y));
+                float alpha = 1f - Mathf.Clamp01(edgeDistance / edgePixels);
+                alpha = alpha * alpha;
+                raster.SetPixel(x, y, new Color32(255, 20, 40, (byte)(alpha * 255f)));
+            }
+        }
+        return raster.ToSprite();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  PROCEDURAL GENERATORS — ZOMBIE
+    // ═══════════════════════════════════════════════════════════════════════════
 
     private static Sprite CreateZombieFrame()
     {
@@ -272,34 +467,321 @@ public static class HealthBarSprites
         return raster.ToSprite();
     }
 
-    private static Color32 SteelGradient(float y)
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  PROCEDURAL GENERATORS — SPIDER
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    private static Sprite CreateSpiderFrame()
     {
-        float t = y / 80f;
-        if (t < 0.33f)
-            return Color32.Lerp(new Color32(212, 216, 222, 255), new Color32(138, 145, 157, 255), t / 0.33f);
-        if (t < 0.66f)
-            return Color32.Lerp(new Color32(138, 145, 157, 255), new Color32(58, 63, 72, 255), (t - 0.33f) / 0.33f);
-        return Color32.Lerp(new Color32(58, 63, 72, 255), new Color32(11, 13, 16, 255), (t - 0.66f) / 0.34f);
+        RasterCanvas raster = new RasterCanvas(480, 80);
+        Vector2[] outer =
+        {
+            new Vector2(0, 30), new Vector2(22, 4), new Vector2(458, 4),
+            new Vector2(480, 30), new Vector2(458, 56), new Vector2(22, 56)
+        };
+        Vector2[] hole = { new Vector2(52, 18), new Vector2(428, 18), new Vector2(428, 42), new Vector2(52, 42) };
+
+        // Chitin gradient: #3d434b -> #101216 -> #020303
+        raster.FillPolygonWithHole(outer, hole, (x, y) => ChitinGradient(y));
+
+        // Gloss polygon (22,4)(458,4)(470,18)(10,18) white .10
+        Vector2[] gloss = { new Vector2(22, 4), new Vector2(458, 4), new Vector2(470, 18), new Vector2(10, 18) };
+        raster.FillPolygon(gloss, new Color32(255, 255, 255, 26));
+
+        // Neon outline #38ff5a 1.6px
+        Color32 neon = new Color32(56, 255, 90, 255);
+        raster.StrokeClosedPolygon(outer, 1.6f, neon);
+
+        // Window outline 1px alpha .7
+        raster.StrokeClosedPolygon(hole, 1.0f, new Color32(56, 255, 90, 178));
+
+        // Web lines pale #d6f0d6 alpha .6
+        Color32 web = new Color32(214, 240, 214, 153);
+        raster.StrokeLine(new Vector2(22, 4), new Vector2(52, 18), 1.0f, web);
+        raster.StrokeLine(new Vector2(22, 56), new Vector2(52, 42), 1.0f, web);
+        raster.StrokeLine(new Vector2(458, 4), new Vector2(428, 18), 1.0f, web);
+        raster.StrokeLine(new Vector2(458, 56), new Vector2(428, 42), 1.0f, web);
+        raster.StrokeLine(new Vector2(10, 18), new Vector2(52, 24), 1.0f, web);
+        raster.StrokeLine(new Vector2(470, 18), new Vector2(428, 24), 1.0f, web);
+
+        // Arcs: quadratic (52,18) ctrl (240,6) (428,18) and (52,42) ctrl (240,54) (428,42)
+        raster.StrokeBezier(new Vector2(52, 18), new Vector2(240, 6), new Vector2(428, 18), 1.0f, web);
+        raster.StrokeBezier(new Vector2(52, 42), new Vector2(240, 54), new Vector2(428, 42), 1.0f, web);
+
+        // Fangs: triangles (208,55)(218,55)(213,76) and (262,55)(272,55)(267,76), fill #e6ffe9, outline #38ff5a
+        Color32 fangFill = new Color32(230, 255, 233, 255);
+        Vector2[] fang1 = { new Vector2(208, 55), new Vector2(218, 55), new Vector2(213, 76) };
+        Vector2[] fang2 = { new Vector2(262, 55), new Vector2(272, 55), new Vector2(267, 76) };
+        raster.FillPolygon(fang1, fangFill);
+        raster.StrokeClosedPolygon(fang1, 1.2f, neon);
+        raster.FillPolygon(fang2, fangFill);
+        raster.StrokeClosedPolygon(fang2, 1.2f, neon);
+
+        return raster.ToSprite();
     }
 
-    private static Sprite CreatePlayerGlow()
+    private static Color32 ChitinGradient(float y)
     {
-        RasterCanvas raster = new RasterCanvas(536, 42);
-        for (int y = 0; y < 42; y++)
+        float t = Mathf.Clamp01(y / 60f);
+        if (t < 0.5f)
+            return Color32.Lerp(new Color32(61, 67, 75, 255), new Color32(16, 18, 22, 255), t * 2f);
+        return Color32.Lerp(new Color32(16, 18, 22, 255), new Color32(2, 3, 3, 255), (t - 0.5f) * 2f);
+    }
+
+    private static Sprite CreateSpiderGlow()
+    {
+        RasterCanvas raster = new RasterCanvas(392, 40);
+        for (int y = 0; y < 40; y++)
         {
-            for (int x = 0; x < 536; x++)
+            for (int x = 0; x < 392; x++)
             {
-                float dx = Mathf.Max(0f, Mathf.Max(8f - x, x - 528f));
-                float dy = Mathf.Max(0f, Mathf.Max(8f - y, y - 34f));
+                float dx = Mathf.Max(0f, Mathf.Max(8f - x, x - 384f));
+                float dy = Mathf.Max(0f, Mathf.Max(8f - y, y - 32f));
                 float distance = Mathf.Sqrt(dx * dx + dy * dy);
                 float alpha = 1f - Mathf.Clamp01(distance / 7f);
-                if (x >= 8f && x < 528f && y >= 8f && y < 34f)
+                if (x >= 8f && x < 384f && y >= 8f && y < 32f)
                     alpha = 1f;
                 raster.SetPixel(x, y, new Color32(255, 255, 255, (byte)(alpha * 255f)));
             }
         }
         return raster.ToSprite();
     }
+
+    private static Sprite CreateSpiderIcon()
+    {
+        RasterCanvas raster = new RasterCanvas(24, 24);
+        Color32 neon = new Color32(56, 255, 90, 255);
+
+        // Body ellipse rx 5 ry 6.5
+        raster.FillEllipse(12, 14, 4.5f, 6.0f, neon);
+        // Head circle r 3.2 at (12, 6)
+        raster.FillCircle(12, 6, 3.0f, neon);
+
+        // 8 Spider Legs
+        raster.StrokeLine(new Vector2(8, 11), new Vector2(2, 7), 1.2f, neon);
+        raster.StrokeLine(new Vector2(8, 13), new Vector2(2, 13), 1.2f, neon);
+        raster.StrokeLine(new Vector2(8, 15), new Vector2(3, 19), 1.2f, neon);
+        raster.StrokeLine(new Vector2(9, 17), new Vector2(5, 23), 1.2f, neon);
+
+        raster.StrokeLine(new Vector2(16, 11), new Vector2(22, 7), 1.2f, neon);
+        raster.StrokeLine(new Vector2(16, 13), new Vector2(22, 13), 1.2f, neon);
+        raster.StrokeLine(new Vector2(16, 15), new Vector2(21, 19), 1.2f, neon);
+        raster.StrokeLine(new Vector2(15, 17), new Vector2(19, 23), 1.2f, neon);
+
+        return raster.ToSprite();
+    }
+
+    private static Sprite CreateSpiderAcidDrop()
+    {
+        RasterCanvas raster = new RasterCanvas(8, 8);
+        raster.FillCircle(4, 4, 3.5f, new Color32(139, 255, 122, 255));
+        return raster.ToSprite();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  PROCEDURAL GENERATORS — BOSS (NAGA — GUARDIAN OF THE HEART)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    private static Sprite CreateBossFrame()
+    {
+        RasterCanvas raster = new RasterCanvas(700, 96);
+        Vector2[] outer =
+        {
+            new Vector2(70, 10), new Vector2(630, 10), new Vector2(640, 20),
+            new Vector2(640, 76), new Vector2(630, 86), new Vector2(70, 86),
+            new Vector2(60, 76), new Vector2(60, 20)
+        };
+        Vector2[] hole = { new Vector2(100, 34), new Vector2(600, 34), new Vector2(600, 62), new Vector2(100, 62) };
+
+        // Gold gradient #fff1a8 -> #e2b93c(.33) -> #8f6a14(.66) -> #4a3508(1.0)
+        raster.FillPolygonWithHole(outer, hole, (x, y) => BossGoldGradient(y));
+        raster.StrokeClosedPolygon(outer, 1.5f, new Color32(74, 53, 8, 255));
+        raster.StrokeClosedPolygon(hole, 1.2f, new Color32(143, 106, 20, 255));
+
+        // Serpent-scale pattern overlay: 10x8 tile, arc from (0,8) ctrl (5,0) to (10,8), stroke #4a3508 1px alpha .7
+        Color32 scaleColor = new Color32(74, 53, 8, 178);
+        for (int y = 10; y < 86; y += 8)
+        {
+            int rowOffset = ((y / 8) % 2 == 0) ? 0 : 5;
+            for (int x = 60; x < 640; x += 10)
+            {
+                int ox = x + rowOffset;
+                raster.StrokeBezierClipped(new Vector2(ox, y + 8), new Vector2(ox + 5, y), new Vector2(ox + 10, y + 8),
+                    1f, scaleColor, outer, hole);
+            }
+        }
+
+        // Bright gold lines #ffe68a: rect (100,31,500x2) and (100,62,500x2)
+        Color32 brightGold = new Color32(255, 230, 138, 255);
+        raster.FillRect(100, 31, 500, 2, brightGold);
+        raster.FillRect(100, 62, 500, 2, brightGold);
+
+        // Phase notches #ffb82e 2px wide, y 30..66, at x=174, 349, 524 (75/50/25% HP)
+        Color32 notchColor = new Color32(255, 184, 46, 255);
+        raster.FillRect(174, 30, 2, 36, notchColor);
+        raster.FillRect(349, 30, 2, 36, notchColor);
+        raster.FillRect(524, 30, 2, 36, notchColor);
+
+        // Red jewel diamond top center: (350,0)(364,12)(350,24)(336,12), fill #e0112b, stroke #ffe68a 2px, inner #ff6b78 .6
+        Vector2[] jewel = { new Vector2(350, 0), new Vector2(364, 12), new Vector2(350, 24), new Vector2(336, 12) };
+        raster.FillPolygon(jewel, new Color32(224, 17, 43, 255));
+        raster.StrokeClosedPolygon(jewel, 2f, brightGold);
+        Vector2[] innerJewel = { new Vector2(350, 4), new Vector2(358, 12), new Vector2(350, 20), new Vector2(342, 12) };
+        raster.FillPolygon(innerJewel, new Color32(255, 107, 120, 153));
+
+        return raster.ToSprite();
+    }
+
+    private static Color32 BossGoldGradient(float y)
+    {
+        float t = Mathf.Clamp01((y - 10f) / 76f);
+        if (t < 0.33f)
+            return Color32.Lerp(new Color32(255, 241, 168, 255), new Color32(226, 185, 60, 255), t / 0.33f);
+        if (t < 0.66f)
+            return Color32.Lerp(new Color32(226, 185, 60, 255), new Color32(143, 106, 20, 255), (t - 0.33f) / 0.33f);
+        return Color32.Lerp(new Color32(143, 106, 20, 255), new Color32(74, 53, 8, 255), (t - 0.66f) / 0.34f);
+    }
+
+    private static Sprite CreateSnakeHead(bool mirror)
+    {
+        RasterCanvas raster = new RasterCanvas(76, 96);
+        Vector2[] headPoly =
+        {
+            new Vector2(72, 16), new Vector2(40, 8), new Vector2(6, 22),
+            new Vector2(3, 48), new Vector2(6, 74), new Vector2(40, 88), new Vector2(72, 80)
+        };
+
+        if (mirror)
+        {
+            for (int i = 0; i < headPoly.Length; i++)
+                headPoly[i] = new Vector2(76f - headPoly[i].x, headPoly[i].y);
+        }
+
+        // Gold base fill
+        raster.FillPolygon(headPoly, (x, y) => BossGoldGradient(y));
+        raster.StrokeClosedPolygon(headPoly, 1.5f, new Color32(74, 53, 8, 255));
+
+        // Serpent scale pattern
+        Color32 scaleColor = new Color32(74, 53, 8, 178);
+        for (int y = 14; y < 82; y += 8)
+        {
+            for (int x = 4; x < 72; x += 10)
+            {
+                raster.StrokeBezierClipped(new Vector2(x, y + 8), new Vector2(x + 5, y), new Vector2(x + 10, y + 8),
+                    1f, scaleColor, headPoly, new Vector2[0]);
+            }
+        }
+
+        // Brow line: (16,32) quad ctrl (40,22) (66,28) #4a3508 2px
+        Vector2 p0 = new Vector2(16, 32), p1 = new Vector2(40, 22), p2 = new Vector2(66, 28);
+        if (mirror)
+        {
+            p0 = new Vector2(76f - p0.x, p0.y);
+            p1 = new Vector2(76f - p1.x, p1.y);
+            p2 = new Vector2(76f - p2.x, p2.y);
+        }
+        raster.StrokeBezier(p0, p1, p2, 2.0f, new Color32(74, 53, 8, 255));
+
+        // Red Eye ellipse center (36,42) rx 7 ry 4.5 #ff1f2d with slit pupil rx 1.3 ry 4 #120000
+        float eyeX = mirror ? (76f - 36f) : 36f;
+        raster.FillEllipse(eyeX, 42f, 7f, 4.5f, new Color32(255, 31, 45, 255));
+        raster.FillEllipse(eyeX, 42f, 1.3f, 4.0f, new Color32(18, 0, 0, 255));
+
+        // Fangs: white triangles (36,72)(41,72)(38.5,90) and (52,74)(57,74)(54.5,92)
+        Vector2[] fang1 = { new Vector2(36, 72), new Vector2(41, 72), new Vector2(38.5f, 90) };
+        Vector2[] fang2 = { new Vector2(52, 74), new Vector2(57, 74), new Vector2(54.5f, 92) };
+        if (mirror)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                fang1[i] = new Vector2(76f - fang1[i].x, fang1[i].y);
+                fang2[i] = new Vector2(76f - fang2[i].x, fang2[i].y);
+            }
+        }
+        Color32 white = new Color32(255, 255, 255, 255);
+        raster.FillPolygon(fang1, white);
+        raster.StrokeClosedPolygon(fang1, 1f, new Color32(74, 53, 8, 255));
+        raster.FillPolygon(fang2, white);
+        raster.StrokeClosedPolygon(fang2, 1f, new Color32(74, 53, 8, 255));
+
+        return raster.ToSprite();
+    }
+
+    private static Sprite CreateBossFill()
+    {
+        // Fill: #1fae7a -> #0a5f45 -> #02150f + 2px molten gold inner stroke #ffb82e alpha .6 inset 1px
+        RasterCanvas raster = new RasterCanvas(500, 28);
+        Color32[] stops =
+        {
+            new Color32(31, 174, 122, 255), // #1fae7a (top)
+            new Color32(10, 95, 69, 255),   // #0a5f45 (mid)
+            new Color32(2, 21, 15, 255)     // #02150f (bottom)
+        };
+        for (int y = 0; y < 28; y++)
+        {
+            float t = (float)y / 27f;
+            Color32 c = t < 0.5f
+                ? Color32.Lerp(stops[0], stops[1], t * 2f)
+                : Color32.Lerp(stops[1], stops[2], (t - 0.5f) * 2f);
+            raster.FillRect(0, y, 500, 1, c);
+        }
+
+        // 2px molten gold inner stroke #ffb82e alpha .6 inset 1px
+        Color32 goldStroke = new Color32(255, 184, 46, 153);
+        raster.StrokeClosedPolygon(new[]
+        {
+            new Vector2(1, 1), new Vector2(499, 1), new Vector2(499, 27), new Vector2(1, 27)
+        }, 2f, goldStroke);
+
+        return raster.ToSprite();
+    }
+
+    private static Sprite CreateBossGlow()
+    {
+        RasterCanvas raster = new RasterCanvas(516, 44);
+        for (int y = 0; y < 44; y++)
+        {
+            for (int x = 0; x < 516; x++)
+            {
+                float dx = Mathf.Max(0f, Mathf.Max(8f - x, x - 508f));
+                float dy = Mathf.Max(0f, Mathf.Max(8f - y, y - 36f));
+                float distance = Mathf.Sqrt(dx * dx + dy * dy);
+                float alpha = 1f - Mathf.Clamp01(distance / 7f);
+                if (x >= 8f && x < 508f && y >= 8f && y < 36f)
+                    alpha = 1f;
+                raster.SetPixel(x, y, new Color32(255, 255, 255, (byte)(alpha * 255f)));
+            }
+        }
+        return raster.ToSprite();
+    }
+
+    private static Sprite CreateBossNamePlate()
+    {
+        // Opaque dark gradient plate #1c1409 -> #060402, 1px #8f6a14 border
+        RasterCanvas raster = new RasterCanvas(500, 38);
+        for (int y = 0; y < 38; y++)
+        {
+            float t = (float)y / 37f;
+            Color32 c = Color32.Lerp(new Color32(28, 20, 9, 255), new Color32(6, 4, 2, 255), t);
+            raster.FillRect(0, y, 500, 1, c);
+        }
+        raster.StrokeClosedPolygon(new[]
+        {
+            new Vector2(0, 0), new Vector2(500, 0), new Vector2(500, 38), new Vector2(0, 38)
+        }, 1.5f, new Color32(143, 106, 20, 255));
+        return raster.ToSprite();
+    }
+
+    private static Sprite CreateBossSmokePuff()
+    {
+        RasterCanvas raster = new RasterCanvas(12, 12);
+        raster.FillCircle(6, 6, 5.5f, new Color32(180, 180, 180, 255));
+        return raster.ToSprite();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  SHARED HELPERS & COMMON SPRITE GENERATORS
+    // ═══════════════════════════════════════════════════════════════════════════
 
     private static Sprite CreateGradientSprite(int width, int height, Color32[] stops)
     {
@@ -353,31 +835,9 @@ public static class HealthBarSprites
         return raster.ToSprite();
     }
 
-    private static Sprite CreatePlayerIcon()
-    {
-        RasterCanvas raster = new RasterCanvas(20, 20);
-        raster.FillCircle(10, 10, 9.5f, new Color32(75, 82, 93, 255));
-        raster.StrokeCircle(10, 10, 9.5f, 2f, new Color32(11, 13, 16, 255));
-        raster.FillCircle(10, 10, 3.5f, new Color32(47, 216, 255, 255));
-        return raster.ToSprite();
-    }
-
-    private static Sprite CreatePlayerVignette()
-    {
-        RasterCanvas raster = new RasterCanvas(320, 180);
-        const float edgePixels = 110f / 6f;
-        for (int y = 0; y < 180; y++)
-        {
-            for (int x = 0; x < 320; x++)
-            {
-                float edgeDistance = Mathf.Min(Mathf.Min(x, 319 - x), Mathf.Min(y, 179 - y));
-                float alpha = 1f - Mathf.Clamp01(edgeDistance / edgePixels);
-                alpha = alpha * alpha;
-                raster.SetPixel(x, y, new Color32(255, 20, 40, (byte)(alpha * 255f)));
-            }
-        }
-        return raster.ToSprite();
-    }
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  HIGH-PRECISION 4X SUPERSAMPLED CPU RASTERIZER (Scanline Even-Odd)
+    // ═══════════════════════════════════════════════════════════════════════════
 
     private sealed class RasterCanvas
     {
@@ -442,6 +902,11 @@ public static class HealthBarSprites
         public void FillPolygon(Vector2[] polygon, Color32 color)
         {
             FillPolygonWithHole(polygon, new Vector2[0], (x, y) => color);
+        }
+
+        public void FillPolygon(Vector2[] polygon, System.Func<float, float, Color32> colorAt)
+        {
+            FillPolygonWithHole(polygon, new Vector2[0], colorAt);
         }
 
         public void FillCircleClippedToPolygon(float centerX, float centerY, float radius, Vector2[] outer, Vector2[] hole, Color32 color)
@@ -555,6 +1020,35 @@ public static class HealthBarSprites
         {
             StrokePolyline(points, thickness, color);
             StrokeLine(points[points.Length - 1], points[0], thickness, color);
+        }
+
+        public void StrokeBezier(Vector2 p0, Vector2 p1, Vector2 p2, float thickness, Color32 color)
+        {
+            const int segments = 24;
+            Vector2 prev = p0;
+            for (int i = 1; i <= segments; i++)
+            {
+                float t = (float)i / segments;
+                float u = 1f - t;
+                Vector2 curr = u * u * p0 + 2f * u * t * p1 + t * t * p2;
+                StrokeLine(prev, curr, thickness, color);
+                prev = curr;
+            }
+        }
+
+        public void StrokeBezierClipped(Vector2 p0, Vector2 p1, Vector2 p2, float thickness, Color32 color, Vector2[] outer, Vector2[] hole)
+        {
+            const int segments = 16;
+            Vector2 prev = p0;
+            for (int i = 1; i <= segments; i++)
+            {
+                float t = (float)i / segments;
+                float u = 1f - t;
+                Vector2 curr = u * u * p0 + 2f * u * t * p1 + t * t * p2;
+                if (PointInPolygon(curr.x, curr.y, outer) && !PointInPolygon(curr.x, curr.y, hole))
+                    StrokeLine(prev, curr, thickness, color);
+                prev = curr;
+            }
         }
 
         public void StrokeLine(Vector2 start, Vector2 end, float thickness, Color32 color)
