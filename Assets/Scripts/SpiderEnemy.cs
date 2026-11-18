@@ -16,6 +16,13 @@ public class SpiderEnemy : MonoBehaviour
     [SerializeField, Tooltip("Runtime active health (inspector me live dikhta hai)")]
     private float currentHealth;
 
+    [Header("─── Floating Health Bar ─────────────────────────────────────")]
+    [Tooltip("Spider ke upar floating health bar dikhaye")]
+    public bool showFloatingHealthBar = true;
+    [Tooltip("Bar kitna upar float kare spider ke center se (meters)")]
+    public float healthBarHeightOffset = 2.2f;
+    private HealthBar _floatingHealthBar;
+
     [Tooltip("Damage lagne par spider kitne second stun rahega (seconds)")]
     [Range(0f, 2f)]
     public float hitStunDuration = 0.45f;
@@ -395,6 +402,8 @@ public class SpiderEnemy : MonoBehaviour
             if (pObj != null) player = pObj.transform;
         }
 
+        SetupFloatingHealthBar();
+
         if (agent != null)
         {
             agent.baseOffset = groundOffset;
@@ -747,6 +756,10 @@ public class SpiderEnemy : MonoBehaviour
         currentHealth -= amount;
         Debug.Log($"<color=#FF2222><b>[Spider Hit!]</b></color> Damage: {amount} | HP: {Mathf.Max(0f, currentHealth)}/{maxHealth}");
 
+        // Update floating health bar
+        if (_floatingHealthBar != null)
+            _floatingHealthBar.SetHealth(currentHealth);
+
         // Instantly aggro and chase player if shot or struck, but only if player is in territory
         bool canAggro = territoryTrigger == null || IsPlayerInTerritory();
         if (canAggro && player != null && agent != null && agent.enabled)
@@ -808,6 +821,30 @@ public class SpiderEnemy : MonoBehaviour
         }
     }
 
+    // ───────────────────────────────────────────────────────────────────────────
+    //  FLOATING HEALTH BAR
+    // ───────────────────────────────────────────────────────────────────────────
+
+    private void SetupFloatingHealthBar()
+    {
+        if (!showFloatingHealthBar) return;
+
+        GameObject barGO = new GameObject("Spider Health Bar", typeof(RectTransform));
+        barGO.SetActive(false);
+        barGO.transform.SetParent(transform, false);
+        barGO.transform.localPosition = Vector3.up * healthBarHeightOffset;
+
+        _floatingHealthBar = barGO.AddComponent<HealthBar>();
+        _floatingHealthBar.barType = BarType.Spider;
+        barGO.SetActive(true);
+
+        _floatingHealthBar.SetMaxHealth(maxHealth);
+        _floatingHealthBar.SetHealth(currentHealth);
+
+        if (player != null)
+            _floatingHealthBar.SetProximityTarget(player);
+    }
+
     private void Die()
     {
         isDead = true;
@@ -816,6 +853,10 @@ public class SpiderEnemy : MonoBehaviour
             agent.isStopped = true;
             agent.enabled = false;
         }
+
+        // Notify floating health bar
+        if (_floatingHealthBar != null)
+            _floatingHealthBar.SetEnemyDead();
 
         if (anim != null)
         {

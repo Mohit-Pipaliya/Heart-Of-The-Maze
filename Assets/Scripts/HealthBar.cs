@@ -105,6 +105,7 @@ public class HealthBar : MonoBehaviour
     private float _emberTimer;
 
     private bool _isWorldSpace;
+    public bool IsWorldSpace => _isWorldSpace;
     private bool _enemyDead;
     private bool _ghostIsAnimating;
     private bool _built;
@@ -125,9 +126,35 @@ public class HealthBar : MonoBehaviour
 
     private void Awake()
     {
+        if (!_built)
+            BuildCurrentBar();
+    }
+
+    public void SetBarType(BarType type)
+    {
+        if (barType == type && _built) return;
+        barType = type;
+        Rebuild();
+    }
+
+    public void Rebuild()
+    {
+        if (_built)
+        {
+            for (int i = transform.childCount - 1; i >= 0; i--)
+            {
+                Destroy(transform.GetChild(i).gameObject);
+            }
+            _built = false;
+        }
+        BuildCurrentBar();
+    }
+
+    private void BuildCurrentBar()
+    {
         _root = transform as RectTransform;
         if (_root == null)
-            throw new InvalidOperationException("HealthBar requires a RectTransform.");
+            _root = gameObject.AddComponent<RectTransform>();
 
         _baseAnchoredPosition = _root.anchoredPosition;
         _baseScale = _root.localScale;
@@ -135,6 +162,7 @@ public class HealthBar : MonoBehaviour
         switch (barType)
         {
             case BarType.Player:
+                _isWorldSpace = false;
                 _barWidth = 600f; _barHeight = 80f;
                 _windowX = 44f; _windowY = 28f; _windowWidth = 520f; _windowHeight = 26f;
                 BuildPlayerBar();
@@ -155,6 +183,7 @@ public class HealthBar : MonoBehaviour
                 break;
 
             case BarType.Boss:
+                _isWorldSpace = (GetComponentInParent<Canvas>() == null || GetComponentInParent<Canvas>().renderMode == RenderMode.WorldSpace);
                 _barWidth = 700f; _barHeight = 96f;
                 _windowX = 100f; _windowY = 34f; _windowWidth = 500f; _windowHeight = 28f;
                 BuildBossBar();
@@ -539,6 +568,8 @@ public class HealthBar : MonoBehaviour
         endCapLeft = endCapLeft != null ? endCapLeft : HealthBarSprites.GetBossEndCapLeft();
         endCapRight = endCapRight != null ? endCapRight : HealthBarSprites.GetBossEndCapRight();
 
+        ConfigureWorldSpaceCanvas();
+
         // 1. Glow Behind
         _glowImage = CreateImage("Outer Glow", transform, glow, 92f, 26f, 516f, 44f);
         _glowImage.color = new Color(1f, 0.72f, 0.18f, 0.35f);
@@ -778,9 +809,7 @@ public class HealthBar : MonoBehaviour
             }
             if (_worldCamera != null)
             {
-                Vector3 toCamera = _worldCamera.transform.position - transform.position;
-                if (toCamera.sqrMagnitude > 0.001f)
-                    transform.rotation = Quaternion.LookRotation(toCamera, Vector3.up);
+                transform.rotation = Quaternion.LookRotation(_worldCamera.transform.forward, Vector3.up);
             }
         }
         else
@@ -981,7 +1010,7 @@ public class HealthBar : MonoBehaviour
             _root.anchorMax = new Vector2(0.5f, 0.5f);
             _root.pivot = new Vector2(0.5f, 0.5f);
             _root.sizeDelta = new Vector2(_barWidth, _barHeight);
-            _root.localScale = Vector3.one * 0.01f;
+            _root.localScale = Vector3.one * (barType == BarType.Boss ? 0.008f : 0.01f);
 
             _worldCanvas = GetComponent<Canvas>();
             if (_worldCanvas == null) _worldCanvas = gameObject.AddComponent<Canvas>();

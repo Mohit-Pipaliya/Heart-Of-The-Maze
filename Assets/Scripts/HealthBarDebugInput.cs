@@ -14,14 +14,20 @@ public class HealthBarDebugInput : MonoBehaviour
     {
         if (Input.GetKeyDown(KeyCode.D))
         {
+            if (PlayerController.Instance != null)
+                PlayerController.Instance.TakeDamage(Mathf.Max(1, (int)(PlayerController.Instance.MaxHealth * 0.15f)));
             ApplyToBars(bar => bar.SetHealth(bar.CurrentHealth - bar.MaxHealth * 0.15f));
         }
         else if (Input.GetKeyDown(KeyCode.H))
         {
+            if (PlayerController.Instance != null)
+                PlayerController.Instance.Heal(Mathf.Max(1, (int)(PlayerController.Instance.MaxHealth * 0.25f)));
             ApplyToBars(bar => bar.SetHealth(bar.CurrentHealth + bar.MaxHealth * 0.25f));
         }
         else if (Input.GetKeyDown(KeyCode.R))
         {
+            if (PlayerController.Instance != null)
+                PlayerController.Instance.ResetHealth();
             ApplyToBars(bar => bar.SetHealth(bar.MaxHealth));
         }
     }

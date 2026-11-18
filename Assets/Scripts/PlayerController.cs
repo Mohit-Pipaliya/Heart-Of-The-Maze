@@ -166,6 +166,7 @@ public class PlayerController : MonoBehaviour
     private bool _isEquipping     = false;   // Busy playing equip/unequip animation
     private bool _isSequenceRunning = false; // Busy running a full unequip->equip sequence
     private int  _health;
+    private HealthBar _playerHealthBar;
 
     private float _nextFireTime = 0f;
     private float _lastFireTime = -10f; // Track when the last shot was fired
@@ -289,6 +290,7 @@ public class PlayerController : MonoBehaviour
 
     private void Start()
     {
+        SetupPlayerHealthBar();
 #if UNITY_EDITOR
         EnsureZombieExists();
 #endif
@@ -1423,6 +1425,9 @@ public class PlayerController : MonoBehaviour
         _health -= damage;
         _health  = Mathf.Max(_health, 0);
 
+        if (_playerHealthBar != null)
+            _playerHealthBar.SetHealth(_health);
+
         if (_health <= 0)
         {
             Die();
@@ -1437,10 +1442,107 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Restores player health up to maxHealth.
+    /// </summary>
+    public void Heal(int amount)
+    {
+        if (_isDead || amount <= 0) return;
+        _health = Mathf.Min(_health + amount, maxHealth);
+        if (_playerHealthBar != null)
+            _playerHealthBar.SetHealth(_health);
+    }
+
+    public void ResetHealth()
+    {
+        _health = maxHealth;
+        _isDead = false;
+        if (_playerHealthBar != null)
+        {
+            _playerHealthBar.SetMaxHealth(maxHealth);
+            _playerHealthBar.SetHealth(_health);
+        }
+    }
+
+    private void SetupPlayerHealthBar()
+    {
+        // 1. Check if there is an existing Player HealthBar in the scene
+        HealthBar[] allBars = FindObjectsByType<HealthBar>(FindObjectsSortMode.None);
+        foreach (var bar in allBars)
+        {
+            if (bar.barType == BarType.Player && !bar.IsWorldSpace)
+            {
+                _playerHealthBar = bar;
+                break;
+            }
+        }
+
+        // 2. If not found, create it cleanly on the Game UI Canvas!
+        if (_playerHealthBar == null)
+        {
+            Canvas targetCanvas = null;
+            Canvas[] allCanvases = FindObjectsByType<Canvas>(FindObjectsSortMode.None);
+            foreach (Canvas c in allCanvases)
+            {
+                if (c.renderMode != RenderMode.WorldSpace && c.gameObject.name == "Game UI")
+                {
+                    targetCanvas = c;
+                    break;
+                }
+            }
+            if (targetCanvas == null)
+            {
+                foreach (Canvas c in allCanvases)
+                {
+                    if (c.renderMode != RenderMode.WorldSpace)
+                    {
+                        targetCanvas = c;
+                        break;
+                    }
+                }
+            }
+            if (targetCanvas == null)
+            {
+                GameObject canvasObj = new GameObject("Player HUD Canvas", typeof(RectTransform), typeof(Canvas), typeof(UnityEngine.UI.CanvasScaler), typeof(UnityEngine.UI.GraphicRaycaster));
+                targetCanvas = canvasObj.GetComponent<Canvas>();
+                targetCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                targetCanvas.sortingOrder = 50;
+                UnityEngine.UI.CanvasScaler scaler = canvasObj.GetComponent<UnityEngine.UI.CanvasScaler>();
+                scaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                scaler.referenceResolution = new Vector2(1920, 1080);
+                scaler.matchWidthOrHeight = 0.5f;
+            }
+
+            GameObject barGO = new GameObject("Player Health Bar", typeof(RectTransform));
+            barGO.SetActive(false);
+            barGO.transform.SetParent(targetCanvas.transform, false);
+
+            RectTransform rt = (RectTransform)barGO.transform;
+            rt.anchorMin = new Vector2(0f, 1f);
+            rt.anchorMax = new Vector2(0f, 1f);
+            rt.pivot = new Vector2(0f, 1f);
+            rt.anchoredPosition = new Vector2(24f, -24f);
+            rt.sizeDelta = new Vector2(600f, 80f);
+
+            _playerHealthBar = barGO.AddComponent<HealthBar>();
+            _playerHealthBar.barType = BarType.Player;
+            barGO.SetActive(true);
+        }
+
+        if (_playerHealthBar != null)
+        {
+            _playerHealthBar.SetMaxHealth(maxHealth);
+            _playerHealthBar.SetHealth(_health);
+        }
+    }
+
     private void Die()
     {
         if (_isDead) return;
         _isDead = true;
+
+        if (_playerHealthBar != null)
+            _playerHealthBar.SetHealth(0);
 
         _velocity = Vector3.zero;
         GameAudio.PlayDeath(transform.position);

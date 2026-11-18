@@ -33,6 +33,13 @@ public class HumanSnakeEnemy : MonoBehaviour
     [SerializeField, Tooltip("Runtime active health (inspector me live dikhta hai)")]
     private float currentHealth;
 
+    [Header("─── Floating Health Bar (Boss Naga) ───────────────────────────")]
+    [Tooltip("HumanSnake ke upar floating BOSS health bar dikhaye")]
+    public bool showFloatingHealthBar = true;
+    [Tooltip("Bar kitna upar float kare snake ke center se (meters)")]
+    public float healthBarHeightOffset = 3.8f;
+    private HealthBar _floatingHealthBar;
+
     [Tooltip("Damage lagne par snake kitne second stun rahega (seconds)")]
     [Range(0f, 2f)]
     public float hitStunDuration = 0.35f;
@@ -293,6 +300,8 @@ public class HumanSnakeEnemy : MonoBehaviour
         SnapToGroundImmediate();
 
         FindPlayer();
+
+        SetupFloatingHealthBar();
 
         if (agent != null)
         {
@@ -806,6 +815,10 @@ public class HumanSnakeEnemy : MonoBehaviour
         currentHealth -= amount;
         Debug.Log($"<color=#FF2222><b>[Snake Hit!]</b></color> Damage: {amount} | HP: {Mathf.Max(0f, currentHealth)}/{maxHealth}");
 
+        // Update floating Boss health bar
+        if (_floatingHealthBar != null)
+            _floatingHealthBar.SetHealth(currentHealth);
+
         // Aggro if hit
         bool canAggro = territoryTrigger == null || IsPlayerInTerritory();
         if (canAggro && player != null && agent != null && agent.enabled)
@@ -868,12 +881,40 @@ public class HumanSnakeEnemy : MonoBehaviour
         }
     }
 
+    // ───────────────────────────────────────────────────────────────────────────
+    //  FLOATING BOSS HEALTH BAR
+    // ───────────────────────────────────────────────────────────────────────────
+
+    private void SetupFloatingHealthBar()
+    {
+        if (!showFloatingHealthBar) return;
+
+        GameObject barGO = new GameObject("Boss Health Bar", typeof(RectTransform));
+        barGO.SetActive(false);
+        barGO.transform.SetParent(transform, false);
+        barGO.transform.localPosition = Vector3.up * healthBarHeightOffset;
+
+        _floatingHealthBar = barGO.AddComponent<HealthBar>();
+        _floatingHealthBar.barType = BarType.Boss;
+        barGO.SetActive(true);
+
+        _floatingHealthBar.SetMaxHealth(maxHealth);
+        _floatingHealthBar.SetHealth(currentHealth);
+
+        if (player != null)
+            _floatingHealthBar.SetProximityTarget(player);
+    }
+
     public void Die()
     {
         if (isDead) return;
         isDead = true;
         _isAttacking = false;
         _isChasing = false;
+
+        // Notify floating Boss health bar
+        if (_floatingHealthBar != null)
+            _floatingHealthBar.SetEnemyDead();
 
         if (agent != null)
         {
