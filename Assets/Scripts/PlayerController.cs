@@ -198,6 +198,7 @@ public class PlayerController : MonoBehaviour
     private void Awake()
     {
         Instance = this;
+        try { if (!gameObject.CompareTag("Player")) gameObject.tag = "Player"; } catch {}
         if (swordDamage <= 0f) swordDamage = 200f;
         if (gunDamage <= 0f) gunDamage = 85f;
 

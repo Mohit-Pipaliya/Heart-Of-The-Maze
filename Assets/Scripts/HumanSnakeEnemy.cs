@@ -292,11 +292,7 @@ public class HumanSnakeEnemy : MonoBehaviour
 
         SnapToGroundImmediate();
 
-        if (player == null)
-        {
-            GameObject pObj = GameObject.FindGameObjectWithTag("Player");
-            if (pObj != null) player = pObj.transform;
-        }
+        FindPlayer();
 
         if (agent != null)
         {
@@ -427,9 +423,24 @@ public class HumanSnakeEnemy : MonoBehaviour
         return b.Contains(worldPoint);
     }
 
+    private void FindPlayer()
+    {
+        if (player != null) return;
+        PlayerController pc = FindFirstObjectByType<PlayerController>();
+        if (pc != null)
+        {
+            player = pc.transform;
+            return;
+        }
+        GameObject pObj = GameObject.FindGameObjectWithTag("Player");
+        if (pObj != null) player = pObj.transform;
+    }
+
     public bool IsPlayerInTerritory()
     {
-        if (territoryTrigger == null || player == null) return false;
+        if (player == null) FindPlayer();
+        if (player == null) return false;
+        if (territoryTrigger == null) return true;
 
         if (_triggerZone != null && _triggerZone.IsPlayerInside) return true;
 
@@ -538,25 +549,15 @@ public class HumanSnakeEnemy : MonoBehaviour
             }
         }
 
-        // Territory & Aggro Decision (Identical to SpiderEnemy)
+        // Territory & Aggro Decision (Player inside trigger area = chase, inside attackRange = attack)
         float distanceToPlayer = player != null ? Vector3.Distance(transform.position, player.position) : Mathf.Infinity;
         bool playerInTerritory = IsPlayerInTerritory();
 
-        bool shouldTargetPlayer;
-        if (territoryTrigger != null)
-        {
-            shouldTargetPlayer = playerInTerritory;
-        }
-        else
-        {
-            shouldTargetPlayer = (distanceToPlayer <= aggroDistance);
-        }
-
-        float effectiveAttackDistance = Mathf.Min(attackRange, Mathf.Max(stoppingDistance, 2.5f));
+        bool shouldTargetPlayer = territoryTrigger != null ? playerInTerritory : (distanceToPlayer <= aggroDistance);
 
         if (shouldTargetPlayer)
         {
-            if (distanceToPlayer <= effectiveAttackDistance)
+            if (distanceToPlayer <= attackRange)
             {
                 AttackPlayer();
             }
@@ -642,7 +643,7 @@ public class HumanSnakeEnemy : MonoBehaviour
         agent.isStopped = false;
         agent.speed = runSpeed;
         agent.acceleration = acceleration;
-        agent.stoppingDistance = Mathf.Min(stoppingDistance, Mathf.Max(1.5f, attackRange * 0.75f));
+        agent.stoppingDistance = Mathf.Max(1.0f, attackRange * 0.75f);
         agent.SetDestination(player.position);
 
         // Smooth look-at player

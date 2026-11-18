@@ -250,8 +250,8 @@ public static class PlateStandPrefabSyncEditor
 
             Transform doorTr = stand.targetDoor.transform;
 
-            // Offset in door local space: X = +40.4f (Right side), Z = +67.5f (Outside / in front)
-            Vector3 doorLocalOffset = new Vector3(40.4f, 0f, 67.5f);
+            // Directly outside the Secret Room Door (centered on door X=0, distance Z=+10m into approach corridor)
+            Vector3 doorLocalOffset = new Vector3(0f, 0f, 10.0f);
             Vector3 worldPos = doorTr.position + doorTr.TransformDirection(doorLocalOffset);
 
             float targetY = 4.1f;
@@ -268,8 +268,8 @@ public static class PlateStandPrefabSyncEditor
             }
             worldPos.y = targetY;
 
-            // Rotation facing approach corridor (door euler Y + 90)
-            float rotY = (doorTr.eulerAngles.y + 90f) % 360f;
+            // Rotation facing the player as they approach the Secret Room Door (facing opposite door forward)
+            float rotY = (doorTr.eulerAngles.y + 180f) % 360f;
             Quaternion worldRot = Quaternion.Euler(0f, rotY, 0f);
 
             Transform root = stand.transform;

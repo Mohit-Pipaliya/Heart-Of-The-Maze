@@ -1325,6 +1325,7 @@ public class PlateStandInteraction : MonoBehaviour
     private void CreateParticleBeacon(Transform parent, Color colPrimary, Color colSecondary)
     {
         GameObject psObj = new GameObject("StandPoint_BeaconParticles");
+        psObj.SetActive(false); // Inactive prevents autoplay warnings when setting duration
         psObj.transform.SetParent(parent, false);
         psObj.transform.localPosition = new Vector3(0f, 0.1f, 0f);
         psObj.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
@@ -1358,6 +1359,8 @@ public class PlateStandInteraction : MonoBehaviour
 
         var pRenderer = psObj.GetComponent<ParticleSystemRenderer>();
         pRenderer.material = CreateEmissiveMat(colPrimary, true);
+        psObj.SetActive(true);
+        _standPointParticles.Play();
     }
 
     private void DestroyStandPointMarker()
