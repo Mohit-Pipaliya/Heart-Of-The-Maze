@@ -463,7 +463,10 @@ public class GunShooter : MonoBehaviour
             if (bulletScript != null)
             {
                 bulletScript.damage = bulletDamage;
-                bulletScript.LaunchTo(impactPoint, aimedSpider, aimedZombie, bulletLifetime, fleshHitSound, groundHitSound);
+                if (_pendingSnakeTarget != null)
+                    bulletScript.LaunchTo(impactPoint, aimedSpider, aimedZombie, _pendingSnakeTarget, bulletLifetime, fleshHitSound, groundHitSound);
+                else
+                    bulletScript.LaunchTo(impactPoint, aimedSpider, aimedZombie, bulletLifetime, fleshHitSound, groundHitSound);
             }
         }
 
@@ -535,6 +538,9 @@ public class GunShooter : MonoBehaviour
 
         RaycastHit[] hits = Physics.RaycastAll(ray, 500f, ~0, QueryTriggerInteraction.Collide);
         System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+
+        HumanSnakeEnemy aimedSnake = null;
+
         for (int i = 0; i < hits.Length; i++)
         {
             Collider col = hits[i].collider;
@@ -542,22 +548,82 @@ public class GunShooter : MonoBehaviour
             if (col.transform.IsChildOf(transform)) continue;
             if (col.GetComponentInParent<PlayerController>() != null) continue;
             if (col.GetComponentInParent<GunShooter>() != null) continue;
-            if (col.isTrigger && col.GetComponentInParent<SpiderEnemy>() == null && col.GetComponentInParent<ZombieAI>() == null)
+            if (col.isTrigger &&
+                col.GetComponentInParent<SpiderEnemy>() == null &&
+                col.GetComponentInParent<ZombieAI>() == null &&
+                col.GetComponentInParent<HumanSnakeEnemy>() == null)
                 continue;
 
             best = hits[i].distance;
             impactPoint = hits[i].point;
             spider = col.GetComponentInParent<SpiderEnemy>() ?? col.GetComponentInChildren<SpiderEnemy>();
             zombie = col.GetComponentInParent<ZombieAI>() ?? col.GetComponentInChildren<ZombieAI>();
+            aimedSnake = col.GetComponentInParent<HumanSnakeEnemy>() ?? col.GetComponentInChildren<HumanSnakeEnemy>();
             break;
         }
 
-        ConsiderEnemyBounds(ray, ref best, ref impactPoint, ref spider, ref zombie);
+        ConsiderEnemyBoundsWithSnake(ray, ref best, ref impactPoint, ref spider, ref zombie, ref aimedSnake);
 
         if (spider != null && !spider.IsDead)
             impactPoint = BodyCenter(spider.transform);
         else if (zombie != null && !zombie.IsDead)
             impactPoint = BodyCenter(zombie.transform);
+        else if (aimedSnake != null && !aimedSnake.IsDead)
+            impactPoint = BodyCenter(aimedSnake.transform);
+
+        // Pass snake to bullet via LaunchTo (via Fire())
+        // Store for Fire() to use
+        _pendingSnakeTarget = aimedSnake;
+    }
+
+    private HumanSnakeEnemy _pendingSnakeTarget;
+
+    private static void ConsiderEnemyBoundsWithSnake(Ray ray, ref float best, ref Vector3 impactPoint, ref SpiderEnemy spider, ref ZombieAI zombie, ref HumanSnakeEnemy snake)
+    {
+        ZombieAI[] zombies = Object.FindObjectsByType<ZombieAI>(FindObjectsSortMode.None);
+        for (int i = 0; i < zombies.Length; i++)
+        {
+            ZombieAI z = zombies[i];
+            if (z == null || z.IsDead) continue;
+            if (!BodyBounds(z.transform, out Bounds bounds)) continue;
+            if (!bounds.IntersectRay(ray, out float dist)) continue;
+            if (dist < 0.2f || dist >= best) continue;
+            best = dist;
+            zombie = z;
+            spider = null;
+            snake = null;
+            impactPoint = bounds.center;
+        }
+
+        SpiderEnemy[] spiders = Object.FindObjectsByType<SpiderEnemy>(FindObjectsSortMode.None);
+        for (int i = 0; i < spiders.Length; i++)
+        {
+            SpiderEnemy s = spiders[i];
+            if (s == null || s.IsDead) continue;
+            if (!BodyBounds(s.transform, out Bounds bounds)) continue;
+            if (!bounds.IntersectRay(ray, out float dist)) continue;
+            if (dist < 0.2f || dist >= best) continue;
+            best = dist;
+            spider = s;
+            zombie = null;
+            snake = null;
+            impactPoint = bounds.center;
+        }
+
+        HumanSnakeEnemy[] snakes = Object.FindObjectsByType<HumanSnakeEnemy>(FindObjectsSortMode.None);
+        for (int i = 0; i < snakes.Length; i++)
+        {
+            HumanSnakeEnemy sn = snakes[i];
+            if (sn == null || sn.IsDead) continue;
+            if (!BodyBounds(sn.transform, out Bounds bounds)) continue;
+            if (!bounds.IntersectRay(ray, out float dist)) continue;
+            if (dist < 0.2f || dist >= best) continue;
+            best = dist;
+            snake = sn;
+            spider = null;
+            zombie = null;
+            impactPoint = bounds.center;
+        }
     }
 
     private static void ConsiderEnemyBounds(Ray ray, ref float best, ref Vector3 impactPoint, ref SpiderEnemy spider, ref ZombieAI zombie)

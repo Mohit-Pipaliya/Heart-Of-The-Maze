@@ -123,6 +123,7 @@ public class Bullet : MonoBehaviour
     private bool _flyToPoint;
     private SpiderEnemy _lockedSpider;
     private ZombieAI _lockedZombie;
+    private HumanSnakeEnemy _lockedSnake;
     private Vector3 _spawnPos;
 
     public void LaunchTo(Vector3 destination, SpiderEnemy spider, ZombieAI zombie, float lifetime, AudioClip fleshSfx = null, AudioClip groundSfx = null)
@@ -140,6 +141,13 @@ public class Bullet : MonoBehaviour
         if (groundSfx != null) groundHitSound = groundSfx;
         DrawTracer();
         Destroy(gameObject, lifetime);
+    }
+
+    // Overload to also lock onto HumanSnakeEnemy
+    public void LaunchTo(Vector3 destination, SpiderEnemy spider, ZombieAI zombie, HumanSnakeEnemy snake, float lifetime, AudioClip fleshSfx = null, AudioClip groundSfx = null)
+    {
+        _lockedSnake = snake;
+        LaunchTo(destination, spider, zombie, lifetime, fleshSfx, groundSfx);
     }
 
     public void Launch(Vector3 direction, float speed, float lifetime, AudioClip fleshSfx = null, AudioClip groundSfx = null)
@@ -201,7 +209,9 @@ public class Bullet : MonoBehaviour
                     bool isEnemy = hitCol.GetComponentInParent<SpiderEnemy>() != null ||
                                    hitCol.GetComponentInParent<ZombieAI>() != null ||
                                    hitCol.GetComponentInChildren<SpiderEnemy>() != null ||
-                                   hitCol.GetComponentInChildren<ZombieAI>() != null;
+                                   hitCol.GetComponentInChildren<ZombieAI>() != null ||
+                                   hitCol.GetComponentInParent<HumanSnakeEnemy>() != null ||
+                                   hitCol.GetComponentInChildren<HumanSnakeEnemy>() != null;
                     if (!isEnemy) continue;
                 }
 
@@ -237,7 +247,10 @@ public class Bullet : MonoBehaviour
             ZombieAI zombie = col.GetComponentInParent<ZombieAI>();
             if ((_lockedSpider != null && spider == _lockedSpider) || (_lockedZombie != null && zombie == _lockedZombie))
                 continue;
-            if (col.isTrigger && spider == null && zombie == null)
+            HumanSnakeEnemy snakeBlockCheck = col.GetComponentInParent<HumanSnakeEnemy>();
+            if (_lockedSnake != null && snakeBlockCheck == _lockedSnake)
+                continue;
+            if (col.isTrigger && spider == null && zombie == null && snakeBlockCheck == null)
                 continue;
 
             float remain = Vector3.Distance(hits[i].point, _destination);
@@ -273,6 +286,13 @@ public class Bullet : MonoBehaviour
             GameAudio.PlayBulletHit(point, true);
             VFXUtil.GunFleshHit(point, normal);
         }
+        else if (_lockedSnake != null && !_lockedSnake.IsDead)
+        {
+            _lockedSnake.TakeDamage(Mathf.Max(damage, 1f), point, normal);
+            if (GunShooter.Instance != null) GunShooter.Instance.RegisterHitMarker(_lockedSnake.IsDead);
+            GameAudio.PlayBulletHit(point, true);
+            VFXUtil.GunFleshHit(point, normal);
+        }
         else
         {
             GameAudio.PlayBulletHit(point, false);
@@ -300,7 +320,9 @@ public class Bullet : MonoBehaviour
                 bool isEnemyTrigger = hitCollider.GetComponentInParent<SpiderEnemy>() != null ||
                                       hitCollider.GetComponentInParent<ZombieAI>() != null ||
                                       hitCollider.GetComponentInChildren<SpiderEnemy>() != null ||
-                                      hitCollider.GetComponentInChildren<ZombieAI>() != null;
+                                      hitCollider.GetComponentInChildren<ZombieAI>() != null ||
+                                      hitCollider.GetComponentInParent<HumanSnakeEnemy>() != null ||
+                                      hitCollider.GetComponentInChildren<HumanSnakeEnemy>() != null;
                 if (!isEnemyTrigger) return;
             }
         }
@@ -316,7 +338,16 @@ public class Bullet : MonoBehaviour
         }
 
         ZombieAI zombie = hitCollider != null ? (hitCollider.GetComponentInParent<ZombieAI>() ?? hitCollider.GetComponentInChildren<ZombieAI>() ?? hitCollider.transform.root.GetComponentInChildren<ZombieAI>()) : null;
-        bool isEnemy = (spider != null) || (zombie != null);
+
+        HumanSnakeEnemy snake = hitCollider != null ? (hitCollider.GetComponentInParent<HumanSnakeEnemy>() ?? hitCollider.GetComponentInChildren<HumanSnakeEnemy>() ?? hitCollider.transform.root.GetComponentInChildren<HumanSnakeEnemy>()) : null;
+        if (snake == null && hitCollider != null && (hitCollider.gameObject.name.IndexOf("Snake", System.StringComparison.OrdinalIgnoreCase) >= 0 || hitCollider.transform.root.gameObject.name.IndexOf("Snake", System.StringComparison.OrdinalIgnoreCase) >= 0 || hitCollider.transform.root.gameObject.name.IndexOf("HumanSnake", System.StringComparison.OrdinalIgnoreCase) >= 0))
+        {
+            snake = Object.FindAnyObjectByType<HumanSnakeEnemy>();
+            if (snake != null && Vector3.Distance(point, snake.transform.position) > 50f)
+                snake = null;
+        }
+
+        bool isEnemy = (spider != null) || (zombie != null) || (snake != null);
 
         if (isEnemy)
         {
@@ -331,6 +362,11 @@ public class Bullet : MonoBehaviour
             {
                 zombie.TakeDamage(effectiveDamage, point, normal);
                 isKill = zombie.IsDead;
+            }
+            else if (snake != null)
+            {
+                snake.TakeDamage(effectiveDamage, point, normal);
+                isKill = snake.IsDead;
             }
 
             if (GunShooter.Instance != null)

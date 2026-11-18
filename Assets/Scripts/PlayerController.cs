@@ -1163,6 +1163,22 @@ public class PlayerController : MonoBehaviour
                 }
             }
 
+            // ── HumanSnakeEnemy sword damage ──
+            HumanSnakeEnemy[] sceneSnakes = FindObjectsByType<HumanSnakeEnemy>(FindObjectsSortMode.None);
+            for (int snIdx = 0; snIdx < sceneSnakes.Length; snIdx++)
+            {
+                HumanSnakeEnemy sn = sceneSnakes[snIdx];
+                if (sn == null || sn.IsDead || hitEnemies.Contains(sn.gameObject)) continue;
+
+                if (BladeHits(sn.transform, out Vector3 contactPoint))
+                {
+                    hitEnemies.Add(sn.gameObject);
+                    connectedAnyHit = true;
+                    sn.TakeDamage(damage, contactPoint, -transform.forward);
+                    TriggerSwordHitFeel(contactPoint, -transform.forward, sn.IsDead);
+                }
+            }
+
             yield return null;
         }
 
@@ -1170,13 +1186,15 @@ public class PlayerController : MonoBehaviour
         if (!connectedAnyHit)
         {
             Vector3 chestOrigin = transform.position + Vector3.up * 1.0f;
-            if (Physics.SphereCast(chestOrigin, 0.85f, transform.forward, out RaycastHit directHit, 3.2f, ~0, QueryTriggerInteraction.Collide))
+            // Larger sphere radius (1.8f) to handle scaled enemies like HumanSnakeEnemy (12x scale)
+            if (Physics.SphereCast(chestOrigin, 1.8f, transform.forward, out RaycastHit directHit, 6.0f, ~0, QueryTriggerInteraction.Collide))
             {
                 Collider col = directHit.collider;
                 if (col != null && !col.transform.IsChildOf(transform))
                 {
                     SpiderEnemy spider = col.GetComponentInParent<SpiderEnemy>() ?? col.GetComponentInChildren<SpiderEnemy>() ?? col.transform.root.GetComponentInChildren<SpiderEnemy>();
                     ZombieAI zombie = col.GetComponentInParent<ZombieAI>() ?? col.GetComponentInChildren<ZombieAI>() ?? col.transform.root.GetComponentInChildren<ZombieAI>();
+                    HumanSnakeEnemy snake = col.GetComponentInParent<HumanSnakeEnemy>() ?? col.GetComponentInChildren<HumanSnakeEnemy>() ?? col.transform.root.GetComponentInChildren<HumanSnakeEnemy>();
 
                     if (spider != null && !spider.IsDead && !hitEnemies.Contains(spider.gameObject))
                     {
@@ -1191,6 +1209,13 @@ public class PlayerController : MonoBehaviour
                         connectedAnyHit = true;
                         zombie.TakeDamage(damage, directHit.point, directHit.normal);
                         TriggerSwordHitFeel(directHit.point, directHit.normal, zombie.IsDead);
+                    }
+                    else if (snake != null && !snake.IsDead && !hitEnemies.Contains(snake.gameObject))
+                    {
+                        hitEnemies.Add(snake.gameObject);
+                        connectedAnyHit = true;
+                        snake.TakeDamage(damage, directHit.point, directHit.normal);
+                        TriggerSwordHitFeel(directHit.point, directHit.normal, snake.IsDead);
                     }
                 }
             }
