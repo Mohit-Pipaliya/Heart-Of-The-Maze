@@ -38,6 +38,11 @@ public class HealthBar : MonoBehaviour
     public Sprite endCapRight;
     public Sprite icon;
 
+    [Header("World Space Sizing")]
+    [Tooltip("World space health bar scale multiplier (1.0 = normal, 2.0 = double size, 3.0 = bada)")]
+    [Range(0.2f, 10f)]
+    public float worldScale = 2.0f;
+
     private const int ParticlePoolSize = 24;
     private const float DamageFillDuration = 0.3f;
     private const float DamageGhostDelay = 0.5f;
@@ -214,6 +219,14 @@ public class HealthBar : MonoBehaviour
         }
     }
 
+    private void OnValidate()
+    {
+        if (_root != null && _isWorldSpace)
+        {
+            ApplyWorldScale();
+        }
+    }
+
     private void Update()
     {
         if (!_built)
@@ -254,16 +267,15 @@ public class HealthBar : MonoBehaviour
         if (_customAnchor != null)
         {
             transform.position = _customAnchor.position;
-            Camera cam = _worldCamera != null ? _worldCamera : Camera.main;
-            if (cam != null)
-                transform.rotation = Quaternion.LookRotation(cam.transform.forward, Vector3.up);
-            return;
+        }
+        else if (_anchor != null)
+        {
+            transform.position = _anchor.position + Vector3.up * _headGap;
         }
 
-        if (_anchor != null)
-        {
-            SnapAboveAnchor();
-        }
+        Camera cam = _worldCamera != null ? _worldCamera : Camera.main;
+        if (cam != null)
+            transform.rotation = Quaternion.LookRotation(cam.transform.forward, Vector3.up);
     }
 
     public void SetMaxHealth(float maxHealth)
@@ -417,23 +429,41 @@ public class HealthBar : MonoBehaviour
     }
 
     /// <summary>
+    /// Live scale multiplier updater (called when changing Inspector slider).
+    /// </summary>
+    public void SetWorldScale(float scale)
+    {
+        worldScale = Mathf.Max(0.1f, scale);
+        ApplyWorldScale();
+    }
+
+    public void ApplyWorldScale()
+    {
+        if (_root == null) return;
+        float baseFactor = barType == BarType.Boss ? 0.008f : 0.01f;
+        float s = baseFactor * worldScale;
+        _root.localScale = new Vector3(s, s, s);
+        _baseScale = _root.localScale;
+    }
+
+    /// <summary>
     /// Locks this health bar directly to a custom empty GameObject anchor (e.g. "healthbar position").
     /// Stays at that anchor's position, billboard-faces the camera, and scales cleanly in world space.
     /// </summary>
-    public void SetCustomAnchor(Transform anchorTransform, float worldWidth = 1.8f)
+    public void SetCustomAnchor(Transform anchorTransform, float scaleMultiplier = 2.0f)
     {
         _customAnchor = anchorTransform;
         _anchor = anchorTransform;
         _trackedSubject = anchorTransform;
         _isWorldSpace = true;
-        _worldWidth = Mathf.Max(0.4f, worldWidth);
+        worldScale = scaleMultiplier;
 
         // Keep parented to anchor to move naturally with it
         transform.SetParent(anchorTransform, false);
         transform.localPosition = Vector3.zero;
 
         ConfigureWorldSpaceCanvas();
-        ApplyFollowScale();
+        ApplyWorldScale();
 
         _visibilityAlpha = 1f;
         if (_canvasGroup != null)
@@ -445,34 +475,51 @@ public class HealthBar : MonoBehaviour
     }
 
     /// <summary>
-    /// Locks this bar in world space, centered on the character, sitting just above the mesh.
-    /// worldWidth is the bar's width in metres. gapAboveHead is the clearance under the frame.
+    /// Locks this bar to an enemy root with a height offset and scale multiplier.
+    /// Follows enemy automatically and stays above ground.
     /// </summary>
-    public void AttachAbove(Transform anchor, float gapAboveHead, float worldWidth)
+    public void SetWorldPositionAnchor(Transform enemyRoot, float heightOffset, float scaleMultiplier = 2.0f)
+    {
+        _anchor = enemyRoot;
+        _trackedSubject = enemyRoot;
+        _customAnchor = null;
+        _isWorldSpace = true;
+        _headGap = heightOffset;
+        worldScale = scaleMultiplier;
+
+        transform.SetParent(enemyRoot, false);
+        transform.localPosition = new Vector3(0f, heightOffset, 0f);
+
+        ConfigureWorldSpaceCanvas();
+        ApplyWorldScale();
+
+        _visibilityAlpha = 1f;
+        if (_canvasGroup != null)
+            _canvasGroup.alpha = 1f;
+
+        Camera cam = _worldCamera != null ? _worldCamera : Camera.main;
+        if (cam != null)
+            transform.rotation = Quaternion.LookRotation(cam.transform.forward, Vector3.up);
+    }
+
+    /// <summary>
+    /// Locks this bar in world space above the character mesh with an explicit scale multiplier.
+    /// </summary>
+    public void AttachAbove(Transform anchor, float gapAboveHead, float scaleMultiplier = 2.0f)
     {
         _anchor = anchor;
         _trackedSubject = anchor;
-        _headGap = Mathf.Max(0.02f, gapAboveHead);
-        _worldWidth = Mathf.Max(0.4f, worldWidth);
+        _customAnchor = null;
+        _headGap = Mathf.Max(0.5f, gapAboveHead);
+        worldScale = scaleMultiplier;
         _anchorRenderers = null;
         _isWorldSpace = true;
 
-        if (anchor != null)
-        {
-            float span = 0f;
-            if (TryGetAnchorBounds(out Bounds bounds))
-                span = Mathf.Max(bounds.size.x, bounds.size.z);
-            if (span > _worldWidth * 1.35f)
-                _worldWidth = Mathf.Min(span * 0.5f, worldWidth * 2.1f);
-        }
+        transform.SetParent(anchor, false);
+        transform.localPosition = new Vector3(0f, _headGap, 0f);
 
-        if (transform.parent != null)
-            transform.SetParent(null, true);
-
-        _isWorldSpace = true;
         ConfigureWorldSpaceCanvas();
-        ApplyFollowScale();
-        SnapAboveAnchor();
+        ApplyWorldScale();
 
         _visibilityAlpha = 1f;
         if (_canvasGroup != null)
@@ -1264,7 +1311,7 @@ public class HealthBar : MonoBehaviour
             _root.anchorMax = new Vector2(0.5f, 0.5f);
             _root.pivot = new Vector2(0.5f, 0.5f);
             _root.sizeDelta = new Vector2(_barWidth, _barHeight);
-            _root.localScale = Vector3.one * (barType == BarType.Boss ? 0.008f : 0.01f);
+            ApplyWorldScale();
 
             _worldCanvas = GetComponent<Canvas>();
             if (_worldCanvas == null) _worldCanvas = gameObject.AddComponent<Canvas>();

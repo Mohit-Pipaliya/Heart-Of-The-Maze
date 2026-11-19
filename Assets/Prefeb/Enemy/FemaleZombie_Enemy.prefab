@@ -502,7 +502,7 @@ RectTransform:
   m_GameObject: {fileID: 6005529213310130547}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 0.00075, y: 0.00075, z: 0.00075}
+  m_LocalScale: {x: 0, y: 0, z: 0}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 5364431631970770185}
@@ -512,11 +512,11 @@ RectTransform:
   - {fileID: 867589318633219461}
   m_Father: {fileID: 2446065528648402206}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.5, y: 0.5}
-  m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 0.22000001}
-  m_SizeDelta: {x: 100, y: 100}
-  m_Pivot: {x: 0.5, y: 0.5}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
+  m_Pivot: {x: 0, y: 0}
 --- !u!223 &1580175896275576084
 Canvas:
   m_ObjectHideFlags: 0
@@ -526,7 +526,7 @@ Canvas:
   m_GameObject: {fileID: 6005529213310130547}
   m_Enabled: 1
   serializedVersion: 3
-  m_RenderMode: 2
+  m_RenderMode: 0
   m_Camera: {fileID: 0}
   m_PlaneDistance: 100
   m_PixelPerfect: 0
@@ -534,7 +534,7 @@ Canvas:
   m_OverrideSorting: 0
   m_OverridePixelPerfect: 0
   m_SortingBucketNormalizedSize: 0
-  m_VertexColorAlwaysGammaSpace: 0
+  m_VertexColorAlwaysGammaSpace: 1
   m_AdditionalShaderChannelsFlag: 0
   m_UpdateRectTransformForStandalone: 0
   m_SortingLayerID: 0
@@ -564,37 +564,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c50bef82cdc7440fa9a4a992fdbf242f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HealthBar
-  type: 1
-  _maxHealth: 1000
-  _currentHealth: 1000
+  barType: 1
   frame: {fileID: 0}
   fill: {fileID: 0}
   glow: {fileID: 0}
   endCapLeft: {fileID: 0}
   endCapRight: {fileID: 0}
   icon: {fileID: 0}
-  followTarget: {fileID: 2446065528648402206}
-  worldOffset: {x: 0, y: 2.2, z: 0}
-  maxVisibleDistance: 18
-  autoFadeDelay: 4
-  _rootRect: {fileID: 8445301566046352465}
-  _canvasGroup: {fileID: 7822958242560251501}
-  _glowImage: {fileID: 1382224331432261133}
-  _trackImage: {fileID: 907298478468021093}
-  _maskWindow: {fileID: 2276516925541829905}
-  _ghostImage: {fileID: 4111316811242616488}
-  _fillImage: {fileID: 3794296790713547854}
-  _sweepImage: {fileID: 7190679794479050864}
-  _segmentLinesImage: {fileID: 8917572739184732373}
-  _frameImage: {fileID: 6171388352028851132}
-  _iconImage: {fileID: 0}
-  _endCapLeftImage: {fileID: 0}
-  _endCapRightImage: {fileID: 0}
-  _flashOverlay: {fileID: 4079980862765364950}
-  _sparksPoolContainer: {fileID: 867589318633219461}
-  _vignetteOverlay: {fileID: 0}
-  _bossTitleText: {fileID: 0}
-  _bossTitlePlate: {fileID: 0}
 --- !u!1 &6173645502410293903
 GameObject:
   m_ObjectHideFlags: 0
@@ -820,6 +796,37 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
+--- !u!1 &8840479161902064097
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 549591241257107621}
+  m_Layer: 0
+  m_Name: healthbar Position
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &549591241257107621
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8840479161902064097}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -1, z: -0, w: 0}
+  m_LocalPosition: {x: 0.054187775, y: 1.8, z: 0.28}
+  m_LocalScale: {x: 0.1, y: 0.1, z: 0.1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 2446065528648402206}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &2772127053008855797
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -942,6 +949,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
       insertIndex: -1
       addedObject: {fileID: 8445301566046352465}
+    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 549591241257107621}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
       insertIndex: -1

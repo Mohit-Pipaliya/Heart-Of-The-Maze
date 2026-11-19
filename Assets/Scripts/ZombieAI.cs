@@ -91,9 +91,16 @@ public class ZombieAI : MonoBehaviour
     [Header("── Target Reference ──")]
     public Transform player;
 
-    [Header("── UI Feedback ──")]
-    [Tooltip("Show the world-space zombie health bar within 15m or for 4s after damage.")]
+    [Header("── Floating Health Bar ──")]
+    [Tooltip("Show the world-space zombie health bar.")]
     public bool showFloatingHealthBar = true;
+    [Tooltip("Health bar ka size / scale (1.0 = normal, 2.0 = double, 3.0 = bada)")]
+    [Range(0.5f, 8f)]
+    public float healthBarScale = 2.0f;
+    [Tooltip("Health bar kitna upar float kare (meters) agar custom anchor na ho")]
+    public float healthBarHeightOffset = 2.3f;
+    [Tooltip("Aapne jo 'healthbar position' empty object banaya hai usko yahan drag karein (ya script auto-detect karegi)")]
+    public Transform healthBarPosition;
 
     private NavMeshAgent _agent;
     private Animator _anim;
@@ -342,6 +349,8 @@ public class ZombieAI : MonoBehaviour
 
     private Transform FindHealthBarAnchor()
     {
+        if (healthBarPosition != null) return healthBarPosition;
+
         Transform[] children = GetComponentsInChildren<Transform>(true);
         for (int i = 0; i < children.Length; i++)
         {
@@ -352,6 +361,7 @@ public class ZombieAI : MonoBehaviour
                 (n.Contains("health") && n.Contains("anchor")) ||
                 n == "healthbar position" || n == "healthbar pos" || n == "healthbar_position")
             {
+                healthBarPosition = children[i];
                 return children[i];
             }
         }
@@ -385,17 +395,22 @@ public class ZombieAI : MonoBehaviour
 
         if (customAnchor != null)
         {
-            _floatingHealthBar.SetCustomAnchor(customAnchor, 1.6f);
+            _floatingHealthBar.SetCustomAnchor(customAnchor, healthBarScale);
         }
         else
         {
-            _floatingHealthBar.AttachAbove(transform, 0.12f, 1.6f);
+            _floatingHealthBar.SetWorldPositionAnchor(transform, healthBarHeightOffset, healthBarScale);
         }
     }
 
     private void Update()
     {
         if (_isDead) return;
+
+        if (_floatingHealthBar != null && !Mathf.Approximately(_floatingHealthBar.worldScale, healthBarScale))
+        {
+            _floatingHealthBar.SetWorldScale(healthBarScale);
+        }
 
         if (player == null)
         {

@@ -75,6 +75,37 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
+--- !u!1 &1641347045225759911
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 349027828891366419}
+  m_Layer: 0
+  m_Name: 'Healthbar Position '
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &349027828891366419
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1641347045225759911}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0.046532527, y: 1.995, z: 0.49782985}
+  m_LocalScale: {x: 0.11111111, y: 0.11111111, z: 0.11111111}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 166397231860646244}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2083959115677728397
 GameObject:
   m_ObjectHideFlags: 0
@@ -315,37 +346,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c50bef82cdc7440fa9a4a992fdbf242f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HealthBar
-  type: 1
-  _maxHealth: 1000
-  _currentHealth: 1000
+  barType: 1
   frame: {fileID: 0}
   fill: {fileID: 0}
   glow: {fileID: 0}
   endCapLeft: {fileID: 0}
   endCapRight: {fileID: 0}
   icon: {fileID: 0}
-  followTarget: {fileID: 166397231860646244}
-  worldOffset: {x: 0, y: 2.2, z: 0}
-  maxVisibleDistance: 18
-  autoFadeDelay: 4
-  _rootRect: {fileID: 8307477273240944546}
-  _canvasGroup: {fileID: 1638449623725185306}
-  _glowImage: {fileID: 5571406011402602129}
-  _trackImage: {fileID: 2193025220475090996}
-  _maskWindow: {fileID: 6084919552186878709}
-  _ghostImage: {fileID: 4668708873604088662}
-  _fillImage: {fileID: 3790163971820506515}
-  _sweepImage: {fileID: 8906174883151550243}
-  _segmentLinesImage: {fileID: 4088408019693027278}
-  _frameImage: {fileID: 3720315682122359479}
-  _iconImage: {fileID: 0}
-  _endCapLeftImage: {fileID: 0}
-  _endCapRightImage: {fileID: 0}
-  _flashOverlay: {fileID: 8570390633451715528}
-  _sparksPoolContainer: {fileID: 1732319569915810964}
-  _vignetteOverlay: {fileID: 0}
-  _bossTitleText: {fileID: 0}
-  _bossTitlePlate: {fileID: 0}
 --- !u!1 &5461570116180644485
 GameObject:
   m_ObjectHideFlags: 0
@@ -902,6 +909,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 921c870cb1eb34ca783b0caf250ab226, type: 3}
       insertIndex: -1
       addedObject: {fileID: 8307477273240944546}
+    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 921c870cb1eb34ca783b0caf250ab226, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 349027828891366419}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 921c870cb1eb34ca783b0caf250ab226, type: 3}
       insertIndex: -1

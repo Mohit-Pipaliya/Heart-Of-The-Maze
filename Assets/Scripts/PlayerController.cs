@@ -1531,6 +1531,7 @@ public class PlayerController : MonoBehaviour
 
         if (_playerHealthBar != null)
         {
+            _playerHealthBar.PinScreenTopLeft();
             _playerHealthBar.SetMaxHealth(maxHealth);
             _playerHealthBar.SetHealth(_health);
         }

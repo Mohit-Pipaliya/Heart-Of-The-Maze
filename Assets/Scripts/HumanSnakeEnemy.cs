@@ -36,8 +36,13 @@ public class HumanSnakeEnemy : MonoBehaviour
     [Header("─── Floating Health Bar (Boss Naga) ───────────────────────────")]
     [Tooltip("HumanSnake ke upar floating BOSS health bar dikhaye")]
     public bool showFloatingHealthBar = true;
-    [Tooltip("Bar kitna upar float kare snake ke center se (meters)")]
-    public float healthBarHeightOffset = 3.8f;
+    [Tooltip("Health bar ka size / scale (1.0 = normal, 2.0 = double, 3.0 = bada)")]
+    [Range(0.5f, 8f)]
+    public float healthBarScale = 2.5f;
+    [Tooltip("Health bar kitne meters upar float kare agar custom anchor na ho")]
+    public float healthBarHeightOffset = 5.5f;
+    [Tooltip("Aapne jo 'healthbar position' empty object banaya hai usko yahan drag karein (ya script auto-detect karegi)")]
+    public Transform healthBarPosition;
     private HealthBar _floatingHealthBar;
 
     [Tooltip("Damage lagne par snake kitne second stun rahega (seconds)")]
@@ -520,6 +525,11 @@ public class HumanSnakeEnemy : MonoBehaviour
             return;
         }
 
+        if (_floatingHealthBar != null && !Mathf.Approximately(_floatingHealthBar.worldScale, healthBarScale))
+        {
+            _floatingHealthBar.SetWorldScale(healthBarScale);
+        }
+
         ProcessTerrainAlignment();
 
         // Anti-Penetration: Player ko sirf tab push karo jab literally mesh ke andar ghus jaaye
@@ -895,6 +905,8 @@ public class HumanSnakeEnemy : MonoBehaviour
 
     private Transform FindHealthBarAnchor()
     {
+        if (healthBarPosition != null) return healthBarPosition;
+
         Transform[] children = GetComponentsInChildren<Transform>(true);
         for (int i = 0; i < children.Length; i++)
         {
@@ -905,6 +917,7 @@ public class HumanSnakeEnemy : MonoBehaviour
                 (n.Contains("health") && n.Contains("anchor")) ||
                 n == "healthbar position" || n == "healthbar pos" || n == "healthbar_position")
             {
+                healthBarPosition = children[i];
                 return children[i];
             }
         }
@@ -939,11 +952,11 @@ public class HumanSnakeEnemy : MonoBehaviour
 
         if (customAnchor != null)
         {
-            _floatingHealthBar.SetCustomAnchor(customAnchor, 3.5f);
+            _floatingHealthBar.SetCustomAnchor(customAnchor, healthBarScale);
         }
         else
         {
-            _floatingHealthBar.AttachAbove(transform, 0.4f, 3.5f);
+            _floatingHealthBar.SetWorldPositionAnchor(transform, healthBarHeightOffset, healthBarScale);
         }
     }
 

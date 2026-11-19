@@ -19,8 +19,13 @@ public class SpiderEnemy : MonoBehaviour
     [Header("─── Floating Health Bar ─────────────────────────────────────")]
     [Tooltip("Spider ke upar floating health bar dikhaye")]
     public bool showFloatingHealthBar = true;
-    [Tooltip("Bar kitna upar float kare spider ke center se (meters)")]
-    public float healthBarHeightOffset = 2.2f;
+    [Tooltip("Health bar ka size / scale (1.0 = normal, 2.0 = double, 3.0 = bada)")]
+    [Range(0.5f, 8f)]
+    public float healthBarScale = 2.5f;
+    [Tooltip("Health bar spider ke center se kitna upar rahega agar custom anchor na ho (meters)")]
+    public float healthBarHeightOffset = 4.8f;
+    [Tooltip("Aapne jo 'healthbar position' empty object banaya hai usko yahan drag karein (ya script auto-detect karegi)")]
+    public Transform healthBarPosition;
     private HealthBar _floatingHealthBar;
 
     [Tooltip("Damage lagne par spider kitne second stun rahega (seconds)")]
@@ -598,6 +603,11 @@ public class SpiderEnemy : MonoBehaviour
         _animSpeedTarget = agent != null && agent.enabled ? agent.velocity.magnitude : 0f;
         _animSpeedCurrent = Mathf.Lerp(_animSpeedCurrent, _animSpeedTarget, Time.deltaTime * 8f);
         if (anim != null) anim.SetFloat(hashSpeed, _animSpeedCurrent);
+
+        if (_floatingHealthBar != null && !Mathf.Approximately(_floatingHealthBar.worldScale, healthBarScale))
+        {
+            _floatingHealthBar.SetWorldScale(healthBarScale);
+        }
     }
 
     private System.Collections.IEnumerator CompleteOffMeshJump()
@@ -823,6 +833,8 @@ public class SpiderEnemy : MonoBehaviour
 
     private Transform FindHealthBarAnchor()
     {
+        if (healthBarPosition != null) return healthBarPosition;
+
         Transform[] children = GetComponentsInChildren<Transform>(true);
         for (int i = 0; i < children.Length; i++)
         {
@@ -833,6 +845,7 @@ public class SpiderEnemy : MonoBehaviour
                 (n.Contains("health") && n.Contains("anchor")) ||
                 n == "healthbar position" || n == "healthbar pos" || n == "healthbar_position")
             {
+                healthBarPosition = children[i];
                 return children[i];
             }
         }
@@ -867,11 +880,11 @@ public class SpiderEnemy : MonoBehaviour
 
         if (customAnchor != null)
         {
-            _floatingHealthBar.SetCustomAnchor(customAnchor, 1.8f);
+            _floatingHealthBar.SetCustomAnchor(customAnchor, healthBarScale);
         }
         else
         {
-            _floatingHealthBar.AttachAbove(transform, 0.15f, 1.8f);
+            _floatingHealthBar.SetWorldPositionAnchor(transform, healthBarHeightOffset, healthBarScale);
         }
     }
 
