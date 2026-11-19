@@ -291,6 +291,9 @@ public class PlayerController : MonoBehaviour
 
     private void Start()
     {
+        // Fall rescue ke liye starting position initialize karo
+        _lastGroundedPosition = transform.position;
+
         SetupPlayerHealthBar();
 #if UNITY_EDITOR
         EnsureZombieExists();
@@ -511,7 +514,9 @@ public class PlayerController : MonoBehaviour
     {
         if (_isDead) return;
 
-        // ── FALL RESCUE: Agar player terrain ke neeche chala jaye to warp karo ──
+        // ── FALL RESCUE: Sirf extreme void mein gire tab warp karo ──
+        // (Aggressive per-frame terrain check hata diya — sword attack ke dauraan
+        //  raycast ceiling/walls ko "ground" samajh leta tha aur player teleport ho jaata tha)
         if (!isFrozen && _cc != null && _cc.enabled)
         {
             if (transform.position.y < -15f)
@@ -524,16 +529,6 @@ public class PlayerController : MonoBehaviour
                 _cc.enabled = true;
                 _velocity.y = 0f;
                 Debug.LogWarning("[PlayerController] FALL RESCUE: Player was below -15m, warped back to last ground!");
-            }
-            else if (TrySampleGroundY(transform.position, out float gY) && transform.position.y < gY - 1.5f)
-            {
-                // Terrain ke andar ghus gaya — chhota correction
-                Vector3 fixPos = transform.position;
-                fixPos.y = gY + 0.1f;
-                _cc.enabled = false;
-                transform.position = fixPos;
-                _cc.enabled = true;
-                _velocity.y = 0f;
             }
         }
 
