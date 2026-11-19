@@ -148,7 +148,7 @@ public class HumanSnakeEnemy : MonoBehaviour
     public Transform player;
 
     [Header("─── Scene View Debug Gizmos ─────────────────────────────────")]
-    public bool showDebugGizmos = false;
+    public bool showDebugGizmos = true;
     public Color attackRangeColor = new Color(1f, 0.2f, 0.2f, 0.6f);
     public Color stoppingDistanceColor = new Color(0.2f, 1f, 0.4f, 0.6f);
     public Color aggroDistanceColor = new Color(1f, 0.9f, 0.2f, 0.35f);
@@ -375,7 +375,13 @@ public class HumanSnakeEnemy : MonoBehaviour
             BoxCollider box = hbObj.AddComponent<BoxCollider>();
             box.size = new Vector3(manualHitboxSize.x / sx, manualHitboxSize.y / sy, manualHitboxSize.z / sz);
             box.center = new Vector3(manualHitboxCenter.x / sx, manualHitboxCenter.y / sy, manualHitboxCenter.z / sz);
-            box.isTrigger = false;
+            box.isTrigger = true; // MUST BE TRIGGER so player is never blocked by invisible wall!
+        }
+        else
+        {
+            // Fix existing hitbox if it was saved as non-trigger
+            BoxCollider box = hb.GetComponent<BoxCollider>();
+            if (box != null) box.isTrigger = true;
         }
     }
 
@@ -384,12 +390,13 @@ public class HumanSnakeEnemy : MonoBehaviour
         CapsuleCollider cap = GetComponent<CapsuleCollider>();
         if (cap == null) cap = gameObject.AddComponent<CapsuleCollider>();
 
-        float sx = Mathf.Max(0.001f, transform.lossyScale.x);
-        float sy = Mathf.Max(0.001f, transform.lossyScale.y);
+        float sx = Mathf.Max(0.001f, Mathf.Abs(transform.lossyScale.x));
+        float sy = Mathf.Max(0.001f, Mathf.Abs(transform.lossyScale.y));
 
         cap.direction = 1;
-        cap.radius = bodyColliderRadius / sx;
-        cap.height = bodyColliderHeight / sy;
+        // Keep body collider radius sensible (~1.2m world space) so player can walk up to the boss
+        cap.radius = Mathf.Max(0.12f, bodyColliderRadius / sx);
+        cap.height = Mathf.Max(0.5f, bodyColliderHeight / sy);
         cap.center = new Vector3(0f, bodyColliderCenterY / sy, 0f);
         cap.isTrigger = false;
     }
@@ -484,7 +491,7 @@ public class HumanSnakeEnemy : MonoBehaviour
         float sz = Mathf.Max(0.01f, Mathf.Abs(transform.lossyScale.z));
         box.center = transform.InverseTransformPoint(world.center);
         box.size = new Vector3(world.size.x / sx, world.size.y / sy, world.size.z / sz);
-        box.isTrigger = false;
+        box.isTrigger = true;
     }
 
     private void EnsurePlayerCollision()
@@ -582,11 +589,14 @@ public class HumanSnakeEnemy : MonoBehaviour
         float distanceToPlayer = player != null ? Vector3.Distance(transform.position, player.position) : Mathf.Infinity;
         bool playerInTerritory = IsPlayerInTerritory();
 
-        bool shouldTargetPlayer = territoryTrigger != null ? playerInTerritory : (distanceToPlayer <= aggroDistance);
+        bool shouldTargetPlayer = (territoryTrigger != null && playerInTerritory) || (distanceToPlayer <= aggroDistance) || _isChasing;
+
+        // Effective melee attack reach (ensures snake strikes even if stoppingDistance or size offsets)
+        float effectiveAttackDistance = Mathf.Max(attackRange, stoppingDistance + 1.2f);
 
         if (shouldTargetPlayer)
         {
-            if (distanceToPlayer <= attackRange)
+            if (distanceToPlayer <= effectiveAttackDistance)
             {
                 AttackPlayer();
             }
@@ -779,20 +789,18 @@ public class HumanSnakeEnemy : MonoBehaviour
         // Wait until attack strikes
         yield return new WaitForSeconds(hitDelay);
 
-        if (!isDead && player != null && Vector3.Distance(transform.position, player.position) <= attackRange + damageReachTolerance)
+        float effectiveReach = Mathf.Max(attackRange, stoppingDistance + 1.2f) + damageReachTolerance;
+        if (!isDead && player != null && Vector3.Distance(transform.position, player.position) <= effectiveReach)
         {
-            if (territoryTrigger == null || IsPlayerInTerritory())
+            PlayerController pc = player.GetComponent<PlayerController>();
+            if (pc != null && !pc.IsDead)
             {
-                PlayerController pc = player.GetComponent<PlayerController>();
-                if (pc != null && !pc.IsDead)
+                pc.TakeDamage((int)damageToPlayer);
+                if (enableAudio) GameAudio.PlayBulletHit(player.position, true);
+                if (enableVFX)
                 {
-                    pc.TakeDamage((int)damageToPlayer);
-                    if (enableAudio) GameAudio.PlayBulletHit(player.position, true);
-                    if (enableVFX)
-                    {
-                        VFXUtil.Burst(player.position + Vector3.up * 1.1f, transform.forward,
-                            new Color(0.85f, 0.08f, 0.05f, 1f), 12, 4f, 10f, 0.06f, 0.16f, 0.15f, 0.3f, true, true, 1.5f, 30f);
-                    }
+                    VFXUtil.Burst(player.position + Vector3.up * 1.1f, transform.forward,
+                        new Color(0.85f, 0.08f, 0.05f, 1f), 12, 4f, 10f, 0.06f, 0.16f, 0.15f, 0.3f, true, true, 1.5f, 30f);
                 }
             }
         }
@@ -885,24 +893,58 @@ public class HumanSnakeEnemy : MonoBehaviour
     //  FLOATING BOSS HEALTH BAR
     // ───────────────────────────────────────────────────────────────────────────
 
+    private Transform FindHealthBarAnchor()
+    {
+        Transform[] children = GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < children.Length; i++)
+        {
+            if (children[i] == transform) continue;
+            string n = children[i].name.Trim().ToLowerInvariant();
+            if ((n.Contains("health") && n.Contains("pos")) ||
+                (n.Contains("healthbar") && n.Contains("pos")) ||
+                (n.Contains("health") && n.Contains("anchor")) ||
+                n == "healthbar position" || n == "healthbar pos" || n == "healthbar_position")
+            {
+                return children[i];
+            }
+        }
+        return null;
+    }
+
     private void SetupFloatingHealthBar()
     {
         if (!showFloatingHealthBar) return;
 
-        GameObject barGO = new GameObject("Boss Health Bar", typeof(RectTransform));
-        barGO.SetActive(false);
-        barGO.transform.SetParent(transform, false);
-        barGO.transform.localPosition = Vector3.up * healthBarHeightOffset;
+        Transform customAnchor = FindHealthBarAnchor();
 
-        _floatingHealthBar = barGO.AddComponent<HealthBar>();
-        _floatingHealthBar.barType = BarType.Boss;
-        barGO.SetActive(true);
+        _floatingHealthBar = GetComponentInChildren<HealthBar>(true);
+        if (_floatingHealthBar == null)
+        {
+            GameObject barGO = new GameObject("Boss Health Bar", typeof(RectTransform));
+            barGO.SetActive(false);
+            _floatingHealthBar = barGO.AddComponent<HealthBar>();
+            _floatingHealthBar.barType = BarType.Boss;
+            barGO.SetActive(true);
+        }
+        else if (_floatingHealthBar.barType != BarType.Boss)
+        {
+            _floatingHealthBar.SetBarType(BarType.Boss);
+        }
 
         _floatingHealthBar.SetMaxHealth(maxHealth);
         _floatingHealthBar.SetHealth(currentHealth);
 
         if (player != null)
             _floatingHealthBar.SetProximityTarget(player);
+
+        if (customAnchor != null)
+        {
+            _floatingHealthBar.SetCustomAnchor(customAnchor, 3.5f);
+        }
+        else
+        {
+            _floatingHealthBar.AttachAbove(transform, 0.4f, 3.5f);
+        }
     }
 
     public void Die()
@@ -1133,24 +1175,38 @@ public class HumanSnakeEnemy : MonoBehaviour
 
     private void OnDrawGizmosSelected()
     {
-        if (!showDebugGizmos) return;
-
-        Gizmos.color = attackRangeColor;
+        // 1. Attack Range (Red wire sphere + ground disc) - ALWAYS visible when selected!
+        Gizmos.color = new Color(1f, 0.2f, 0.2f, 0.85f);
         Gizmos.DrawWireSphere(transform.position, attackRange);
+        DrawWireDisc(transform.position + Vector3.up * 0.05f, attackRange, 32);
 
-        Gizmos.color = stoppingDistanceColor;
+        // 2. Stopping Distance (Green wire sphere)
+        Gizmos.color = new Color(0.2f, 1f, 0.4f, 0.75f);
         Gizmos.DrawWireSphere(transform.position, stoppingDistance);
+        DrawWireDisc(transform.position + Vector3.up * 0.05f, stoppingDistance, 24);
 
-        if (territoryTrigger == null)
-        {
-            Gizmos.color = aggroDistanceColor;
-            Gizmos.DrawWireSphere(transform.position, aggroDistance);
-        }
+        // 3. Aggro Distance (Yellow wire sphere)
+        Gizmos.color = new Color(1f, 0.9f, 0.2f, 0.5f);
+        Gizmos.DrawWireSphere(transform.position, aggroDistance);
 
         if (enableAntiPenetration)
         {
             Gizmos.color = safeDistanceColor;
             Gizmos.DrawWireSphere(transform.position, safeDistance);
+        }
+    }
+
+    private void DrawWireDisc(Vector3 center, float radius, int segments)
+    {
+        if (radius <= 0.01f || segments < 3) return;
+        float angleStep = 360f / segments;
+        Vector3 prev = center + new Vector3(Mathf.Sin(0) * radius, 0f, Mathf.Cos(0) * radius);
+        for (int i = 1; i <= segments; i++)
+        {
+            float rad = i * angleStep * Mathf.Deg2Rad;
+            Vector3 next = center + new Vector3(Mathf.Sin(rad) * radius, 0f, Mathf.Cos(rad) * radius);
+            Gizmos.DrawLine(prev, next);
+            prev = next;
         }
     }
 }

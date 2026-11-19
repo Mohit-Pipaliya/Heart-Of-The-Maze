@@ -340,21 +340,57 @@ public class ZombieAI : MonoBehaviour
         }
     }
 
+    private Transform FindHealthBarAnchor()
+    {
+        Transform[] children = GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < children.Length; i++)
+        {
+            if (children[i] == transform) continue;
+            string n = children[i].name.Trim().ToLowerInvariant();
+            if ((n.Contains("health") && n.Contains("pos")) ||
+                (n.Contains("healthbar") && n.Contains("pos")) ||
+                (n.Contains("health") && n.Contains("anchor")) ||
+                n == "healthbar position" || n == "healthbar pos" || n == "healthbar_position")
+            {
+                return children[i];
+            }
+        }
+        return null;
+    }
+
     private void SetupFloatingHealthBar()
     {
         if (!showFloatingHealthBar)
             return;
 
-        GameObject barObject = new GameObject("Zombie Health Bar", typeof(RectTransform));
-        barObject.SetActive(false);
-        barObject.transform.SetParent(transform, false);
-        barObject.transform.localPosition = Vector3.up * 2.1f;
-        _floatingHealthBar = barObject.AddComponent<HealthBar>();
-        _floatingHealthBar.barType = BarType.Zombie;
-        barObject.SetActive(true);
+        Transform customAnchor = FindHealthBarAnchor();
+
+        _floatingHealthBar = GetComponentInChildren<HealthBar>(true);
+        if (_floatingHealthBar == null)
+        {
+            GameObject barObject = new GameObject("Zombie Health Bar", typeof(RectTransform));
+            barObject.SetActive(false);
+            _floatingHealthBar = barObject.AddComponent<HealthBar>();
+            _floatingHealthBar.barType = BarType.Zombie;
+            barObject.SetActive(true);
+        }
+        else if (_floatingHealthBar.barType != BarType.Zombie)
+        {
+            _floatingHealthBar.SetBarType(BarType.Zombie);
+        }
+
         _floatingHealthBar.SetMaxHealth(maxHealth);
         _floatingHealthBar.SetHealth(_currentHealth);
         _floatingHealthBar.SetProximityTarget(player);
+
+        if (customAnchor != null)
+        {
+            _floatingHealthBar.SetCustomAnchor(customAnchor, 1.6f);
+        }
+        else
+        {
+            _floatingHealthBar.AttachAbove(transform, 0.12f, 1.6f);
+        }
     }
 
     private void Update()

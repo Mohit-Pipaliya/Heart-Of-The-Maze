@@ -561,23 +561,23 @@ public class SpiderEnemy : MonoBehaviour
         bool playerInTerritory = IsPlayerInTerritory();
 
         // Niyam:
-        // 1. Agar player trigger area me enter kare, spider ko chahe dikhe ya na dikhe,
-        //    spider turant usko dhundhte hue uske paas jayega aur attack karega.
-        // 2. Agar player trigger area se bahar nikal jaye, toh spider chase karna bandh kar dega aur attack nahi karega.
+        // 1. Agar player trigger area me enter kare — spider chase + attack karega
+        // 2. Agar aggroDistance ke andar aaye (even without territory) — bhi aggro hoga
+        // 3. Agar already chasing ho — tab bhi target karna band mat karo
         bool shouldTargetPlayer;
         if (territoryTrigger != null)
         {
-            shouldTargetPlayer = playerInTerritory;
+            // Territory trigger set hai: player andar ho ya aggroDistance ke andar ho
+            shouldTargetPlayer = playerInTerritory || distanceToPlayer <= aggroDistance || _isChasing;
         }
         else
         {
-            // Fallback agar territoryTrigger assign na ho
-            shouldTargetPlayer = (distanceToPlayer <= aggroDistance);
+            // Koi territory trigger nahi: aggroDistance use karo
+            shouldTargetPlayer = distanceToPlayer <= aggroDistance;
         }
 
-        // Effective melee attack range is close-quarters (stoppingDistance se striking distance)
-        // Chahe inspector me attackRange 30 ho, spider player ke paas daud kar aayega aur stopping distance pe attack karega
-        float effectiveAttackDistance = Mathf.Min(attackRange, Mathf.Max(stoppingDistance, 4.0f));
+        // Effective melee attack range: attackRange ya stoppingDistance me se jo zyada ho
+        float effectiveAttackDistance = Mathf.Max(stoppingDistance + 0.5f, attackRange);
 
         if (shouldTargetPlayer)
         {
@@ -726,19 +726,15 @@ public class SpiderEnemy : MonoBehaviour
 
         if (!isDead && player != null && Vector3.Distance(transform.position, player.position) <= attackRange + damageReachTolerance)
         {
-            // Player must still be inside territory if territory trigger is assigned
-            if (territoryTrigger == null || IsPlayerInTerritory())
+            PlayerController pc = player.GetComponent<PlayerController>();
+            if (pc != null && !pc.IsDead)
             {
-                PlayerController pc = player.GetComponent<PlayerController>();
-                if (pc != null && !pc.IsDead)
+                pc.TakeDamage((int)damageToPlayer);
+                if (enableAudio) GameAudio.PlayBulletHit(player.position, true);
+                if (enableVFX)
                 {
-                    pc.TakeDamage((int)damageToPlayer);
-                    if (enableAudio) GameAudio.PlayBulletHit(player.position, true);
-                    if (enableVFX)
-                    {
-                        VFXUtil.Burst(player.position + Vector3.up * 1.1f, transform.forward,
-                            new Color(0.8f, 0.08f, 0.05f, 1f), 12, 4f, 10f, 0.06f, 0.16f, 0.15f, 0.3f, true, true, 1.5f, 30f);
-                    }
+                    VFXUtil.Burst(player.position + Vector3.up * 1.1f, transform.forward,
+                        new Color(0.8f, 0.08f, 0.05f, 1f), 12, 4f, 10f, 0.06f, 0.16f, 0.15f, 0.3f, true, true, 1.5f, 30f);
                 }
             }
         }
@@ -825,24 +821,58 @@ public class SpiderEnemy : MonoBehaviour
     //  FLOATING HEALTH BAR
     // ───────────────────────────────────────────────────────────────────────────
 
+    private Transform FindHealthBarAnchor()
+    {
+        Transform[] children = GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < children.Length; i++)
+        {
+            if (children[i] == transform) continue;
+            string n = children[i].name.Trim().ToLowerInvariant();
+            if ((n.Contains("health") && n.Contains("pos")) ||
+                (n.Contains("healthbar") && n.Contains("pos")) ||
+                (n.Contains("health") && n.Contains("anchor")) ||
+                n == "healthbar position" || n == "healthbar pos" || n == "healthbar_position")
+            {
+                return children[i];
+            }
+        }
+        return null;
+    }
+
     private void SetupFloatingHealthBar()
     {
         if (!showFloatingHealthBar) return;
 
-        GameObject barGO = new GameObject("Spider Health Bar", typeof(RectTransform));
-        barGO.SetActive(false);
-        barGO.transform.SetParent(transform, false);
-        barGO.transform.localPosition = Vector3.up * healthBarHeightOffset;
+        Transform customAnchor = FindHealthBarAnchor();
 
-        _floatingHealthBar = barGO.AddComponent<HealthBar>();
-        _floatingHealthBar.barType = BarType.Spider;
-        barGO.SetActive(true);
+        _floatingHealthBar = GetComponentInChildren<HealthBar>(true);
+        if (_floatingHealthBar == null)
+        {
+            GameObject barGO = new GameObject("Spider Health Bar", typeof(RectTransform));
+            barGO.SetActive(false);
+            _floatingHealthBar = barGO.AddComponent<HealthBar>();
+            _floatingHealthBar.barType = BarType.Spider;
+            barGO.SetActive(true);
+        }
+        else if (_floatingHealthBar.barType != BarType.Spider)
+        {
+            _floatingHealthBar.SetBarType(BarType.Spider);
+        }
 
         _floatingHealthBar.SetMaxHealth(maxHealth);
         _floatingHealthBar.SetHealth(currentHealth);
 
         if (player != null)
             _floatingHealthBar.SetProximityTarget(player);
+
+        if (customAnchor != null)
+        {
+            _floatingHealthBar.SetCustomAnchor(customAnchor, 1.8f);
+        }
+        else
+        {
+            _floatingHealthBar.AttachAbove(transform, 0.15f, 1.8f);
+        }
     }
 
     private void Die()
@@ -1182,20 +1212,20 @@ public class SpiderEnemy : MonoBehaviour
 
     private void OnDrawGizmosSelected()
     {
-        if (!showDebugGizmos) return;
-
         Vector3 pos = transform.position;
 
-        // Attack Range (Red Wire Sphere)
-        Gizmos.color = attackRangeColor;
+        // Attack Range (Red Wire Sphere + Ground Disc) - ALWAYS visible when selected
+        Gizmos.color = new Color(1f, 0.2f, 0.2f, 0.85f);
         Gizmos.DrawWireSphere(pos, attackRange);
+        DrawWireDisc(pos + Vector3.up * 0.05f, attackRange, 32);
 
         // Stopping Distance (Green Wire Sphere)
-        Gizmos.color = stoppingDistanceColor;
+        Gizmos.color = new Color(0.2f, 1f, 0.4f, 0.75f);
         Gizmos.DrawWireSphere(pos, stoppingDistance);
+        DrawWireDisc(pos + Vector3.up * 0.05f, stoppingDistance, 24);
 
         // Aggro Distance (Yellow Wire Sphere)
-        Gizmos.color = aggroDistanceColor;
+        Gizmos.color = new Color(1f, 0.9f, 0.2f, 0.5f);
         Gizmos.DrawWireSphere(pos, aggroDistance);
 
         // Anti-Penetration Safe Distance (Blue Wire Sphere)
@@ -1210,6 +1240,20 @@ public class SpiderEnemy : MonoBehaviour
         {
             Gizmos.color = new Color(0.8f, 0.2f, 1f, 0.4f);
             Gizmos.DrawWireCube(territoryTrigger.bounds.center, territoryTrigger.bounds.size);
+        }
+    }
+
+    private void DrawWireDisc(Vector3 center, float radius, int segments)
+    {
+        if (radius <= 0.01f || segments < 3) return;
+        float angleStep = 360f / segments;
+        Vector3 prev = center + new Vector3(Mathf.Sin(0) * radius, 0f, Mathf.Cos(0) * radius);
+        for (int i = 1; i <= segments; i++)
+        {
+            float rad = i * angleStep * Mathf.Deg2Rad;
+            Vector3 next = center + new Vector3(Mathf.Sin(rad) * radius, 0f, Mathf.Cos(rad) * radius);
+            Gizmos.DrawLine(prev, next);
+            prev = next;
         }
     }
 }

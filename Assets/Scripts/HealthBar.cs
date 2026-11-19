@@ -27,6 +27,7 @@ public class HealthBar : MonoBehaviour
     public float MaxHealth => _maxHealth;
 
     [Header("Bar Settings")]
+    [UnityEngine.Serialization.FormerlySerializedAs("type")]
     public BarType barType = BarType.Player;
 
     [Header("Sprites (Optional overrides — empty uses procedural SVG art)")]
@@ -73,6 +74,12 @@ public class HealthBar : MonoBehaviour
     private CanvasGroup _canvasGroup;
     private Camera _worldCamera;
     private Transform _proximityTarget;
+    private Transform _trackedSubject;
+    private Transform _anchor;
+    private Transform _customAnchor;
+    private Renderer[] _anchorRenderers;
+    private float _headGap = 0.2f;
+    private float _worldWidth = 1.5f;
 
     private Image[] _segmentImages;
     private Image[] _particles;
@@ -156,40 +163,36 @@ public class HealthBar : MonoBehaviour
         if (_root == null)
             _root = gameObject.AddComponent<RectTransform>();
 
-        _baseAnchoredPosition = _root.anchoredPosition;
-        _baseScale = _root.localScale;
-
+        _isWorldSpace = false;
         switch (barType)
         {
             case BarType.Player:
-                _isWorldSpace = false;
                 _barWidth = 600f; _barHeight = 80f;
                 _windowX = 44f; _windowY = 28f; _windowWidth = 520f; _windowHeight = 26f;
                 BuildPlayerBar();
                 break;
 
             case BarType.Zombie:
-                _isWorldSpace = (GetComponentInParent<Canvas>() == null || GetComponentInParent<Canvas>().renderMode == RenderMode.WorldSpace);
                 _barWidth = 400f; _barHeight = 44f;
                 _windowX = 46f; _windowY = 14f; _windowWidth = 332f; _windowHeight = 16f;
                 BuildZombieBar();
                 break;
 
             case BarType.Spider:
-                _isWorldSpace = (GetComponentInParent<Canvas>() == null || GetComponentInParent<Canvas>().renderMode == RenderMode.WorldSpace);
                 _barWidth = 480f; _barHeight = 80f;
                 _windowX = 52f; _windowY = 18f; _windowWidth = 376f; _windowHeight = 24f;
                 BuildSpiderBar();
                 break;
 
             case BarType.Boss:
-                _isWorldSpace = (GetComponentInParent<Canvas>() == null || GetComponentInParent<Canvas>().renderMode == RenderMode.WorldSpace);
                 _barWidth = 700f; _barHeight = 96f;
                 _windowX = 100f; _windowY = 34f; _windowWidth = 500f; _windowHeight = 28f;
                 BuildBossBar();
                 break;
         }
 
+        _baseAnchoredPosition = _root.anchoredPosition;
+        _baseScale = _root.localScale;
         _built = true;
         SetMaxHealth(_maxHealth);
     }
@@ -235,6 +238,7 @@ public class HealthBar : MonoBehaviour
                 break;
 
             case BarType.Boss:
+                UpdateWorldVisibility();
                 UpdateBossEmbersAndEffects();
                 break;
         }
@@ -242,28 +246,50 @@ public class HealthBar : MonoBehaviour
         UpdateParticles();
     }
 
+    private void LateUpdate()
+    {
+        if (!_built)
+            return;
+
+        if (_customAnchor != null)
+        {
+            transform.position = _customAnchor.position;
+            Camera cam = _worldCamera != null ? _worldCamera : Camera.main;
+            if (cam != null)
+                transform.rotation = Quaternion.LookRotation(cam.transform.forward, Vector3.up);
+            return;
+        }
+
+        if (_anchor != null)
+        {
+            SnapAboveAnchor();
+        }
+    }
+
     public void SetMaxHealth(float maxHealth)
     {
-        ValidateHealthValue(maxHealth, nameof(maxHealth));
-        if (maxHealth <= 0f)
-            throw new ArgumentOutOfRangeException(nameof(maxHealth), "Maximum health must be greater than zero.");
+        if (float.IsNaN(maxHealth) || float.IsInfinity(maxHealth) || maxHealth <= 0f)
+            maxHealth = 1f;
 
         _maxHealth = maxHealth;
-        _targetHealth = maxHealth;
-        _displayHealth = maxHealth;
-        _displayStartHealth = maxHealth;
-        _ghostHealth = maxHealth;
-        _ghostStartHealth = maxHealth;
+        _targetHealth = Mathf.Clamp(_targetHealth, 0f, _maxHealth);
+        _displayHealth = _targetHealth;
+        _displayStartHealth = _targetHealth;
+        _ghostHealth = _targetHealth;
+        _ghostStartHealth = _targetHealth;
         _fillElapsed = 0f;
         _ghostElapsed = 0f;
         _ghostIsAnimating = false;
-        _prevHealthRatio = 1f;
+        _prevHealthRatio = Mathf.Clamp01(_targetHealth / _maxHealth);
         RefreshBarWidths();
     }
 
     public void SetHealth(float health)
     {
-        ValidateHealthValue(health, nameof(health));
+        if (float.IsNaN(health) || float.IsInfinity(health))
+            return;
+        if (_maxHealth <= 0f)
+            _maxHealth = 1f;
         float nextHealth = Mathf.Clamp(health, 0f, _maxHealth);
         if (Mathf.Approximately(nextHealth, _targetHealth))
             return;
@@ -325,9 +351,132 @@ public class HealthBar : MonoBehaviour
         _prevHealthRatio = newRatio;
     }
 
+    /// <summary>
+    /// Screen-space player bar: top-left of the HUD, matching the reference layout.
+    /// </summary>
+    public void PinScreenTopLeft()
+    {
+        RectTransform rt = transform as RectTransform;
+        if (rt == null)
+            return;
+
+        rt.anchorMin = new Vector2(0f, 1f);
+        rt.anchorMax = new Vector2(0f, 1f);
+        rt.pivot = new Vector2(0f, 1f);
+        rt.anchoredPosition = new Vector2(24f, -24f);
+        rt.sizeDelta = new Vector2(600f, 80f);
+        rt.localScale = Vector3.one;
+        _baseAnchoredPosition = rt.anchoredPosition;
+        _baseScale = rt.localScale;
+    }
+
+    /// <summary>
+    /// Screen-space Naga bar: bottom-center, 700x96, title plate sitting just above the frame.
+    /// </summary>
+    public void PinScreenBottomCenter()
+    {
+        _isWorldSpace = false;
+        _anchor = null;
+
+        Canvas ownCanvas = GetComponent<Canvas>();
+        if (ownCanvas != null && ownCanvas.renderMode == RenderMode.WorldSpace)
+            ownCanvas.enabled = false;
+
+        RectTransform rt = transform as RectTransform;
+        if (rt == null)
+            return;
+
+        rt.anchorMin = new Vector2(0.5f, 0f);
+        rt.anchorMax = new Vector2(0.5f, 0f);
+        rt.pivot = new Vector2(0.5f, 0f);
+        rt.anchoredPosition = new Vector2(0f, 28f);
+        rt.sizeDelta = new Vector2(700f, 96f);
+        rt.localScale = Vector3.one;
+        rt.localRotation = Quaternion.identity;
+        _baseAnchoredPosition = rt.anchoredPosition;
+        _baseScale = rt.localScale;
+
+        if (_canvasGroup == null)
+            _canvasGroup = GetComponent<CanvasGroup>();
+        if (_canvasGroup == null)
+            _canvasGroup = gameObject.AddComponent<CanvasGroup>();
+        _canvasGroup.interactable = false;
+        _canvasGroup.blocksRaycasts = false;
+        _canvasGroup.alpha = 1f;
+        _visibilityAlpha = 1f;
+    }
+
+    public void SetTrackedSubject(Transform subject)
+    {
+        _trackedSubject = subject;
+    }
+
     public void SetProximityTarget(Transform target)
     {
         _proximityTarget = target;
+    }
+
+    /// <summary>
+    /// Locks this health bar directly to a custom empty GameObject anchor (e.g. "healthbar position").
+    /// Stays at that anchor's position, billboard-faces the camera, and scales cleanly in world space.
+    /// </summary>
+    public void SetCustomAnchor(Transform anchorTransform, float worldWidth = 1.8f)
+    {
+        _customAnchor = anchorTransform;
+        _anchor = anchorTransform;
+        _trackedSubject = anchorTransform;
+        _isWorldSpace = true;
+        _worldWidth = Mathf.Max(0.4f, worldWidth);
+
+        // Keep parented to anchor to move naturally with it
+        transform.SetParent(anchorTransform, false);
+        transform.localPosition = Vector3.zero;
+
+        ConfigureWorldSpaceCanvas();
+        ApplyFollowScale();
+
+        _visibilityAlpha = 1f;
+        if (_canvasGroup != null)
+            _canvasGroup.alpha = 1f;
+
+        Camera cam = _worldCamera != null ? _worldCamera : Camera.main;
+        if (cam != null)
+            transform.rotation = Quaternion.LookRotation(cam.transform.forward, Vector3.up);
+    }
+
+    /// <summary>
+    /// Locks this bar in world space, centered on the character, sitting just above the mesh.
+    /// worldWidth is the bar's width in metres. gapAboveHead is the clearance under the frame.
+    /// </summary>
+    public void AttachAbove(Transform anchor, float gapAboveHead, float worldWidth)
+    {
+        _anchor = anchor;
+        _trackedSubject = anchor;
+        _headGap = Mathf.Max(0.02f, gapAboveHead);
+        _worldWidth = Mathf.Max(0.4f, worldWidth);
+        _anchorRenderers = null;
+        _isWorldSpace = true;
+
+        if (anchor != null)
+        {
+            float span = 0f;
+            if (TryGetAnchorBounds(out Bounds bounds))
+                span = Mathf.Max(bounds.size.x, bounds.size.z);
+            if (span > _worldWidth * 1.35f)
+                _worldWidth = Mathf.Min(span * 0.5f, worldWidth * 2.1f);
+        }
+
+        if (transform.parent != null)
+            transform.SetParent(null, true);
+
+        _isWorldSpace = true;
+        ConfigureWorldSpaceCanvas();
+        ApplyFollowScale();
+        SnapAboveAnchor();
+
+        _visibilityAlpha = 1f;
+        if (_canvasGroup != null)
+            _canvasGroup.alpha = 1f;
     }
 
     public void SetEnemyDead()
@@ -336,12 +485,6 @@ public class HealthBar : MonoBehaviour
         _visibilityAlpha = 0f;
         if (_canvasGroup != null)
             _canvasGroup.alpha = 0f;
-    }
-
-    private static void ValidateHealthValue(float value, string parameterName)
-    {
-        if (float.IsNaN(value) || float.IsInfinity(value))
-            throw new ArgumentOutOfRangeException(parameterName, "Health must be a finite number.");
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -439,8 +582,6 @@ public class HealthBar : MonoBehaviour
         glow = glow != null ? glow : HealthBarSprites.GetZombieGlow();
         icon = icon != null ? icon : HealthBarSprites.GetZombieIcon();
 
-        ConfigureWorldSpaceCanvas();
-
         _glowImage = CreateImage("Outer Glow", transform, glow, 38f, 6f, 348f, 32f);
         _glowImage.color = new Color(0.435f, 0.749f, 0.122f, 0.35f);
 
@@ -502,8 +643,6 @@ public class HealthBar : MonoBehaviour
         fill = fill != null ? fill : HealthBarSprites.GetSpiderFill();
         glow = glow != null ? glow : HealthBarSprites.GetSpiderGlow();
         icon = icon != null ? icon : HealthBarSprites.GetSpiderIcon();
-
-        ConfigureWorldSpaceCanvas();
 
         _glowImage = CreateImage("Outer Glow", transform, glow, 44f, 10f, 392f, 40f);
         _glowImage.color = new Color(0.22f, 1f, 0.35f, 0.40f);
@@ -567,8 +706,6 @@ public class HealthBar : MonoBehaviour
         glow = glow != null ? glow : HealthBarSprites.GetBossGlow();
         endCapLeft = endCapLeft != null ? endCapLeft : HealthBarSprites.GetBossEndCapLeft();
         endCapRight = endCapRight != null ? endCapRight : HealthBarSprites.GetBossEndCapRight();
-
-        ConfigureWorldSpaceCanvas();
 
         // 1. Glow Behind
         _glowImage = CreateImage("Outer Glow", transform, glow, 92f, 26f, 516f, 44f);
@@ -652,12 +789,17 @@ public class HealthBar : MonoBehaviour
         textRect.offsetMax = Vector2.zero;
 
         TextMeshProUGUI tmp = textObj.AddComponent<TextMeshProUGUI>();
+        if (TMP_Settings.defaultFontAsset != null)
+            tmp.font = TMP_Settings.defaultFontAsset;
         tmp.text = "NAGA — GUARDIAN OF THE HEART";
-        tmp.fontSize = 20;
+        tmp.enableAutoSizing = true;
+        tmp.fontSizeMin = 12f;
+        tmp.fontSizeMax = 18f;
         tmp.fontStyle = FontStyles.Bold;
-        tmp.characterSpacing = 22f;
+        tmp.characterSpacing = 6f;
         tmp.alignment = TextAlignmentOptions.Center;
-        tmp.color = new Color(0.961f, 0.827f, 0.416f, 1f); // #f5d36a
+        tmp.color = new Color(0.961f, 0.827f, 0.416f, 1f);
+        tmp.overflowMode = TextOverflowModes.Ellipsis;
         tmp.raycastTarget = false;
 
         // 14. VFX Particle Pool (Embers & Smoke)
@@ -735,16 +877,20 @@ public class HealthBar : MonoBehaviour
         if (_healOverlayImage != null)
             _healOverlayImage.color = new Color(0.302f, 1f, 0.533f, 0.5f * (_healTimer / 0.4f));
 
-        if (_shakeTimer > 0f)
-            _root.anchoredPosition = _baseAnchoredPosition + new Vector2(UnityEngine.Random.Range(-_shakeIntensity, _shakeIntensity), UnityEngine.Random.Range(-_shakeIntensity, _shakeIntensity));
-        else
-            _root.anchoredPosition = _baseAnchoredPosition;
+        if (_anchor == null)
+        {
+            if (_shakeTimer > 0f)
+                _root.anchoredPosition = _baseAnchoredPosition + new Vector2(UnityEngine.Random.Range(-_shakeIntensity, _shakeIntensity), UnityEngine.Random.Range(-_shakeIntensity, _shakeIntensity));
+            else
+                _root.anchoredPosition = _baseAnchoredPosition;
+        }
 
         float healthRatio = Mathf.Clamp01(_targetHealth / _maxHealth);
         if (healthRatio < 0.25f)
         {
             float pulse = 1f + 0.015f * (1f - Mathf.Cos(2f * Mathf.PI * Time.time / 0.6f));
-            _root.localScale = _baseScale * pulse;
+            if (_anchor == null)
+                _root.localScale = _baseScale * pulse;
             float glowAlpha = Mathf.Lerp(0.6f, 0.9f, (1f + Mathf.Sin(2f * Mathf.PI * Time.time / 0.6f)) * 0.5f);
             if (_glowImage != null)
                 _glowImage.color = Color.Lerp(new Color(0.184f, 0.847f, 1f, glowAlpha), new Color(0.302f, 1f, 0.533f, glowAlpha), _healTimer / 0.4f);
@@ -758,7 +904,8 @@ public class HealthBar : MonoBehaviour
         }
         else
         {
-            _root.localScale = _baseScale;
+            if (_anchor == null)
+                _root.localScale = _baseScale;
             if (_glowImage != null)
                 _glowImage.color = Color.Lerp(new Color(0.184f, 0.847f, 1f, 0.35f), new Color(0.302f, 1f, 0.533f, 0.8f), _healTimer / 0.4f);
 
@@ -785,7 +932,8 @@ public class HealthBar : MonoBehaviour
         if (_flashImage != null)
             _flashImage.color = new Color(1f, 1f, 1f, _flashTimer > 0f ? 0.9f * (_flashTimer / 0.1f) : 0f);
 
-        if (_isWorldSpace)
+        bool tracksSomeone = _isWorldSpace || _trackedSubject != null || _customAnchor != null;
+        if (tracksSomeone)
         {
             if (_proximityTarget == null && Time.time >= _nextPlayerSearchTime)
             {
@@ -794,27 +942,35 @@ public class HealthBar : MonoBehaviour
                 _nextPlayerSearchTime = Time.time + 1f;
             }
 
-            bool nearby = !_enemyDead && _proximityTarget != null && (_proximityTarget.position - transform.position).sqrMagnitude <= 225f;
-            bool recentlyDamaged = Time.time - _lastDamageTime <= 4f;
+            Vector3 origin = _customAnchor != null
+                ? _customAnchor.position
+                : (_trackedSubject != null
+                    ? _trackedSubject.position
+                    : (_anchor != null ? _anchor.position : transform.position));
+
+            float maxDist = barType == BarType.Boss ? 150f : 55f;
+            float showDistanceSqr = maxDist * maxDist;
+            bool nearby = !_enemyDead && (_proximityTarget == null
+                ? true
+                : (_proximityTarget.position - origin).sqrMagnitude <= showDistanceSqr);
+            bool recentlyDamaged = Time.time - _lastDamageTime <= 6f;
 
             if (_enemyDead) _visibilityAlpha = 0f;
             else if (nearby || recentlyDamaged) _visibilityAlpha = 1f;
             else _visibilityAlpha = Mathf.Lerp(_visibilityAlpha, 0f, 1f - Mathf.Exp(-dt / 0.25f));
 
-            if (_worldCamera == null && Time.unscaledTime >= _nextCameraSearchTime)
+            if (_isWorldSpace && _worldCamera == null && Time.unscaledTime >= _nextCameraSearchTime)
             {
                 _worldCamera = Camera.main;
                 if (_worldCanvas != null) _worldCanvas.worldCamera = _worldCamera;
                 _nextCameraSearchTime = Time.unscaledTime + 1f;
             }
-            if (_worldCamera != null)
-            {
+            if (_isWorldSpace && _anchor == null && _customAnchor == null && _worldCamera != null)
                 transform.rotation = Quaternion.LookRotation(_worldCamera.transform.forward, Vector3.up);
-            }
         }
         else
         {
-            _visibilityAlpha = 1f;
+            _visibilityAlpha = _enemyDead ? 0f : 1f;
         }
 
         float flicker = _glitchTimer > 0f && UnityEngine.Random.value < 0.5f ? 0.35f : 1f;
@@ -999,6 +1155,104 @@ public class HealthBar : MonoBehaviour
         }
     }
 
+    private void ApplyFollowScale()
+    {
+        if (_root == null)
+            return;
+
+        float scale = _worldWidth / Mathf.Max(1f, _barWidth);
+        _root.localScale = new Vector3(scale, scale, scale);
+        _baseScale = _root.localScale;
+    }
+
+    private void SnapAboveAnchor()
+    {
+        if (_anchor == null || _root == null || !_isWorldSpace)
+            return;
+
+        float scale = _root.localScale.x;
+        if (scale < 0.0001f)
+            scale = _worldWidth / Mathf.Max(1f, _barWidth);
+
+        float halfHeight = _barHeight * scale * 0.5f;
+        Vector3 pos;
+        Transform head = FindHeadBone(_anchor);
+        if (head != null)
+        {
+            pos = head.position;
+            pos.y += _headGap + halfHeight;
+        }
+        else
+        {
+            if (!TryGetAnchorBounds(out Bounds bounds))
+                bounds = new Bounds(_anchor.position + Vector3.up * 1.7f, new Vector3(0.6f, 1.7f, 0.6f));
+            pos = bounds.center;
+            pos.y = bounds.max.y + _headGap + halfHeight;
+        }
+        transform.position = pos;
+
+        Camera cam = _worldCamera != null ? _worldCamera : Camera.main;
+        if (cam != null)
+            transform.rotation = Quaternion.LookRotation(cam.transform.forward, Vector3.up);
+    }
+
+    private static Transform FindHeadBone(Transform root)
+    {
+        if (root == null)
+            return null;
+
+        Transform[] bones = root.GetComponentsInChildren<Transform>(true);
+        Transform fallback = null;
+        for (int i = 0; i < bones.Length; i++)
+        {
+            string name = bones[i].name;
+            if (name.IndexOf("health", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                continue;
+            if (string.Equals(name, "Head", System.StringComparison.OrdinalIgnoreCase) ||
+                name.EndsWith(" Head", System.StringComparison.OrdinalIgnoreCase) ||
+                name.EndsWith(":Head", System.StringComparison.OrdinalIgnoreCase) ||
+                name.EndsWith("_Head", System.StringComparison.OrdinalIgnoreCase))
+                return bones[i];
+            if (fallback == null && name.IndexOf("head", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                fallback = bones[i];
+        }
+        return fallback;
+    }
+
+    private bool TryGetAnchorBounds(out Bounds bounds)
+    {
+        bounds = default;
+        if (_anchor == null)
+            return false;
+
+        if (_anchorRenderers == null || _anchorRenderers.Length == 0)
+            _anchorRenderers = _anchor.GetComponentsInChildren<Renderer>(true);
+
+        bool found = false;
+        for (int i = 0; i < _anchorRenderers.Length; i++)
+        {
+            Renderer renderer = _anchorRenderers[i];
+            if (renderer == null || !renderer.enabled)
+                continue;
+            if (renderer is ParticleSystemRenderer || renderer is TrailRenderer || renderer is LineRenderer)
+                continue;
+            if (renderer.GetComponentInParent<HealthBar>() != null)
+                continue;
+
+            if (!found)
+            {
+                bounds = renderer.bounds;
+                found = true;
+            }
+            else
+            {
+                bounds.Encapsulate(renderer.bounds);
+            }
+        }
+
+        return found;
+    }
+
     private void ConfigureWorldSpaceCanvas()
     {
         _canvasGroup = GetComponent<CanvasGroup>();
@@ -1025,7 +1279,8 @@ public class HealthBar : MonoBehaviour
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
             scaler.scaleFactor = 1f;
 
-            _canvasGroup.alpha = 0f;
+            _canvasGroup.alpha = 1f;
+            _visibilityAlpha = 1f;
             _canvasGroup.interactable = false;
             _canvasGroup.blocksRaycasts = false;
         }
