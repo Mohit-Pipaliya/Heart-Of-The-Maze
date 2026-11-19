@@ -43,6 +43,10 @@ public class HealthBar : MonoBehaviour
     [Range(0.2f, 5f)]
     public float worldScale = 1.0f;
 
+    [Header("Visual Styling")]
+    [Tooltip("Health bar ke peeche jo fuzzy outer glow layer hoti hai use dikhana hai ya nahi (Enemies ke liye default false taaki clean box dikhe)")]
+    public bool showOuterGlow = false;
+
     private const int ParticlePoolSize = 24;
     private const float DamageFillDuration = 0.3f;
     private const float DamageGhostDelay = 0.5f;
@@ -200,6 +204,12 @@ public class HealthBar : MonoBehaviour
         _baseScale = _root.localScale;
         _built = true;
         SetMaxHealth(_maxHealth);
+
+        if (_glowImage != null)
+        {
+            bool enableGlow = (barType == BarType.Player) ? true : showOuterGlow;
+            _glowImage.gameObject.SetActive(enableGlow);
+        }
     }
 
     private void OnDestroy()
@@ -224,6 +234,11 @@ public class HealthBar : MonoBehaviour
         if (_root != null && _isWorldSpace)
         {
             ApplyWorldScale();
+        }
+        if (_glowImage != null)
+        {
+            bool enableGlow = (barType == BarType.Player) ? true : showOuterGlow;
+            _glowImage.gameObject.SetActive(enableGlow);
         }
     }
 
@@ -690,6 +705,7 @@ public class HealthBar : MonoBehaviour
 
         _glowImage = CreateImage("Outer Glow", transform, glow, 38f, 6f, 348f, 32f);
         _glowImage.color = new Color(0.435f, 0.749f, 0.122f, 0.35f);
+        _glowImage.gameObject.SetActive(showOuterGlow);
 
         RectTransform mask = CreateRect("Fill Window Mask", transform, _windowX, _windowY, _windowWidth, _windowHeight);
         mask.gameObject.AddComponent<RectMask2D>();
@@ -752,6 +768,7 @@ public class HealthBar : MonoBehaviour
 
         _glowImage = CreateImage("Outer Glow", transform, glow, 44f, 10f, 392f, 40f);
         _glowImage.color = new Color(0.22f, 1f, 0.35f, 0.40f);
+        _glowImage.gameObject.SetActive(showOuterGlow);
 
         RectTransform mask = CreateRect("Fill Window Mask", transform, _windowX, _windowY, _windowWidth, _windowHeight);
         mask.gameObject.AddComponent<RectMask2D>();
@@ -816,6 +833,7 @@ public class HealthBar : MonoBehaviour
         // 1. Glow Behind
         _glowImage = CreateImage("Outer Glow", transform, glow, 92f, 26f, 516f, 44f);
         _glowImage.color = new Color(1f, 0.72f, 0.18f, 0.35f);
+        _glowImage.gameObject.SetActive(showOuterGlow);
 
         // 2. Fill Window Mask with RectMask2D
         RectTransform mask = CreateRect("Fill Window Mask", transform, _windowX, _windowY, _windowWidth, _windowHeight);
@@ -998,7 +1016,7 @@ public class HealthBar : MonoBehaviour
             if (_anchor == null)
                 _root.localScale = _baseScale * pulse;
             float glowAlpha = Mathf.Lerp(0.6f, 0.9f, (1f + Mathf.Sin(2f * Mathf.PI * Time.time / 0.6f)) * 0.5f);
-            if (_glowImage != null)
+            if (_glowImage != null && _glowImage.gameObject.activeSelf)
                 _glowImage.color = Color.Lerp(new Color(0.184f, 0.847f, 1f, glowAlpha), new Color(0.302f, 1f, 0.533f, glowAlpha), _healTimer / 0.4f);
 
             if (_vignetteImage != null)
@@ -1012,7 +1030,7 @@ public class HealthBar : MonoBehaviour
         {
             if (_anchor == null)
                 _root.localScale = _baseScale;
-            if (_glowImage != null)
+            if (_glowImage != null && _glowImage.gameObject.activeSelf)
                 _glowImage.color = Color.Lerp(new Color(0.184f, 0.847f, 1f, 0.35f), new Color(0.302f, 1f, 0.533f, 0.8f), _healTimer / 0.4f);
 
             if (_vignetteImage != null && _vignetteImage.enabled)
@@ -1113,7 +1131,7 @@ public class HealthBar : MonoBehaviour
                 UnityEngine.Random.Range(-5f, 5f), UnityEngine.Random.Range(18f, 32f), 0f, 1.2f);
         }
 
-        if (_glowImage != null)
+        if (_glowImage != null && _glowImage.gameObject.activeSelf)
         {
             float pulse = Mathf.Lerp(0.35f, 0.65f, (1f + Mathf.Sin(Time.time * 3f)) * 0.5f);
             _glowImage.color = new Color(0.22f, 1f, 0.35f, pulse);

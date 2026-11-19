@@ -40,6 +40,16 @@ public static class HealthBarSprites
     private static Sprite _bossNamePlate;
     private static Sprite _bossSmokePuff;
 
+    public static void ClearCache()
+    {
+        _frame = null; _fill = null; _glow = null; _highlight = null; _sweep = null;
+        _track = null; _white = null; _particle = null; _icon = null; _transparent = null; _vignette = null;
+        _zombieFrame = null; _zombieFill = null; _zombieGlow = null; _zombieIcon = null; _zombieBloodDrop = null;
+        _spiderFrame = null; _spiderFill = null; _spiderGlow = null; _spiderIcon = null; _spiderAcidDrop = null;
+        _bossFrame = null; _bossFill = null; _bossGlow = null; _bossEndCapLeft = null; _bossEndCapRight = null;
+        _bossNamePlate = null; _bossSmokePuff = null;
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     //  PLAYER SPRITES
     // ═══════════════════════════════════════════════════════════════════════════
@@ -488,12 +498,12 @@ public static class HealthBarSprites
         Vector2[] gloss = { new Vector2(22, 4), new Vector2(458, 4), new Vector2(470, 18), new Vector2(10, 18) };
         raster.FillPolygon(gloss, new Color32(255, 255, 255, 26));
 
-        // Neon outline #38ff5a 1.6px
-        Color32 neon = new Color32(56, 255, 90, 255);
-        raster.StrokeClosedPolygon(outer, 1.6f, neon);
+        // Dark outer border so the hexagonal box is crisp and clearly visible without green outline
+        Color32 darkOuterBorder = new Color32(12, 15, 18, 255);
+        raster.StrokeClosedPolygon(outer, 1.8f, darkOuterBorder);
 
-        // Window outline 1px alpha .7
-        raster.StrokeClosedPolygon(hole, 1.0f, new Color32(56, 255, 90, 178));
+        // Window outline 1px dark metallic
+        raster.StrokeClosedPolygon(hole, 1.0f, new Color32(28, 34, 40, 220));
 
         // Web lines pale #d6f0d6 alpha .6
         Color32 web = new Color32(214, 240, 214, 153);
@@ -508,14 +518,14 @@ public static class HealthBarSprites
         raster.StrokeBezier(new Vector2(52, 18), new Vector2(240, 6), new Vector2(428, 18), 1.0f, web);
         raster.StrokeBezier(new Vector2(52, 42), new Vector2(240, 54), new Vector2(428, 42), 1.0f, web);
 
-        // Fangs: triangles (208,55)(218,55)(213,76) and (262,55)(272,55)(267,76), fill #e6ffe9, outline #38ff5a
+        // Fangs: triangles (208,55)(218,55)(213,76) and (262,55)(272,55)(267,76), fill #e6ffe9, outline dark
         Color32 fangFill = new Color32(230, 255, 233, 255);
         Vector2[] fang1 = { new Vector2(208, 55), new Vector2(218, 55), new Vector2(213, 76) };
         Vector2[] fang2 = { new Vector2(262, 55), new Vector2(272, 55), new Vector2(267, 76) };
         raster.FillPolygon(fang1, fangFill);
-        raster.StrokeClosedPolygon(fang1, 1.2f, neon);
+        raster.StrokeClosedPolygon(fang1, 1.2f, darkOuterBorder);
         raster.FillPolygon(fang2, fangFill);
-        raster.StrokeClosedPolygon(fang2, 1.2f, neon);
+        raster.StrokeClosedPolygon(fang2, 1.2f, darkOuterBorder);
 
         return raster.ToSprite();
     }
