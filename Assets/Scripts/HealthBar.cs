@@ -288,11 +288,22 @@ public class HealthBar : MonoBehaviour
 
         if (_customAnchor != null)
         {
-            transform.position = _customAnchor.position;
+            Vector3 safePos = _customAnchor.position;
+            // NaN / Infinity guard — ek bhi component invalid ho to skip karo
+            if (!float.IsNaN(safePos.x) && !float.IsNaN(safePos.y) && !float.IsNaN(safePos.z)
+                && !float.IsInfinity(safePos.x) && !float.IsInfinity(safePos.y) && !float.IsInfinity(safePos.z))
+            {
+                transform.position = safePos;
+            }
         }
         else if (_anchor != null)
         {
-            transform.position = _anchor.position + Vector3.up * _headGap;
+            Vector3 safePos = _anchor.position + Vector3.up * _headGap;
+            if (!float.IsNaN(safePos.x) && !float.IsNaN(safePos.y) && !float.IsNaN(safePos.z)
+                && !float.IsInfinity(safePos.x) && !float.IsInfinity(safePos.y) && !float.IsInfinity(safePos.z))
+            {
+                transform.position = safePos;
+            }
         }
 
         Camera cam = _worldCamera != null ? _worldCamera : Camera.main;

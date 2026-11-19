@@ -193,6 +193,7 @@ public class PlayerController : MonoBehaviour
     private int _swordCombo;
     private bool _isSwordAttacking;
     private float _lastAirYVelocity;
+    private Vector3 _lastGroundedPosition; // Fall rescue ke liye
 
     // ─── Unity Lifecycle ───────────────────────────────────────────────────────
 
@@ -509,6 +510,36 @@ public class PlayerController : MonoBehaviour
     private void LateUpdate()
     {
         if (_isDead) return;
+
+        // ── FALL RESCUE: Agar player terrain ke neeche chala jaye to warp karo ──
+        if (!isFrozen && _cc != null && _cc.enabled)
+        {
+            if (transform.position.y < -15f)
+            {
+                // Extreme void mein gira — last ground position pe warp karo
+                Vector3 rescuePos = _lastGroundedPosition;
+                rescuePos.y += 1.5f;
+                _cc.enabled = false;
+                transform.position = rescuePos;
+                _cc.enabled = true;
+                _velocity.y = 0f;
+                Debug.LogWarning("[PlayerController] FALL RESCUE: Player was below -15m, warped back to last ground!");
+            }
+            else if (TrySampleGroundY(transform.position, out float gY) && transform.position.y < gY - 1.5f)
+            {
+                // Terrain ke andar ghus gaya — chhota correction
+                Vector3 fixPos = transform.position;
+                fixPos.y = gY + 0.1f;
+                _cc.enabled = false;
+                transform.position = fixPos;
+                _cc.enabled = true;
+                _velocity.y = 0f;
+            }
+        }
+
+        // Last grounded position track karo taaki rescue mein kaam aaye
+        if (_isGrounded && !float.IsNaN(transform.position.y) && !float.IsInfinity(transform.position.y))
+            _lastGroundedPosition = transform.position;
 
         if (isFrozen)
         {
@@ -1130,11 +1161,9 @@ public class PlayerController : MonoBehaviour
         {
             elapsed += Time.deltaTime;
 
-            if (_cc != null && _cc.enabled)
-            {
-                float stepSpeed = Mathf.Lerp(4.2f, 0.4f, elapsed / activeSwingDuration);
-                _cc.Move(transform.forward * (stepSpeed * Time.deltaTime));
-            }
+            // ── FIX: Sword attack ke dauraan _cc.Move() DOUBLE nahi call karenge ──
+            // Update() mein already _cc.Move(_velocity * Time.deltaTime) call hota hai.
+            // Yahan se extra Move() hata diya — isse player terrain se neeche nahi dhansega.
 
             ZombieAI[] sceneZombies = FindObjectsByType<ZombieAI>(FindObjectsSortMode.None);
             for (int zIdx = 0; zIdx < sceneZombies.Length; zIdx++)

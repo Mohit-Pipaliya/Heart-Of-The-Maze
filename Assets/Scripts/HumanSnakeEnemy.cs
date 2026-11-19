@@ -850,12 +850,18 @@ public class HumanSnakeEnemy : MonoBehaviour
         // Visceral Hit Knockback
         if (player != null && knockbackDistance > 0.001f)
         {
-            Vector3 pushDir = (transform.position - player.position).normalized;
+            Vector3 pushDir = (transform.position - player.position);
             pushDir.y = 0f;
-            if (agent != null && agent.enabled)
-                agent.Move(pushDir * knockbackDistance);
-            else
-                transform.position += pushDir * knockbackDistance;
+            float mag = pushDir.magnitude;
+            // NaN guard: agar direction zero ya NaN ho to skip karo
+            if (mag > 0.001f && !float.IsNaN(mag) && !float.IsInfinity(mag))
+            {
+                pushDir /= mag; // normalize safely
+                if (agent != null && agent.enabled && agent.isOnNavMesh)
+                    agent.Move(pushDir * knockbackDistance);
+                else
+                    transform.position += pushDir * knockbackDistance;
+            }
         }
 
         if (GunShooter.Instance != null)
@@ -1131,7 +1137,11 @@ public class HumanSnakeEnemy : MonoBehaviour
 
         if (hasGround)
         {
+            // ── NaN Safety Guard ──
+            if (float.IsNaN(currentGroundY) || float.IsInfinity(currentGroundY)) return;
+
             float targetGroundY = currentGroundY + groundOffset;
+            if (float.IsNaN(targetGroundY) || float.IsInfinity(targetGroundY)) return;
 
             // Anti-fall rescue
             if (curPos.y < currentGroundY - 3.0f && Time.time > _lastRescueTime + 2.5f)
@@ -1147,11 +1157,15 @@ public class HumanSnakeEnemy : MonoBehaviour
             {
                 // Smooth snap to ground surface
                 float newY = Mathf.MoveTowards(curPos.y, targetGroundY, groundSnapSpeed * Time.deltaTime);
-                if (agent != null && agent.enabled && agent.isOnNavMesh)
+                if (float.IsNaN(newY) || float.IsInfinity(newY)) return; // Extra guard
+
+                float baseOffsetValue = groundOffset + (newY - targetGroundY);
+                if (agent != null && agent.enabled && agent.isOnNavMesh
+                    && !float.IsNaN(baseOffsetValue) && !float.IsInfinity(baseOffsetValue))
                 {
-                    agent.baseOffset = groundOffset + (newY - targetGroundY);
+                    agent.baseOffset = baseOffsetValue;
                 }
-                else
+                else if (agent == null || !agent.enabled || !agent.isOnNavMesh)
                 {
                     transform.position = new Vector3(curPos.x, newY, curPos.z);
                 }
