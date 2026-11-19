@@ -9,15 +9,12 @@ using UnityEngine;
 ///  EnterBoat:
 ///    1. Player approaches boatNearPoint (within enterDistance).
 ///    2. Screen shows "Press B to Board Boat" prompt.
-///    3. On pressing 'B', player smoothly aligns to boatNearPoint in 0.15s.
-///    4. BoatClimb animation plays immediately and moves player smoothly onto boatSeatPoint.
-///    5. SitDown animation plays.
-///    6. SeatIdle activates — player can drive boat (WASD = paddle, Mouse/A/D = steer).
+///    3. On pressing 'B', player moves directly to boatSeatPoint.
+///    4. SitDown animation plays, then WASD paddling is enabled.
 ///
-///  ExitBoat (G or F press):
+///  ExitBoat (G press):
 ///    1. StandUp animation plays.
-///    2. BoatUnclimb animation plays and moves player down to boatNearDownPoint.
-///    3. CharacterController re-enabled, player unfreezes and regains full normal control.
+///    2. Player moves directly to boatNearDownPoint and regains control.
 /// </summary>
 public class BoatSystem : MonoBehaviour
 {
@@ -36,6 +33,13 @@ public class BoatSystem : MonoBehaviour
 
     [Tooltip("Boat Camera Point — Jab player boat me baithega to camera is point par aa jayega (Inspector me assign karein)")]
     public Transform boatCameraPoint;
+
+    [Header("Hull Size")]
+    [Tooltip("Boat ke visual model ka parent (prefab me Collada_visual_scene_group).")]
+    public Transform boatModelRoot;
+
+    [Tooltip("Hull size multiplier: X = width, Y = height, Z = length.")]
+    public Vector3 boatModelScale = Vector3.one;
 
     // ─── Inspector: Proximity & UI ─────────────────────────────────────────────
     [Header("Proximity & Interaction")]
@@ -76,7 +80,7 @@ public class BoatSystem : MonoBehaviour
     [Header("Realistic Water Wave Physics")]
     [Tooltip("Laher ki unchai / wave amplitude (meters) — jitna zyada, utna bada wave bobbing")]
     [Range(0.05f, 1.5f)]
-    public float waveHeight = 0.28f;
+    public float waveHeight = 0.55f;
 
     [Tooltip("Laher ki raftaar / wave travel speed")]
     [Range(0.2f, 5.0f)]
@@ -110,16 +114,19 @@ public class BoatSystem : MonoBehaviour
     [Range(0.04f, 0.35f)]
     public float buoyancyDamping = 0.08f;
 
-    [Tooltip("Waterline elevation offset so boat floats cleanly on top of water surface (0.80m-0.95m keeps boat deck dry)")]
-    public float boatWaterlineOffset = 0.85f;
+    [Tooltip("Clearance in meters; the lowest point of the hull stays above the highest sampled wave.")]
+    [Min(0f)]
+    public float boatWaterlineOffset = 0.2f;
 
     [Header("No Water Inside Boat (Hull Depth Mask)")]
     [Tooltip("Invisible depth mask jo boat ke andar paani dikhne se rokta hai")]
     public bool enableHullDepthMask = true;
-    [Tooltip("Boat interior cavity size (Width, Height, Length) in meters — covers keel to gunwales")]
+    [Tooltip("Exact hull depth-mask size (Width, Height, Length) in meters; independent of boat scale")]
     public Vector3 hullMaskSize = new Vector3(1.60f, 1.70f, 4.30f);
     [Tooltip("Interior cavity position offset (X, Y, Z)")]
     public Vector3 hullMaskOffset = new Vector3(0f, -0.15f, 0.20f);
+    [Tooltip("Depth-only material used to hide water rendered inside the hull.")]
+    public Material hullDepthMaskMaterial;
 
     public enum AxisDirection { Z_Forward, Y_Up, X_Right, Negative_Z, Negative_Y, Negative_X }
     
@@ -131,17 +138,13 @@ public class BoatSystem : MonoBehaviour
 
     // ─── Inspector: Animation State Names ──────────────────────────────────────
     [Header("Animation State Names")]
-    public string climbStateName    = "BoatClimb";
     public string paddleStateName   = "Paddle";
     public string sitDownStateName  = "SitDown";
     public string sitUpStateName    = "StandUp";
-    public string unclimbStateName  = "BoatUnclimb";
 
     [Header("Animation Trigger/Bool Names")]
-    public string climbTriggerName   = "BoatClimb";
     public string sitDownTriggerName = "SitDown";
     public string sitUpTriggerName   = "StandUp";
-    public string unclimbTriggerName = "BoatUnclimb";
     public string paddlingBoolName   = "IsPaddling";
     public string seatIdleBoolName   = "SeatIdle";
 
@@ -196,11 +199,23 @@ public class BoatSystem : MonoBehaviour
     private bool _hasSnappedWaterline;
     private Renderer[] _hullRenderers;
     private GameObject _hullMaskObj;
+    private Mesh _hullMaskMesh;
 
-    private int _hashClimb;
+    private static readonly Vector2[] HullMaskOutline =
+    {
+        new Vector2(0f, 0.5f),
+        new Vector2(0.28f, 0.30f),
+        new Vector2(0.5f, 0.02f),
+        new Vector2(0.40f, -0.32f),
+        new Vector2(0.22f, -0.5f),
+        new Vector2(-0.22f, -0.5f),
+        new Vector2(-0.40f, -0.32f),
+        new Vector2(-0.5f, 0.02f),
+        new Vector2(-0.28f, 0.30f)
+    };
+
     private int _hashSitDown;
     private int _hashSitUp;
-    private int _hashUnclimb;
     private int _hashIsPaddling;
     private int _hashSeatIdle;
 
@@ -218,14 +233,30 @@ public class BoatSystem : MonoBehaviour
         GameObject mountObj = new GameObject("PlayerBoatMount_" + gameObject.name);
         _runtimeMount = mountObj.transform;
 
-        _hashClimb       = Animator.StringToHash(climbTriggerName);
         _hashSitDown     = Animator.StringToHash(sitDownTriggerName);
         _hashSitUp       = Animator.StringToHash(sitUpTriggerName);
-        _hashUnclimb     = Animator.StringToHash(unclimbTriggerName);
         _hashIsPaddling  = Animator.StringToHash(paddlingBoolName);
         _hashSeatIdle    = Animator.StringToHash(seatIdleBoolName);
+        ApplyBoatModelScale();
         _hullRenderers = GetComponentsInChildren<Renderer>(true);
         CaptureBoatAxes();
+    }
+
+    private void OnValidate()
+    {
+        boatModelScale.x = Mathf.Max(0.01f, boatModelScale.x);
+        boatModelScale.y = Mathf.Max(0.01f, boatModelScale.y);
+        boatModelScale.z = Mathf.Max(0.01f, boatModelScale.z);
+        ApplyBoatModelScale();
+    }
+
+    private void ApplyBoatModelScale()
+    {
+        if (boatModelRoot != null)
+            boatModelRoot.localScale = new Vector3(
+                boatModelScale.x,
+                boatModelScale.z,
+                boatModelScale.y);
     }
 
     private void OnDestroy()
@@ -235,6 +266,11 @@ public class BoatSystem : MonoBehaviour
         {
             Destroy(_hullMaskObj);
             _hullMaskObj = null;
+        }
+        if (_hullMaskMesh != null)
+        {
+            Destroy(_hullMaskMesh);
+            _hullMaskMesh = null;
         }
     }
 
@@ -407,7 +443,7 @@ public class BoatSystem : MonoBehaviour
             if (driveBoatUI != null)  driveBoatUI.SetActive(false);
             if (collectOarUI != null) collectOarUI.SetActive(false);
 
-            if (Input.GetKeyDown(KeyCode.B) || Input.GetKeyDown(KeyCode.E))
+            if (Input.GetKeyDown(KeyCode.B))
             {
                 if (!hasOar)
                 {
@@ -444,7 +480,8 @@ public class BoatSystem : MonoBehaviour
 
         if (_isOccupied)
         {
-            GameHUDPrompt.DrawPromptBox("[W/S] Paddle Forward / Back   |   [A/D] Steer   |   [B] Exit Boat");
+            if (!_isPaddling)
+                GameHUDPrompt.DrawPromptBox("[W/S] Paddle Forward / Back   |   [A/D] Steer   |   [G] Exit Boat");
             return;
         }
 
@@ -528,7 +565,7 @@ public class BoatSystem : MonoBehaviour
 
     private void HandleExitInput()
     {
-        if ((Input.GetKeyDown(KeyCode.G) || Input.GetKeyDown(KeyCode.F) || Input.GetKeyDown(KeyCode.E)) && !_isExiting)
+        if (Input.GetKeyDown(KeyCode.G) && !_isExiting)
         {
             StartCoroutine(ExitBoatSequence());
         }
@@ -552,47 +589,25 @@ public class BoatSystem : MonoBehaviour
         _playerCC        = player.GetComponent<CharacterController>();
         _playerAnimator  = player.GetComponentInChildren<Animator>();
 
-        // 1. Unequip any weapon before boarding
-        if (player.WeaponIndex != 0)
-        {
-            yield return StartCoroutine(player.UnequipCurrentWeaponForPickup());
-        }
-
-        // 2. Freeze player locomotion and disable CC
+        // Freeze player locomotion and disable the CharacterController before teleporting.
         player.SetFrozen(true, lockWorldPosition: false);
         if (_playerCC != null) _playerCC.enabled = false;
 
         Transform seatTarget = boatSeatPoint != null ? boatSeatPoint : transform;
-
-        // Guaranteed upright rotation for the boat seat (strictly zero pitch/roll)
         Vector3 boatFwd = HeadingForward();
         if (boatFwd.sqrMagnitude < 0.001f) boatFwd = Vector3.forward;
         Quaternion uprightSeatRot = Quaternion.LookRotation(boatFwd, Vector3.up);
 
-        // 3. Step-by-step BoatClimb: Smoothly climb from boatNearPoint over the gunwale to boat seat
-        if (_playerAnimator != null)
-        {
-            _playerAnimator.ResetTrigger(_hashClimb);
-            _playerAnimator.SetTrigger(_hashClimb);
-            _playerAnimator.CrossFadeInFixedTime(climbStateName, 0.12f, 0, 0f);
-        }
-
-        // Smooth climb motion arc from current position to seatTarget (step vala motion)
-        yield return StartCoroutine(SyncClimbMotion(_playerAnimator, _playerTransform, seatTarget, 0.75f, 0.35f, uprightSeatRot));
-
-        // 4. Parent player to unscaled mount at seat
         _runtimeMount.position = seatTarget.position;
         _runtimeMount.rotation = uprightSeatRot;
         _playerTransform.SetParent(_runtimeMount);
         _playerTransform.localPosition = Vector3.zero;
         _playerTransform.localRotation = Quaternion.identity;
 
-        // Camera jumps to the stern view the moment the player sits
         _cameraOnBoat = true;
         _snapBoatCam = true;
         UpdateSeatedCamera(true);
 
-        // 5. Play SitDown / Seat animation
         if (_playerAnimator != null)
         {
             _playerAnimator.ResetTrigger(_hashSitDown);
@@ -602,17 +617,12 @@ public class BoatSystem : MonoBehaviour
 
         yield return new WaitForSeconds(0.6f);
 
-        // 6. Ready to paddle!
         if (_playerAnimator != null)
-        {
             _playerAnimator.SetBool(_hashSeatIdle, true);
-        }
 
         _canPaddle  = true;
         _isEntering = false;
         UpdateSeatedCamera(true);
-
-        Debug.Log("<color=#00FF88><b>[BoatSystem]</b></color> Player stepped into boat, climbed onto seat, and seated!");
     }
 
     // ─── Exit Boat Sequence ────────────────────────────────────────────────────
@@ -621,16 +631,6 @@ public class BoatSystem : MonoBehaviour
         _isExiting  = true;
         _canPaddle  = false;
         _cameraOnBoat = false;
-
-        if (Camera.main != null)
-        {
-            CameraController cam = Camera.main.GetComponent<CameraController>();
-            if (cam != null)
-            {
-                // Pass player transform so camera smoothly goes back to following player
-                cam.ExitBoatMode(_playerTransform);
-            }
-        }
 
         if (boatRigidbody != null)
             boatRigidbody.linearVelocity = Vector3.zero;
@@ -642,7 +642,6 @@ public class BoatSystem : MonoBehaviour
                 _playerAnimator.SetBool(_hashIsPaddling, false);
         }
 
-        // 1. Play StandUp animation
         if (_playerAnimator != null)
         {
             _playerAnimator.SetBool(_hashSeatIdle, false);
@@ -653,7 +652,6 @@ public class BoatSystem : MonoBehaviour
 
         yield return new WaitForSeconds(Mathf.Max(0.5f, idleAfterSitUpDuration));
 
-        // 2. Step-by-step BoatUnclimb: Unparent and smoothly step down to exit target point
         Transform exitTarget = boatNearDownPoint != null ? boatNearDownPoint : (boatNearPoint != null ? boatNearPoint : transform);
         _playerTransform.SetParent(null);
 
@@ -662,18 +660,15 @@ public class BoatSystem : MonoBehaviour
         Quaternion exitRot = (exitFwd.sqrMagnitude > 0.001f)
             ? Quaternion.LookRotation(exitFwd.normalized, Vector3.up)
             : _playerTransform.rotation;
+        _playerTransform.SetPositionAndRotation(exitTarget.position, exitRot);
 
-        if (_playerAnimator != null)
+        if (Camera.main != null)
         {
-            _playerAnimator.ResetTrigger(_hashUnclimb);
-            _playerAnimator.SetTrigger(_hashUnclimb);
-            _playerAnimator.CrossFadeInFixedTime(unclimbStateName, 0.12f, 0, 0f);
+            CameraController cam = Camera.main.GetComponent<CameraController>();
+            if (cam != null)
+                cam.ExitBoatMode(_playerTransform);
         }
 
-        // Smooth unclimb arc to land firmly on ground/dock (step vala motion)
-        yield return StartCoroutine(SyncClimbMotion(_playerAnimator, _playerTransform, exitTarget, 0.75f, 0.25f, exitRot));
-
-        // 3. Drop Oar immediately as player stands outside
         if (oarPickup == null)
             oarPickup = OarPickup.Instance ?? FindFirstObjectByType<OarPickup>();
         if (oarPickup != null && oarPickup.IsPickedUp)
@@ -682,51 +677,14 @@ public class BoatSystem : MonoBehaviour
             oarPickup.DropOar(dropPos);
         }
 
-        // 4. Restore player controls
         if (_playerCC != null) _playerCC.enabled = true;
         if (_cachedPlayer != null) _cachedPlayer.SetFrozen(false);
 
         _isOccupied = false;
         _isExiting  = false;
-
-        Debug.Log("<color=#00FF88><b>[BoatSystem]</b></color> Player stood up, unclogged/unclimbed with step down to ground!");
     }
 
     // ─── Motion Helpers ────────────────────────────────────────────────────────
-    private IEnumerator SyncClimbMotion(Animator anim, Transform player, Transform targetPoint, float duration, float arcHeight, Quaternion targetRotation)
-    {
-        Vector3 startPos = player.position;
-        Quaternion startRot = player.rotation;
-        Vector3 targetPos = targetPoint.position;
-
-        float timer = 0f;
-        while (timer < duration)
-        {
-            timer += Time.deltaTime;
-            float t = Mathf.Clamp01(timer / duration);
-            float smoothT = Mathf.SmoothStep(0f, 1f, t);
-
-            Vector3 currentPos = Vector3.Lerp(startPos, targetPos, smoothT);
-            float arc = Mathf.Sin(smoothT * Mathf.PI) * arcHeight;
-            currentPos.y += arc;
-            player.position = currentPos;
-
-            // Upright smooth rotation — guaranteed zero pitch or roll
-            Quaternion slerpRot = Quaternion.Slerp(startRot, targetRotation, smoothT);
-            Vector3 fwd = slerpRot * Vector3.forward;
-            fwd.y = 0f;
-            if (fwd.sqrMagnitude > 0.001f)
-            {
-                player.rotation = Quaternion.LookRotation(fwd.normalized, Vector3.up);
-            }
-
-            yield return null;
-        }
-
-        player.position = targetPos;
-        player.rotation = targetRotation;
-    }
-
     private IEnumerator SmoothShiftBoat(Vector3 localOffset, float duration)
     {
         Vector3 startPos = transform.position;
@@ -866,9 +824,10 @@ public class BoatSystem : MonoBehaviour
 
         float t = Time.time;
 
-        // Multi-point hull waterline sampling (Bow, Stern, Port, Starboard)
-        float halfLength = 2.2f;
-        float halfWidth = 0.85f;
+        // Sample at the visual hull edges so buoyancy follows inspector hull scaling.
+        Bounds hullBounds = CalculateHullBounds();
+        float halfLength = Mathf.Max(0.2f, Support(hullBounds.extents, boatFwd));
+        float halfWidth = Mathf.Max(0.2f, Support(hullBounds.extents, boatRight));
 
         Vector3 bowPos = p + boatFwd * halfLength;
         Vector3 sternPos = p - boatFwd * halfLength;
@@ -880,30 +839,14 @@ public class BoatSystem : MonoBehaviour
         float portWave = SampleWaveHeight(portPos.x, portPos.z, t);
         float starWave = SampleWaveHeight(starPos.x, starPos.z, t);
 
-        // 1. Heave (Vertical Up & Down Motion)
-        float centerWave = (bowWave + sternWave + portWave + starWave) * 0.25f;
+        // The hull heaves with the wave at its center; edge samples control pitch and roll.
+        float centerWave = SampleWaveHeight(p.x, p.z, t);
 
         // Dynamic speed effects: hydro-planing lift + speed chop
         float hydroLift = speed01 * 0.14f;
         float speedChop = speed01 > 0.05f ? Mathf.Sin(t * 14f) * (0.04f * speed01) : 0f;
 
         float baseSurfaceY = GetWaterSurfaceY(p);
-        float targetY = baseSurfaceY + boatWaterlineOffset + centerWave + hydroLift + speedChop;
-
-        float damp = Mathf.Lerp(buoyancyDamping, buoyancyDamping * 0.55f, speed01);
-        if (!_hasSnappedWaterline)
-        {
-            p.y = targetY;
-            _heaveVel = 0f;
-            _smoothedPitch = bowTrimAngle;
-            _smoothedRoll = 0f;
-            _hasSnappedWaterline = true;
-        }
-        else
-        {
-            p.y = Mathf.SmoothDamp(p.y, targetY, ref _heaveVel, damp);
-        }
-        transform.position = p;
 
         // 2. Pitch (Front-to-back wave rocking + bow planing rise + natural bow trim)
         float wavePitch = Mathf.Atan2(bowWave - sternWave, halfLength * 2f) * Mathf.Rad2Deg * wavePitchStrength;
@@ -927,8 +870,26 @@ public class BoatSystem : MonoBehaviour
         float tiltFollow = Mathf.Lerp(6.0f, 14.0f, speed01);
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 1f - Mathf.Exp(-tiltFollow * Time.deltaTime));
 
+        float hullBottomOffset = CalculateHullBounds().min.y - transform.position.y;
+        float targetY = baseSurfaceY + centerWave + hydroLift + speedChop +
+                        boatWaterlineOffset - hullBottomOffset;
+
+        float damp = Mathf.Lerp(buoyancyDamping, buoyancyDamping * 0.55f, speed01);
+        Vector3 floatingPosition = transform.position;
+        if (!_hasSnappedWaterline)
+        {
+            floatingPosition.y = targetY;
+            _heaveVel = 0f;
+            _hasSnappedWaterline = true;
+        }
+        else
+        {
+            floatingPosition.y = Mathf.SmoothDamp(floatingPosition.y, targetY, ref _heaveVel, damp);
+        }
+        transform.position = floatingPosition;
+
         // 5. Update Hull Depth Mask so zero water renders inside the boat
-        UpdateHullDepthMask(p, boatFwd);
+        UpdateHullDepthMask(baseSurfaceY + centerWave);
 
         if (boatRigidbody != null)
         {
@@ -1014,17 +975,18 @@ public class BoatSystem : MonoBehaviour
     {
         if (_hullMaskObj != null) return;
 
-        _hullMaskObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        _hullMaskObj.name = "Boat_HullDepthMask";
-
-        Collider col = _hullMaskObj.GetComponent<Collider>();
-        if (col != null) Destroy(col);
+        _hullMaskObj = new GameObject("Boat_HullDepthMask");
+        MeshFilter mf = _hullMaskObj.AddComponent<MeshFilter>();
+        MeshRenderer mr = _hullMaskObj.AddComponent<MeshRenderer>();
+        _hullMaskMesh = CreateHullMaskMesh();
+        mf.sharedMesh = _hullMaskMesh;
 
         _hullMaskObj.transform.localScale = hullMaskSize;
 
-        Material maskMat = null;
+        Material maskMat = hullDepthMaskMaterial;
 #if UNITY_EDITOR
-        maskMat = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/HullDepthMask.mat");
+        if (maskMat == null)
+            maskMat = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/HullDepthMask.mat");
 #endif
 
         if (maskMat == null)
@@ -1038,18 +1000,68 @@ public class BoatSystem : MonoBehaviour
             }
         }
 
-        MeshRenderer mr = _hullMaskObj.GetComponent<MeshRenderer>();
-        if (mr != null)
-        {
-            if (maskMat != null) mr.sharedMaterial = maskMat;
-            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            mr.receiveShadows = false;
-            mr.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
-            mr.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
-        }
+        if (maskMat == null)
+            Debug.LogError("[BoatSystem] Hull depth-mask material or shader is missing; water may render inside the boat.");
+
+        if (maskMat != null) mr.sharedMaterial = maskMat;
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        mr.receiveShadows = false;
+        mr.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+        mr.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
     }
 
-    private void UpdateHullDepthMask(Vector3 boatPos, Vector3 boatFwd)
+    private static Mesh CreateHullMaskMesh()
+    {
+        int outlineCount = HullMaskOutline.Length;
+        Vector3[] vertices = new Vector3[outlineCount * 2];
+        for (int i = 0; i < outlineCount; i++)
+        {
+            Vector2 point = HullMaskOutline[i];
+            vertices[i] = new Vector3(point.x, 0.5f, point.y);
+            vertices[i + outlineCount] = new Vector3(point.x, -0.5f, point.y);
+        }
+
+        int[] triangles = new int[(outlineCount - 2) * 6 + outlineCount * 6];
+        int triangleIndex = 0;
+        for (int i = 1; i < outlineCount - 1; i++)
+        {
+            triangles[triangleIndex++] = 0;
+            triangles[triangleIndex++] = i;
+            triangles[triangleIndex++] = i + 1;
+            triangles[triangleIndex++] = outlineCount;
+            triangles[triangleIndex++] = outlineCount + i + 1;
+            triangles[triangleIndex++] = outlineCount + i;
+        }
+
+        for (int i = 0; i < outlineCount; i++)
+        {
+            int next = (i + 1) % outlineCount;
+            triangles[triangleIndex++] = i;
+            triangles[triangleIndex++] = i + outlineCount;
+            triangles[triangleIndex++] = next + outlineCount;
+            triangles[triangleIndex++] = i;
+            triangles[triangleIndex++] = next + outlineCount;
+            triangles[triangleIndex++] = next;
+        }
+
+        Mesh mesh = new Mesh { name = "BoatHullDepthMaskMesh" };
+        mesh.vertices = vertices;
+        mesh.triangles = triangles;
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    private Bounds CalculateHullDepthMaskBounds(float waterSurfaceY, Quaternion maskRotation)
+    {
+        Bounds hullBounds = CalculateHullBounds();
+        Vector3 center = hullBounds.center + maskRotation * hullMaskOffset;
+        float bottomY = waterSurfaceY + hullMaskOffset.y - hullMaskSize.y * 0.5f;
+        center.y = bottomY + hullMaskSize.y * 0.5f;
+        return new Bounds(center, hullMaskSize);
+    }
+
+    private void UpdateHullDepthMask(float waterSurfaceY)
     {
         if (!enableHullDepthMask)
         {
@@ -1065,10 +1077,10 @@ public class BoatSystem : MonoBehaviour
         Quaternion tiltRot = Quaternion.Euler(_smoothedPitch, 0f, -_smoothedRoll);
         Quaternion maskRot = yawRot * tiltRot;
 
-        Vector3 worldOffset = maskRot * hullMaskOffset;
-        _hullMaskObj.transform.position = boatPos + worldOffset;
+        Bounds maskBounds = CalculateHullDepthMaskBounds(waterSurfaceY, maskRot);
+        _hullMaskObj.transform.position = maskBounds.center;
         _hullMaskObj.transform.rotation = maskRot;
-        _hullMaskObj.transform.localScale = hullMaskSize;
+        _hullMaskObj.transform.localScale = maskBounds.size;
     }
 
     private void OnDrawGizmosSelected()
@@ -1105,10 +1117,15 @@ public class BoatSystem : MonoBehaviour
             Quaternion yawRot = Quaternion.Euler(0f, _boatYaw, 0f);
             Quaternion tiltRot = Quaternion.Euler(_smoothedPitch, 0f, -_smoothedRoll);
             Quaternion maskRot = yawRot * tiltRot;
-            Vector3 worldOffset = maskRot * hullMaskOffset;
-            Gizmos.matrix = Matrix4x4.TRS(p + worldOffset, maskRot, hullMaskSize);
-            Gizmos.DrawWireCube(Vector3.zero, Vector3.one);
-            Gizmos.matrix = oldMat;
+            Bounds maskBounds = CalculateHullDepthMaskBounds(GetWaterSurfaceY(p), maskRot);
+            if (_hullMaskMesh != null)
+                Gizmos.DrawWireMesh(_hullMaskMesh, maskBounds.center, maskRot, maskBounds.size);
+            else
+            {
+                Gizmos.matrix = Matrix4x4.TRS(maskBounds.center, maskRot, maskBounds.size);
+                Gizmos.DrawWireCube(Vector3.zero, Vector3.one);
+                Gizmos.matrix = oldMat;
+            }
         }
     }
 }

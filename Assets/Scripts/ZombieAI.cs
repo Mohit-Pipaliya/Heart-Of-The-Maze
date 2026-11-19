@@ -720,7 +720,7 @@ public class ZombieAI : MonoBehaviour
     private IEnumerator RaadRoutine()
     {
         PlayAnimation("Raad", 0.12f);
-        GameAudio.PlayZombieScream(transform.position, _zombieAudio);
+        EnemyChaseAudioSystem.PlayAttack(this);
         ZombieSense.Report(transform.position, ZombieSense.Kind.Scream);
 
         float elapsed = 0f;
@@ -755,7 +755,7 @@ public class ZombieAI : MonoBehaviour
         }
 
         PlayAnimation(_isSliding ? "Slide" : "Run", 0.15f);
-        SetGoal(ChaseDestination(), 2f);
+        SetChaseGoal(ChaseDestination());
     }
 
     private void HandleChase(float distanceToPlayer)
@@ -796,7 +796,7 @@ public class ZombieAI : MonoBehaviour
         if (Time.time >= _nextRepathTime)
         {
             _nextRepathTime = Time.time + (close ? 0.12f : 0.22f);
-            SetGoal(ChaseDestination(), 2f);
+            SetChaseGoal(ChaseDestination());
         }
     }
 
@@ -1249,6 +1249,13 @@ public class ZombieAI : MonoBehaviour
 
         _agent.isStopped = false;
         _agent.SetDestination(hit.position);
+        return true;
+    }
+
+    private bool SetChaseGoal(Vector3 world)
+    {
+        if (_agent == null || !_agent.enabled || !_agent.isOnNavMesh) return false;
+        EnemyChaseAudioSystem.SetChaseDestination(_agent, world);
         return true;
     }
 

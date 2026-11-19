@@ -1983,6 +1983,8 @@ MonoBehaviour:
   boatNearDownPoint: {fileID: 1542341599051670441}
   boatSeatPoint: {fileID: 4571696412262798534}
   boatCameraPoint: {fileID: 0}
+  boatModelRoot: {fileID: 2073899626837970768}
+  boatModelScale: {x: 1, y: 1, z: 1}
   enterDistance: 8
   oarPickup: {fileID: 0}
   requireOar: 1
@@ -1994,19 +1996,21 @@ MonoBehaviour:
   boatDecelerationSmoothing: 0.85
   accelerationRate: 2
   turnSmoothing: 5
+  waveHeight: 0.55
+  boatWaterlineOffset: 0.2
+  enableHullDepthMask: 1
+  hullMaskSize: {x: 1.6, y: 1.7, z: 4.3}
+  hullMaskOffset: {x: 0, y: -0.15, z: 0.2}
+  hullDepthMaskMaterial: {fileID: 2100000, guid: 8c3534df8acef434e92157fe33df9889, type: 2}
   waterBobAmount: 0.5
   waterBobSpeed: 2
   forwardMovementAxis: 4
   boatEnterShiftOffset: {x: -0.5, y: 0, z: 0}
-  climbStateName: BoatClimb
   paddleStateName: Paddle
   sitDownStateName: SitDown
   sitUpStateName: StandUp
-  unclimbStateName: BoatUnclimb
-  climbTriggerName: BoatClimb
   sitDownTriggerName: SitDown
   sitUpTriggerName: StandUp
-  unclimbTriggerName: BoatUnclimb
   paddlingBoolName: IsPaddling
   seatIdleBoolName: SeatIdle
   idleAfterSitUpDuration: 2

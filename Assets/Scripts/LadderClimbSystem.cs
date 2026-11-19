@@ -62,8 +62,12 @@ public class LadderClimbSystem : MonoBehaviour
     [Tooltip("Interaction key (default: C).")]
     [SerializeField] private KeyCode interactKey = KeyCode.C;
 
-    [Tooltip("Proximity radius for interaction prompt.")]
-    [SerializeField] private float proximityRadius = 25.0f;
+    [Header("── Top Platform Fall Damage ──")]
+    [Tooltip("Health lost as a percentage of maximum health when falling from Trigger 4.")]
+    [Range(0f, 1f)]
+    [SerializeField] private float topFallDamagePercent = 0.3f;
+    [Tooltip("Vertical drop from Trigger 4 required before fall damage is applied.")]
+    [SerializeField] private float topFallDamageDropDistance = 3f;
 
     [Header("── Alignment & Micro-Tuning ──")]
     [Tooltip("Forward/backward offset from ladder rungs. Negative pulls player back; positive pushes into rungs.")]
@@ -105,10 +109,11 @@ public class LadderClimbSystem : MonoBehaviour
 
     // Internal flags
     private bool  _inTrigger1;
-    private bool  _inTrigger2;
-    private bool  _inTrigger3;
     private bool  _inTrigger4;
     private bool  _isDismounting;
+    private bool  _topFallArmed;
+    private bool  _topFallCheckPending;
+    private float _topFallOriginY;
     private float _timeOnLadder;
     private float _nextRungSound;
     private float _prevShootingWeight;
@@ -186,6 +191,8 @@ public class LadderClimbSystem : MonoBehaviour
                 _nextValidationTime = Time.time + 3.0f;
                 ValidateAndKeepTriggersLinked();
             }
+
+            CheckForTopPlatformFall();
 
             switch (currentState)
             {
@@ -379,9 +386,10 @@ public class LadderClimbSystem : MonoBehaviour
         switch (type)
         {
             case LadderTriggerZone.ZoneType.Trigger1_BottomGround: _inTrigger1 = true; break;
-            case LadderTriggerZone.ZoneType.Trigger2_BottomMount:  _inTrigger2 = true; break;
-            case LadderTriggerZone.ZoneType.Trigger3_TopMount:     _inTrigger3 = true; break;
-            case LadderTriggerZone.ZoneType.Trigger4_TopGround:    _inTrigger4 = true; break;
+            case LadderTriggerZone.ZoneType.Trigger4_TopGround:
+                _inTrigger4 = true;
+                _topFallCheckPending = false;
+                break;
         }
     }
 
@@ -390,9 +398,39 @@ public class LadderClimbSystem : MonoBehaviour
         switch (type)
         {
             case LadderTriggerZone.ZoneType.Trigger1_BottomGround: _inTrigger1 = false; break;
-            case LadderTriggerZone.ZoneType.Trigger2_BottomMount:  _inTrigger2 = false; break;
-            case LadderTriggerZone.ZoneType.Trigger3_TopMount:     _inTrigger3 = false; break;
-            case LadderTriggerZone.ZoneType.Trigger4_TopGround:    _inTrigger4 = false; break;
+            case LadderTriggerZone.ZoneType.Trigger4_TopGround:
+                _inTrigger4 = false;
+                if (_topFallArmed && currentState == ClimbState.Idle)
+                {
+                    _topFallCheckPending = true;
+                }
+                break;
+        }
+    }
+
+    private void CheckForTopPlatformFall()
+    {
+        if (!_topFallArmed || !_topFallCheckPending || currentState != ClimbState.Idle || _pt == null)
+            return;
+
+        if (_pt.position.y > _topFallOriginY - topFallDamageDropDistance)
+            return;
+
+        if (_pc == null) FindPlayer();
+        _topFallArmed = false;
+        _topFallCheckPending = false;
+
+        if (_pc == null)
+        {
+            Debug.LogWarning("[LadderClimbSystem] Could not apply fall damage because PlayerController was not found.");
+            return;
+        }
+
+        int damage = Mathf.CeilToInt(_pc.MaxHealth * topFallDamagePercent);
+        if (damage > 0)
+        {
+            Debug.Log($"[LadderClimbSystem] Fall from Trigger 4: applying {damage} damage.");
+            _pc.TakeDamage(damage);
         }
     }
 
@@ -488,30 +526,8 @@ public class LadderClimbSystem : MonoBehaviour
     {
         float playerY = _pt.position.y;
 
-        Vector3 t1Pos = (trigger1_BottomGround != null) ? GetTriggerPos(trigger1_BottomGround) : Vector3.zero;
-        Vector3 t2Pos = (trigger2_BottomMount  != null) ? GetTriggerPos(trigger2_BottomMount)  : Vector3.zero;
-        Vector3 t3Pos = (trigger3_TopMount     != null) ? GetTriggerPos(trigger3_TopMount)     : Vector3.zero;
-        Vector3 t4Pos = (trigger4_TopGround    != null) ? GetTriggerPos(trigger4_TopGround)    : Vector3.zero;
-
-        // 2D horizontal distances
-        float distToT1 = Vector2.Distance(new Vector2(_pt.position.x, _pt.position.z), new Vector2(t1Pos.x, t1Pos.z));
-        float distToT2 = Vector2.Distance(new Vector2(_pt.position.x, _pt.position.z), new Vector2(t2Pos.x, t2Pos.z));
-        float distToT3 = Vector2.Distance(new Vector2(_pt.position.x, _pt.position.z), new Vector2(t3Pos.x, t3Pos.z));
-        float distToT4 = Vector2.Distance(new Vector2(_pt.position.x, _pt.position.z), new Vector2(t4Pos.x, t4Pos.z));
-
-        // Bottom Ground detection: Player is on ground level (Y < 50m) and near T1 or T2
-        bool nearBottom = (playerY < 50f) && (
-            _inTrigger1 || _inTrigger2 ||
-            distToT1 <= Mathf.Max(proximityRadius, 25f) ||
-            distToT2 <= Mathf.Max(proximityRadius, 25f)
-        );
-
-        // Top Platform detection: Player is on top deck (Y >= 50m) and near T4 or T3
-        bool nearTop = (playerY >= 50f) && (
-            _inTrigger4 || _inTrigger3 ||
-            distToT4 <= Mathf.Max(proximityRadius, 25f) ||
-            distToT3 <= Mathf.Max(proximityRadius, 25f)
-        );
+        bool nearBottom = playerY < 50f && _inTrigger1;
+        bool nearTop = playerY >= 50f && _inTrigger4;
 
         // Interaction Key [C]
         if (Input.GetKeyDown(interactKey) || Input.GetKeyDown(KeyCode.C))
@@ -849,6 +865,9 @@ public class LadderClimbSystem : MonoBehaviour
         climbProgress  = 0f;
         _timeOnLadder  = 0f;
         _isDismounting = false;
+        _topFallArmed = true;
+        _topFallCheckPending = true;
+        _topFallOriginY = targetPos.y;
         currentState   = ClimbState.Idle;
 
         Debug.Log("[LadderClimbSystem] >>> Successfully dismounted onto Platform (Trigger 4)!");
@@ -904,6 +923,8 @@ public class LadderClimbSystem : MonoBehaviour
         climbProgress  = 0f;
         _timeOnLadder  = 0f;
         _isDismounting = false;
+        _topFallArmed = false;
+        _topFallCheckPending = false;
         currentState   = ClimbState.Idle;
 
         Debug.Log("[LadderClimbSystem] >>> Successfully dismounted onto Ground (Trigger 1)!");
@@ -917,23 +938,14 @@ public class LadderClimbSystem : MonoBehaviour
         if (_pt == null) return;
 
         float playerY = _pt.position.y;
-        Vector3 t1Pos = (trigger1_BottomGround != null) ? GetTriggerPos(trigger1_BottomGround) : Vector3.zero;
-        Vector3 t2Pos = (trigger2_BottomMount  != null) ? GetTriggerPos(trigger2_BottomMount)  : Vector3.zero;
-        Vector3 t3Pos = (trigger3_TopMount     != null) ? GetTriggerPos(trigger3_TopMount)     : Vector3.zero;
-        Vector3 t4Pos = (trigger4_TopGround    != null) ? GetTriggerPos(trigger4_TopGround)    : Vector3.zero;
+        bool nearBottom = playerY < 50f && _inTrigger1;
+        bool nearTop = playerY >= 50f && _inTrigger4;
 
-        float distToT1 = Vector2.Distance(new Vector2(_pt.position.x, _pt.position.z), new Vector2(t1Pos.x, t1Pos.z));
-        float distToT2 = Vector2.Distance(new Vector2(_pt.position.x, _pt.position.z), new Vector2(t2Pos.x, t2Pos.z));
-        float distToT3 = Vector2.Distance(new Vector2(_pt.position.x, _pt.position.z), new Vector2(t3Pos.x, t3Pos.z));
-        float distToT4 = Vector2.Distance(new Vector2(_pt.position.x, _pt.position.z), new Vector2(t4Pos.x, t4Pos.z));
+        bool isClimbingState = currentState == ClimbState.Climbing ||
+                               currentState == ClimbState.MountingUp ||
+                               currentState == ClimbState.MountingDown;
 
-        bool nearBottom = (playerY < 50f) && (_inTrigger1 || _inTrigger2 || distToT1 <= Mathf.Max(proximityRadius, 25f) || distToT2 <= Mathf.Max(proximityRadius, 25f));
-        bool nearTop    = (playerY >= 50f) && (_inTrigger4 || _inTrigger3 || distToT4 <= Mathf.Max(proximityRadius, 25f) || distToT3 <= Mathf.Max(proximityRadius, 25f));
-
-        bool isClimbingState = (currentState == ClimbState.Climbing || currentState == ClimbState.MountingUp || currentState == ClimbState.MountingDown);
-        bool inClimbPosition = isClimbingState || (_inTrigger2 || _inTrigger3 || distToT2 <= 2.5f || distToT3 <= 2.5f);
-
-        if (inClimbPosition)
+        if (isClimbingState)
         {
             // Jab player W ya S press karke climb kare tab UI chhip jaye (hide)
             // Aur jaise hi W ya S press karna bandh karde tab turant wapas dikhe

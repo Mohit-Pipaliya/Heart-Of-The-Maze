@@ -1721,6 +1721,8 @@ MonoBehaviour:
   manualHitboxSize: {x: 16, y: 5.5, z: 16}
   manualHitboxCenter: {x: 0, y: 2.5, z: 0}
   enableAudio: 1
+  chaseLoopClip: {fileID: 8300000, guid: 2294a5d539968419dbd9eb5ac45d2695, type: 3}
+  attackClip: {fileID: 8300000, guid: e009bd48250ae40b2970b888290ec747, type: 3}
   enableVFX: 1
   enableHitFlash: 1
   player: {fileID: 0}

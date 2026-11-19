@@ -51,10 +51,10 @@ public class SpiderEnemy : MonoBehaviour
     [Tooltip("NavMeshAgent player ke kitne paas aake rukega (meters)")]
     public float stoppingDistance = 8.2f;
 
-    [Tooltip("Player kitni doori pe aane se spider chase shuru karega (meters)")]
+    [HideInInspector, Tooltip("Legacy serialized value; the territory trigger controls chasing.")]
     public float aggroDistance = 45f;
 
-    [Tooltip("Territory Trigger: is collider ke andar spider patrol karega (optional)")]
+    [Tooltip("Required territory trigger. Spider player ko sirf is collider ke andar chase karega.")]
     public Collider territoryTrigger;
 
     [Tooltip("Territory na ho toh spawn point ke aas paas kitne area me ghumega (meters)")]
@@ -150,6 +150,13 @@ public class SpiderEnemy : MonoBehaviour
     [Tooltip("Attack aur hit sound effects enable/disable")]
     public bool enableAudio = true;
 
+    [Header("─── Spider Audio Clips ──────────────────────────────────────")]
+    [SerializeField] private AudioClip chaseLoopClip;
+    [SerializeField] private AudioClip attackClip;
+
+    public AudioClip ChaseLoopClip => chaseLoopClip;
+    public AudioClip AttackClip => attackClip;
+
     [Tooltip("Blood burst aur hit markers enable/disable")]
     public bool enableVFX = true;
 
@@ -188,6 +195,7 @@ public class SpiderEnemy : MonoBehaviour
     private SpiderTriggerZone _triggerZone;
 
     public bool IsDead => isDead;
+    public bool IsChasing => !isDead && (_isChasing || _isAttacking);
     public float CurrentHealth => currentHealth;
 
     // Animator Parameter Hashes (Fast lookup)
@@ -587,21 +595,7 @@ public class SpiderEnemy : MonoBehaviour
         float distanceToPlayer = player != null ? Vector3.Distance(transform.position, player.position) : Mathf.Infinity;
         bool playerInTerritory = IsPlayerInTerritory();
 
-        // Niyam:
-        // 1. Agar player trigger area me enter kare — spider chase + attack karega
-        // 2. Agar aggroDistance ke andar aaye (even without territory) — bhi aggro hoga
-        // 3. Agar already chasing ho — tab bhi target karna band mat karo
-        bool shouldTargetPlayer;
-        if (territoryTrigger != null)
-        {
-            // Territory trigger set hai: player andar ho ya aggroDistance ke andar ho
-            shouldTargetPlayer = playerInTerritory || distanceToPlayer <= aggroDistance || _isChasing;
-        }
-        else
-        {
-            // Koi territory trigger nahi: aggroDistance use karo
-            shouldTargetPlayer = distanceToPlayer <= aggroDistance;
-        }
+        bool shouldTargetPlayer = playerInTerritory;
 
         // Effective melee attack range: attackRange ya stoppingDistance me se jo zyada ho
         float effectiveAttackDistance = Mathf.Max(stoppingDistance + 0.5f, attackRange);
@@ -712,7 +706,7 @@ public class SpiderEnemy : MonoBehaviour
         agent.acceleration = acceleration;
         // Stopping distance must allow spider to close in to attack range
         agent.stoppingDistance = Mathf.Min(stoppingDistance, Mathf.Max(1.5f, attackRange * 0.75f));
-        agent.SetDestination(player.position);
+        EnemyChaseAudioSystem.SetChaseDestination(agent, player.position);
     }
 
     private void AttackPlayer()
@@ -742,11 +736,12 @@ public class SpiderEnemy : MonoBehaviour
             agent.isStopped = false;
             agent.speed = walkSpeed;
             agent.stoppingDistance = stoppingDistance;
-            if (player != null) agent.SetDestination(player.position);
+            if (player != null) EnemyChaseAudioSystem.SetChaseDestination(agent, player.position);
         }
 
         if (!_isAttacking && Time.time >= lastAttackTime + attackCooldown)
         {
+            EnemyChaseAudioSystem.PlayAttack(this);
             if (anim != null)
             {
                 anim.ResetTrigger(hashAttack);
@@ -795,13 +790,13 @@ public class SpiderEnemy : MonoBehaviour
             _floatingHealthBar.SetHealth(currentHealth);
 
         // Instantly aggro and chase player if shot or struck, but only if player is in territory
-        bool canAggro = territoryTrigger == null || IsPlayerInTerritory();
+        bool canAggro = IsPlayerInTerritory();
         if (canAggro && player != null && agent != null && agent.enabled)
         {
             _isChasing = true;
             agent.isStopped = false;
             agent.speed = runSpeed;
-            agent.SetDestination(player.position);
+            EnemyChaseAudioSystem.SetChaseDestination(agent, player.position);
         }
 
         // Visceral Hit Knockback
@@ -1271,10 +1266,6 @@ public class SpiderEnemy : MonoBehaviour
         Gizmos.color = new Color(0.2f, 1f, 0.4f, 0.75f);
         Gizmos.DrawWireSphere(pos, stoppingDistance);
         DrawWireDisc(pos + Vector3.up * 0.05f, stoppingDistance, 24);
-
-        // Aggro Distance (Yellow Wire Sphere)
-        Gizmos.color = new Color(1f, 0.9f, 0.2f, 0.5f);
-        Gizmos.DrawWireSphere(pos, aggroDistance);
 
         // Anti-Penetration Safe Distance (Blue Wire Sphere)
         if (enableAntiPenetration)

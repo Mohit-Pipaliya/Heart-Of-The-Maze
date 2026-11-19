@@ -149,6 +149,38 @@ public class HumanSnakeEnemy : MonoBehaviour
 
     [Header("─── Audio & Visual Effects ──────────────────────────────────")]
     public bool enableAudio = true;
+
+    [Header("─── Human Snake Audio Clips ─────────────────────────────────")]
+    [SerializeField] private AudioClip chaseLoopClip;
+    [SerializeField] private AudioClip attackClip;
+    [SerializeField] private AudioClip[] attack1Clips;
+    [SerializeField] private AudioClip[] attack2Clips;
+    [SerializeField] private AudioClip[] attack3Clips;
+    [SerializeField] private AudioClip[] cast1Clips;
+    [SerializeField] private AudioClip[] cast2Clips;
+    [SerializeField] private AudioClip[] deathClips;
+    [SerializeField] private AudioClip[] dodgeClips;
+    [SerializeField] private AudioClip[] hitClips;
+    [SerializeField] private AudioClip[] chaseVariants;
+    [SerializeField] private AudioClip[] idleClips;
+    [SerializeField] private AudioClip[] tailWhipClips;
+    [SerializeField] private AudioClip[] tauntClips;
+
+    internal AudioClip ChaseLoopClip => chaseLoopClip;
+    internal AudioClip AttackClip => attackClip;
+    internal AudioClip[] Attack1Clips => attack1Clips;
+    internal AudioClip[] Attack2Clips => attack2Clips;
+    internal AudioClip[] Attack3Clips => attack3Clips;
+    internal AudioClip[] Cast1Clips => cast1Clips;
+    internal AudioClip[] Cast2Clips => cast2Clips;
+    internal AudioClip[] DeathClips => deathClips;
+    internal AudioClip[] DodgeClips => dodgeClips;
+    internal AudioClip[] HitClips => hitClips;
+    internal AudioClip[] ChaseVariants => chaseVariants;
+    internal AudioClip[] IdleClips => idleClips;
+    internal AudioClip[] TailWhipClips => tailWhipClips;
+    internal AudioClip[] TauntClips => tauntClips;
+
     public bool enableVFX = true;
     public bool enableHitFlash = true;
 
@@ -182,6 +214,7 @@ public class HumanSnakeEnemy : MonoBehaviour
     private SnakeTriggerZone _triggerZone;
 
     public bool IsDead => isDead;
+    public bool IsChasing => !isDead && (_isChasing || _isAttacking);
     public float CurrentHealth => currentHealth;
 
     // Animator Parameter Hashes (Primary: Spider style)
@@ -213,20 +246,19 @@ public class HumanSnakeEnemy : MonoBehaviour
     /// </summary>
     public void PlayAudio(string clipName)
     {
-        // Receiver for PlayAudio(string) animation events on attack/cast/taunt/etc clips
-        // Optionally play footstep/slither sound if GameAudio has it
+        EnemyChaseAudioSystem.PlayHumanSnakeEvent(this, clipName);
     }
 
     public void PlayAudio()
     {
-        // Parameterless overload for any no-arg PlayAudio events
+        EnemyChaseAudioSystem.PlayHumanSnakeEvent(this, "idle");
     }
 
     // Additional animation event stubs to prevent "has no receiver" console errors
-    public void LeftHandCast()   { /* Left hand cast VFX trigger stub */ }
-    public void RightHandCast()  { /* Right hand cast VFX trigger stub */ }
-    public void FootstepLeft()   { /* Footstep left stub */ }
-    public void FootstepRight()  { /* Footstep right stub */ }
+    public void LeftHandCast()   { EnemyChaseAudioSystem.PlayHumanSnakeEvent(this, "cast"); }
+    public void RightHandCast()  { EnemyChaseAudioSystem.PlayHumanSnakeEvent(this, "cast"); }
+    public void FootstepLeft()   { EnemyChaseAudioSystem.PlayHumanSnakeEvent(this, "walk"); }
+    public void FootstepRight()  { EnemyChaseAudioSystem.PlayHumanSnakeEvent(this, "walk"); }
     public void OnAttackHit()    { /* Melee impact stub */ }
     public void OnAttackStart()  { /* Attack wind-up stub */ }
     public void OnAttackEnd()    { /* Attack recovery stub */ }
@@ -424,6 +456,24 @@ public class HumanSnakeEnemy : MonoBehaviour
             if (_triggerZone == null)
                 _triggerZone = territoryTrigger.gameObject.AddComponent<SnakeTriggerZone>();
         }
+
+        if (_triggerZone != null)
+            _triggerZone.SetOwner(this);
+    }
+
+    public void OnPlayerEnteredTerritory()
+    {
+        if (isDead) return;
+
+        FindPlayer();
+        if (player == null) return;
+
+        _isChasing = true;
+        if (agent == null || !agent.enabled || !agent.isOnNavMesh) return;
+
+        agent.isStopped = false;
+        agent.speed = runSpeed;
+        EnemyChaseAudioSystem.SetChaseDestination(agent, player.position);
     }
 
     public bool IsPointInTerritory(Vector3 worldPoint)
@@ -727,7 +777,7 @@ public class HumanSnakeEnemy : MonoBehaviour
         agent.speed = runSpeed;
         agent.acceleration = acceleration;
         agent.stoppingDistance = Mathf.Max(1.0f, attackRange * 0.75f);
-        agent.SetDestination(player.position);
+        EnemyChaseAudioSystem.SetChaseDestination(agent, player.position);
 
         // Smooth look-at player
         Vector3 direction = (player.position - transform.position).normalized;
@@ -791,6 +841,14 @@ public class HumanSnakeEnemy : MonoBehaviour
 
         int attackIndex = _attackCounter % 4;
         _attackCounter++;
+        string attackAudioEvent = attackIndex switch
+        {
+            0 => "attack1",
+            1 => "attack2",
+            2 => "attack3",
+            _ => "tailwhip"
+        };
+        EnemyChaseAudioSystem.PlayHumanSnakeEvent(this, attackAudioEvent);
 
         float totalDuration = 0.95f;
         float hitDelay = damageHitDelay;
@@ -878,7 +936,7 @@ public class HumanSnakeEnemy : MonoBehaviour
             _isChasing = true;
             agent.isStopped = false;
             agent.speed = runSpeed;
-            agent.SetDestination(player.position);
+            EnemyChaseAudioSystem.SetChaseDestination(agent, player.position);
         }
 
         // Visceral Hit Knockback — enemy player se door hota hai
@@ -934,6 +992,7 @@ public class HumanSnakeEnemy : MonoBehaviour
         }
         else
         {
+            EnemyChaseAudioSystem.PlayHumanSnakeEvent(this, "hit");
             _isAttacking = false; // Cancels active attack windup on hit flinch
             if (anim != null)
             {
@@ -1010,6 +1069,7 @@ public class HumanSnakeEnemy : MonoBehaviour
     public void Die()
     {
         if (isDead) return;
+        EnemyChaseAudioSystem.PlayHumanSnakeEvent(this, "death");
         isDead = true;
         _isAttacking = false;
         _isChasing = false;
