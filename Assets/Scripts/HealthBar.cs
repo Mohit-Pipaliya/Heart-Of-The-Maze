@@ -1,21 +1,20 @@
 /*
  * HEALTH BAR — THEMED UI SYSTEM
  * ==============================
- * Unity 6 uGUI + TextMeshPro responsive health bar system matching target SVG reference geometry.
+ * Unity 6 uGUI responsive health bar system matching target SVG reference geometry.
  *
  * All 4 Themed Health Bars:
  * 1. Player  (Top-Left Screen Space, 600x80): Brushed steel, carbon-fiber pattern, cyan accents, left bolt, red fill.
  * 2. Zombie  (World Space / Screen Space, 400x44): Jagged wood/rust, skull icon, cracks, falling blood drops, dark red fill.
  * 3. Spider  (World Space / Screen Space, 480x80): Chitin hex, spider icon, fangs below, web lines, neon green fill.
- * 4. Boss    (Bottom-Center Screen Space, 700x96): Dual serpent heads, gold scales, red diamond jewel, emerald fill,
- *             "NAGA — GUARDIAN OF THE HEART" title plate, phase notches, embers & smoke.
+ * 4. Boss    (World Space, 850x96): Dual serpent heads, gold scales, red diamond jewel, emerald fill,
+ *             phase notches, embers & smoke.
  *
  * API:
  * - healthBar.SetMaxHealth(float maxHP)
  * - healthBar.SetHealth(float currentHP)
  */
 using System;
-using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -25,6 +24,8 @@ public class HealthBar : MonoBehaviour
 {
     public float CurrentHealth => _targetHealth;
     public float MaxHealth => _maxHealth;
+    public float WorldLength => _worldLength;
+    public float WorldThickness => _worldThickness;
 
     [Header("Bar Settings")]
     [UnityEngine.Serialization.FormerlySerializedAs("type")]
@@ -59,6 +60,8 @@ public class HealthBar : MonoBehaviour
     private float _windowY = 28f;
     private float _windowWidth = 520f;
     private float _windowHeight = 26f;
+    private float _worldLength;
+    private float _worldThickness;
 
     // Components & Layer Hierarchy
     private RectTransform _root;
@@ -168,34 +171,86 @@ public class HealthBar : MonoBehaviour
 
     private void BuildCurrentBar()
     {
+        // Prefabs may already contain an older, manually-built bar hierarchy.
+        // This component generates its own visuals, so discard that hierarchy
+        // before creating them to avoid doubled frames and glow shapes.
+        if (!_built)
+        {
+            for (int i = transform.childCount - 1; i >= 0; i--)
+                Destroy(transform.GetChild(i).gameObject);
+        }
+
         _root = transform as RectTransform;
         if (_root == null)
             _root = gameObject.AddComponent<RectTransform>();
 
         _isWorldSpace = false;
+        float defaultWidth = 0f;
+        float defaultHeight = 0f;
+        float defaultWindowX = 0f;
+        float defaultWindowY = 0f;
+        float defaultWindowWidth = 0f;
+        float defaultWindowHeight = 0f;
         switch (barType)
         {
             case BarType.Player:
                 _barWidth = 600f; _barHeight = 80f;
                 _windowX = 44f; _windowY = 28f; _windowWidth = 520f; _windowHeight = 26f;
-                BuildPlayerBar();
                 break;
 
             case BarType.Zombie:
-                _barWidth = 400f; _barHeight = 44f;
-                _windowX = 46f; _windowY = 14f; _windowWidth = 332f; _windowHeight = 16f;
-                BuildZombieBar();
+                _barWidth = 520f; _barHeight = 44f;
+                _windowX = 58f; _windowY = 14f; _windowWidth = 430f; _windowHeight = 16f;
                 break;
 
             case BarType.Spider:
-                _barWidth = 480f; _barHeight = 80f;
-                _windowX = 52f; _windowY = 18f; _windowWidth = 376f; _windowHeight = 24f;
-                BuildSpiderBar();
+                _barWidth = 600f; _barHeight = 72f;
+                _windowX = 65f; _windowY = 14f; _windowWidth = 470f; _windowHeight = 20f;
                 break;
 
             case BarType.Boss:
-                _barWidth = 700f; _barHeight = 96f;
-                _windowX = 100f; _windowY = 34f; _windowWidth = 500f; _windowHeight = 28f;
+                _barWidth = 850f; _barHeight = 96f;
+                _windowX = 120f; _windowY = 34f; _windowWidth = 610f; _windowHeight = 28f;
+                break;
+        }
+
+        defaultWidth = _barWidth;
+        defaultHeight = _barHeight;
+        defaultWindowX = _windowX;
+        defaultWindowY = _windowY;
+        defaultWindowWidth = _windowWidth;
+        defaultWindowHeight = _windowHeight;
+
+        // Preserve a RectTransform size edited in the Inspector.  A root of 0
+        // means the bar was created at runtime, so keep that bar type's default size.
+        if (_root.sizeDelta.x > 1f && _root.sizeDelta.y > 1f)
+        {
+            float scaleX = _root.sizeDelta.x / defaultWidth;
+            float scaleY = _root.sizeDelta.y / defaultHeight;
+            _barWidth = _root.sizeDelta.x;
+            _barHeight = _root.sizeDelta.y;
+            _windowX = defaultWindowX * scaleX;
+            _windowY = defaultWindowY * scaleY;
+            _windowWidth = defaultWindowWidth * scaleX;
+            _windowHeight = defaultWindowHeight * scaleY;
+        }
+        else
+        {
+            _root.sizeDelta = new Vector2(_barWidth, _barHeight);
+        }
+
+        switch (barType)
+        {
+            case BarType.Player:
+                BuildPlayerBar();
+                break;
+            case BarType.Zombie:
+                BuildZombieBar();
+                break;
+            case BarType.Spider:
+                BuildSpiderBar();
+                break;
+            case BarType.Boss:
                 BuildBossBar();
                 break;
         }
@@ -289,6 +344,7 @@ public class HealthBar : MonoBehaviour
         if (_customAnchor != null)
         {
             Vector3 safePos = _customAnchor.position;
+            safePos = KeepBossBarAboveBounds(safePos);
             // NaN / Infinity guard — ek bhi component invalid ho to skip karo
             if (!float.IsNaN(safePos.x) && !float.IsNaN(safePos.y) && !float.IsNaN(safePos.z)
                 && !float.IsInfinity(safePos.x) && !float.IsInfinity(safePos.y) && !float.IsInfinity(safePos.z))
@@ -299,6 +355,7 @@ public class HealthBar : MonoBehaviour
         else if (_anchor != null)
         {
             Vector3 safePos = _anchor.position + Vector3.up * _headGap;
+            safePos = KeepBossBarAboveBounds(safePos);
             if (!float.IsNaN(safePos.x) && !float.IsNaN(safePos.y) && !float.IsNaN(safePos.z)
                 && !float.IsInfinity(safePos.x) && !float.IsInfinity(safePos.y) && !float.IsInfinity(safePos.z))
             {
@@ -311,13 +368,25 @@ public class HealthBar : MonoBehaviour
             transform.rotation = Quaternion.LookRotation(cam.transform.forward, Vector3.up);
     }
 
+    private Vector3 KeepBossBarAboveBounds(Vector3 position)
+    {
+        if (barType != BarType.Boss || _anchor == null || !TryGetAnchorBounds(out Bounds bounds))
+            return position;
+
+        float halfHeight = _barHeight * Mathf.Abs(_root.lossyScale.y) * 0.5f;
+        float anchorHeight = _anchor.position.y + _headGap;
+        float clearHeight = bounds.max.y + halfHeight + 0.2f;
+        position.y = Mathf.Max(anchorHeight, clearHeight);
+        return position;
+    }
+
     public void SetMaxHealth(float maxHealth)
     {
         if (float.IsNaN(maxHealth) || float.IsInfinity(maxHealth) || maxHealth <= 0f)
             maxHealth = 1f;
 
         _maxHealth = maxHealth;
-        _targetHealth = Mathf.Clamp(_targetHealth, 0f, _maxHealth);
+        _targetHealth = _maxHealth;
         _displayHealth = _targetHealth;
         _displayStartHealth = _targetHealth;
         _ghostHealth = _targetHealth;
@@ -418,7 +487,9 @@ public class HealthBar : MonoBehaviour
         rt.anchorMax = new Vector2(0f, 1f);
         rt.pivot = new Vector2(0f, 1f);
         rt.anchoredPosition = new Vector2(24f, -24f);
-        rt.sizeDelta = new Vector2(600f, 80f);
+        // Keep the sizeDelta from the scene/prefab/Inspector.
+        if (rt.sizeDelta.x <= 1f || rt.sizeDelta.y <= 1f)
+            rt.sizeDelta = new Vector2(600f, 80f);
         rt.localScale = Vector3.one;
         _baseAnchoredPosition = rt.anchoredPosition;
         _baseScale = rt.localScale;
@@ -453,7 +524,9 @@ public class HealthBar : MonoBehaviour
         rt.anchorMax = new Vector2(0.5f, 0f);
         rt.pivot = new Vector2(0.5f, 0f);
         rt.anchoredPosition = new Vector2(0f, 28f);
-        rt.sizeDelta = new Vector2(700f, 96f);
+        // Keep the sizeDelta from the scene/prefab/Inspector.
+        if (rt.sizeDelta.x <= 1f || rt.sizeDelta.y <= 1f)
+            rt.sizeDelta = new Vector2(700f, 96f);
         rt.localScale = Vector3.one;
         rt.localRotation = Quaternion.identity;
         _baseAnchoredPosition = rt.anchoredPosition;
@@ -488,6 +561,13 @@ public class HealthBar : MonoBehaviour
         ApplyWorldScale();
     }
 
+    public void SetWorldDimensions(float length, float thickness)
+    {
+        _worldLength = Mathf.Max(0.05f, length);
+        _worldThickness = Mathf.Max(0.01f, thickness);
+        ApplyWorldScale();
+    }
+
     public void ApplyWorldScale()
     {
         if (_root == null) return;
@@ -498,34 +578,37 @@ public class HealthBar : MonoBehaviour
             return;
         }
 
-        // Base width in meters for standard 1.0 scale:
-        // Zombie: ~1.8m
-        // Spider: ~2.0m
-        // Boss: ~4.0m
+        // Type defaults apply until an enemy supplies explicit dimensions.
         float targetWidthInMeters;
         switch (barType)
         {
             case BarType.Zombie:
-                targetWidthInMeters = 1.8f;
+                targetWidthInMeters = 3.2f;
                 break;
             case BarType.Spider:
-                targetWidthInMeters = 2.0f;
+                targetWidthInMeters = 4.6f;
                 break;
             case BarType.Boss:
-                targetWidthInMeters = 4.0f;
+                targetWidthInMeters = 7.0f;
                 break;
             default:
                 targetWidthInMeters = 2.0f;
                 break;
         }
 
-        float desiredWorldScale = (targetWidthInMeters / Mathf.Max(1f, _barWidth)) * worldScale;
+        if (_worldLength > 0f)
+            targetWidthInMeters = _worldLength;
+        float targetThicknessInMeters = _worldThickness > 0f
+            ? _worldThickness
+            : targetWidthInMeters * (_barHeight / Mathf.Max(1f, _barWidth)) * 0.6f;
 
         // Compensate for parent's lossyScale (e.g. Spider=40x, Boss=12x)
         Vector3 parentLossy = transform.parent != null ? transform.parent.lossyScale : Vector3.one;
-        float sx = desiredWorldScale / Mathf.Max(0.0001f, Mathf.Abs(parentLossy.x));
-        float sy = desiredWorldScale / Mathf.Max(0.0001f, Mathf.Abs(parentLossy.y));
-        float sz = desiredWorldScale / Mathf.Max(0.0001f, Mathf.Abs(parentLossy.z));
+        float sx = (targetWidthInMeters / Mathf.Max(1f, _barWidth)) * worldScale
+            / Mathf.Max(0.0001f, Mathf.Abs(parentLossy.x));
+        float sy = (targetThicknessInMeters / Mathf.Max(1f, _barHeight)) * worldScale
+            / Mathf.Max(0.0001f, Mathf.Abs(parentLossy.y));
+        float sz = sx;
 
         _root.localScale = new Vector3(sx, sy, sz);
         _baseScale = _root.localScale;
@@ -538,13 +621,14 @@ public class HealthBar : MonoBehaviour
     public void SetCustomAnchor(Transform anchorTransform, float scaleMultiplier = 1.0f)
     {
         _customAnchor = anchorTransform;
-        _anchor = anchorTransform;
+        _anchor = anchorTransform.root;
         _trackedSubject = anchorTransform;
         _isWorldSpace = true;
         worldScale = scaleMultiplier;
 
-        // Keep parented to anchor to move naturally with it
-        transform.SetParent(anchorTransform, false);
+        // Keep the Canvas outside the enemy hierarchy. Parenting to an animated
+        // bone/root can make world-space UI inherit scale and animation wobble.
+        transform.SetParent(null, true);
         transform.localPosition = Vector3.zero;
 
         ConfigureWorldSpaceCanvas();
@@ -572,7 +656,9 @@ public class HealthBar : MonoBehaviour
         _headGap = heightOffset;
         worldScale = scaleMultiplier;
 
-        transform.SetParent(enemyRoot, false);
+        // Keep the UI independent of the enemy hierarchy so mesh/animation
+        // transforms cannot scale or wobble the health bar.
+        transform.SetParent(null, true);
         transform.localPosition = new Vector3(0f, heightOffset, 0f);
 
         ConfigureWorldSpaceCanvas();
@@ -600,7 +686,8 @@ public class HealthBar : MonoBehaviour
         _anchorRenderers = null;
         _isWorldSpace = true;
 
-        transform.SetParent(anchor, false);
+        // Keep the UI independent of the anchor hierarchy.
+        transform.SetParent(null, true);
         transform.localPosition = new Vector3(0f, _headGap, 0f);
 
         ConfigureWorldSpaceCanvas();
@@ -830,7 +917,7 @@ public class HealthBar : MonoBehaviour
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    //  BUILDER: BOSS (NAGA — GUARDIAN OF THE HEART, 700x96)
+    //  BUILDER: BOSS (NAGA — GUARDIAN OF THE HEART, 850x96)
     // ═══════════════════════════════════════════════════════════════════════════
 
     private void BuildBossBar()
@@ -902,42 +989,14 @@ public class HealthBar : MonoBehaviour
         frameImage.type = Image.Type.Simple;
 
         // 12. Snake Head Endcaps
-        Image leftHead = CreateImage("Left Snake Head", transform, endCapLeft, 0f, 0f, 76f, 96f);
+        float layoutScale = _barWidth / 700f;
+        float endCapWidth = 76f * layoutScale;
+        Image leftHead = CreateImage("Left Snake Head", transform, endCapLeft, 0f, 0f, endCapWidth, _barHeight);
         leftHead.raycastTarget = false;
-        Image rightHead = CreateImage("Right Snake Head", transform, endCapRight, 624f, 0f, 76f, 96f);
+        Image rightHead = CreateImage("Right Snake Head", transform, endCapRight, _barWidth - endCapWidth, 0f, endCapWidth, _barHeight);
         rightHead.raycastTarget = false;
 
-        // 13. Title Plate Above Bar
-        RectTransform plateRect = CreateRect("Title Plate", transform, 100f, -44f, 500f, 38f);
-        Image plateImg = plateRect.gameObject.AddComponent<Image>();
-        plateImg.sprite = HealthBarSprites.GetBossNamePlate();
-        plateImg.raycastTarget = false;
-
-        // Title Text with TextMeshPro
-        GameObject textObj = new GameObject("Boss Name", typeof(RectTransform));
-        textObj.layer = transform.gameObject.layer;
-        textObj.transform.SetParent(plateRect, false);
-        RectTransform textRect = (RectTransform)textObj.transform;
-        textRect.anchorMin = Vector2.zero;
-        textRect.anchorMax = Vector2.one;
-        textRect.offsetMin = Vector2.zero;
-        textRect.offsetMax = Vector2.zero;
-
-        TextMeshProUGUI tmp = textObj.AddComponent<TextMeshProUGUI>();
-        if (TMP_Settings.defaultFontAsset != null)
-            tmp.font = TMP_Settings.defaultFontAsset;
-        tmp.text = "NAGA — GUARDIAN OF THE HEART";
-        tmp.enableAutoSizing = true;
-        tmp.fontSizeMin = 12f;
-        tmp.fontSizeMax = 18f;
-        tmp.fontStyle = FontStyles.Bold;
-        tmp.characterSpacing = 6f;
-        tmp.alignment = TextAlignmentOptions.Center;
-        tmp.color = new Color(0.961f, 0.827f, 0.416f, 1f);
-        tmp.overflowMode = TextOverflowModes.Ellipsis;
-        tmp.raycastTarget = false;
-
-        // 14. VFX Particle Pool (Embers & Smoke)
+        // 13. VFX Particle Pool (Embers & Smoke)
         SetupParticlePool(HealthBarSprites.GetParticle(), 3.5f);
     }
 

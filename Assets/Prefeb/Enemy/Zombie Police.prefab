@@ -284,7 +284,7 @@ RectTransform:
   m_GameObject: {fileID: 5353342209850409058}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 0.0008333333, y: 0.0008333333, z: 0.0008333333}
+  m_LocalScale: {x: 0, y: 0, z: 0}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 2209545691435310666}
@@ -294,11 +294,11 @@ RectTransform:
   - {fileID: 1732319569915810964}
   m_Father: {fileID: 166397231860646244}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.5, y: 0.5}
-  m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 0.24444444}
-  m_SizeDelta: {x: 100, y: 100}
-  m_Pivot: {x: 0.5, y: 0.5}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
+  m_Pivot: {x: 0, y: 0}
 --- !u!223 &3953218482172170218
 Canvas:
   m_ObjectHideFlags: 0
@@ -308,7 +308,7 @@ Canvas:
   m_GameObject: {fileID: 5353342209850409058}
   m_Enabled: 1
   serializedVersion: 3
-  m_RenderMode: 2
+  m_RenderMode: 0
   m_Camera: {fileID: 0}
   m_PlaneDistance: 100
   m_PixelPerfect: 0
@@ -316,7 +316,7 @@ Canvas:
   m_OverrideSorting: 0
   m_OverridePixelPerfect: 0
   m_SortingBucketNormalizedSize: 0
-  m_VertexColorAlwaysGammaSpace: 0
+  m_VertexColorAlwaysGammaSpace: 1
   m_AdditionalShaderChannelsFlag: 0
   m_UpdateRectTransformForStandalone: 0
   m_SortingLayerID: 0
@@ -353,6 +353,8 @@ MonoBehaviour:
   endCapLeft: {fileID: 0}
   endCapRight: {fileID: 0}
   icon: {fileID: 0}
+  worldScale: 5
+  showOuterGlow: 0
 --- !u!1 &5461570116180644485
 GameObject:
   m_ObjectHideFlags: 0
@@ -849,7 +851,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 921c870cb1eb34ca783b0caf250ab226, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 163.92032
+      value: 5120.1206
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 921c870cb1eb34ca783b0caf250ab226, type: 3}
       propertyPath: m_LocalPosition.y
@@ -857,7 +859,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 921c870cb1eb34ca783b0caf250ab226, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 72.53302
+      value: 1394.533
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 921c870cb1eb34ca783b0caf250ab226, type: 3}
       propertyPath: m_LocalRotation.w
@@ -996,7 +998,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d88b46e2135d74042ab32a20040088f0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ZombieAI
-  maxHealth: 1000
+  maxHealth: 1500
   triggerArea: {fileID: 0}
   detectionRadius: 50
   loseTargetRadius: 36
@@ -1025,6 +1027,11 @@ MonoBehaviour:
   walkSound: {fileID: 8300000, guid: 99ef62f5b491249ba87bb29a3c8b3776, type: 3}
   player: {fileID: 0}
   showFloatingHealthBar: 1
+  healthBarScale: 1
+  healthBarLength: 10
+  healthBarThickness: 2
+  healthBarHeightOffset: 2
+  healthBarPosition: {fileID: 0}
 --- !u!114 &9022963640912787487
 MonoBehaviour:
   m_ObjectHideFlags: 0

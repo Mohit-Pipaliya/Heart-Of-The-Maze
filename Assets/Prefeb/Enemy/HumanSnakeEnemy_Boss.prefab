@@ -108,7 +108,7 @@ Transform:
   - {fileID: 5964235813919311456}
   - {fileID: 7433843251627583097}
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 180, z: 0}
 --- !u!95 &8487810971885849438
 Animator:
   serializedVersion: 7
@@ -285,10 +285,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 61542d7e6b3454f69a93ab7d04f8d95f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HumanSnakeEnemy
-  maxHealth: 1500
+  maxHealth: 3000
   currentHealth: 0
   showFloatingHealthBar: 1
-  healthBarHeightOffset: 3.8
+  healthBarScale: 1
+  healthBarLength: 20
+  healthBarThickness: 2
+  healthBarHeightOffset: 8
+  healthBarPosition: {fileID: 0}
   hitStunDuration: 0.35
   knockbackDistance: 0.35
   corpseDespawnDelay: 7

@@ -571,6 +571,8 @@ MonoBehaviour:
   endCapLeft: {fileID: 0}
   endCapRight: {fileID: 0}
   icon: {fileID: 0}
+  worldScale: 5
+  showOuterGlow: 0
 --- !u!1 &6173645502410293903
 GameObject:
   m_ObjectHideFlags: 0
@@ -849,7 +851,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 126.6
+      value: 5082.8003
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
       propertyPath: m_LocalPosition.y
@@ -857,7 +859,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 464.1
+      value: 1786.1
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
       propertyPath: m_LocalRotation.w
@@ -865,7 +867,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
       propertyPath: m_LocalRotation.x
-      value: 0
+      value: -0
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3c96c4773c2934b228c9d9e48319ebea, type: 3}
       propertyPath: m_LocalRotation.y
@@ -1036,7 +1038,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d88b46e2135d74042ab32a20040088f0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ZombieAI
-  maxHealth: 1000
+  maxHealth: 1500
   triggerArea: {fileID: 0}
   detectionRadius: 50
   loseTargetRadius: 36
@@ -1065,6 +1067,11 @@ MonoBehaviour:
   walkSound: {fileID: 8300000, guid: 99ef62f5b491249ba87bb29a3c8b3776, type: 3}
   player: {fileID: 0}
   showFloatingHealthBar: 1
+  healthBarScale: 1
+  healthBarLength: 10
+  healthBarThickness: 2
+  healthBarHeightOffset: 2
+  healthBarPosition: {fileID: 0}
 --- !u!114 &6798922965879167532
 MonoBehaviour:
   m_ObjectHideFlags: 0

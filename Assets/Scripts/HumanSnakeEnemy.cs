@@ -36,9 +36,13 @@ public class HumanSnakeEnemy : MonoBehaviour
     [Header("─── Floating Health Bar (Boss Naga) ───────────────────────────")]
     [Tooltip("HumanSnake ke upar floating BOSS health bar dikhaye")]
     public bool showFloatingHealthBar = true;
-    [Tooltip("Health bar ka size / scale (1.0 = normal, 1.5 = thoda bada, 0.8 = chhota)")]
+    [Tooltip("Overall size multiplier; length aur thickness neeche alag set kar sakte hain.")]
     [Range(0.2f, 5f)]
     public float healthBarScale = 1.0f;
+    [Min(0.1f), Tooltip("HumanSnake health bar ki length (meters)")]
+    public float healthBarLength = 7.0f;
+    [Min(0.01f), Tooltip("HumanSnake health bar ki height/thickness (meters)")]
+    public float healthBarThickness = 0.47f;
     [Tooltip("Health bar kitne meters upar float kare agar custom anchor na ho")]
     public float healthBarHeightOffset = 5.5f;
     [Tooltip("Aapne jo 'healthbar position' empty object banaya hai usko yahan drag karein (ya script auto-detect karegi)")]
@@ -519,6 +523,30 @@ public class HumanSnakeEnemy : MonoBehaviour
 
     private void Update()
     {
+        // ── EMERGENCY NaN POSITION GUARD ──────────────────────────────────────
+        // Agar boss ki position NaN ya Infinity ho jaaye (physics crash se)
+        // toh turant startPos pe warp karo taaki Invalid AABB cascade band ho
+        Vector3 curTransPos = transform.position;
+        if (float.IsNaN(curTransPos.x) || float.IsNaN(curTransPos.y) || float.IsNaN(curTransPos.z) ||
+            float.IsInfinity(curTransPos.x) || float.IsInfinity(curTransPos.y) || float.IsInfinity(curTransPos.z))
+        {
+            Debug.LogWarning("[HumanSnakeEnemy] NaN position detected! Emergency warp to startPos.");
+            if (agent != null && agent.enabled)
+            {
+                agent.enabled = false;
+                transform.position = startPos;
+                agent.enabled = true;
+                if (NavMesh.SamplePosition(startPos, out NavMeshHit nhit, 10f, NavMesh.AllAreas))
+                    agent.Warp(nhit.position);
+            }
+            else
+            {
+                transform.position = startPos;
+            }
+            return;
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         if (isDead)
         {
             ProcessTerrainAlignment();
@@ -528,6 +556,12 @@ public class HumanSnakeEnemy : MonoBehaviour
         if (_floatingHealthBar != null && !Mathf.Approximately(_floatingHealthBar.worldScale, healthBarScale))
         {
             _floatingHealthBar.SetWorldScale(healthBarScale);
+        }
+        if (_floatingHealthBar != null &&
+            (!Mathf.Approximately(_floatingHealthBar.WorldLength, healthBarLength) ||
+             !Mathf.Approximately(_floatingHealthBar.WorldThickness, healthBarThickness)))
+        {
+            _floatingHealthBar.SetWorldDimensions(healthBarLength, healthBarThickness);
         }
 
         ProcessTerrainAlignment();
@@ -847,7 +881,8 @@ public class HumanSnakeEnemy : MonoBehaviour
             agent.SetDestination(player.position);
         }
 
-        // Visceral Hit Knockback
+        // Visceral Hit Knockback — enemy player se door hota hai
+        // Note: Boss ka knockback bahut chhota rakho (0.35f) taaki NavMesh se baahar na jaye
         if (player != null && knockbackDistance > 0.001f)
         {
             Vector3 pushDir = (transform.position - player.position);
@@ -857,10 +892,15 @@ public class HumanSnakeEnemy : MonoBehaviour
             if (mag > 0.001f && !float.IsNaN(mag) && !float.IsInfinity(mag))
             {
                 pushDir /= mag; // normalize safely
-                if (agent != null && agent.enabled && agent.isOnNavMesh)
-                    agent.Move(pushDir * knockbackDistance);
-                else
-                    transform.position += pushDir * knockbackDistance;
+                Vector3 newPos = transform.position + pushDir * knockbackDistance;
+                // Sirf tab move karo jab result valid position ho
+                if (!float.IsNaN(newPos.x) && !float.IsInfinity(newPos.x))
+                {
+                    if (agent != null && agent.enabled && agent.isOnNavMesh)
+                        agent.Move(pushDir * knockbackDistance);
+                    else
+                        transform.position = newPos;
+                }
             }
         }
 
@@ -964,6 +1004,7 @@ public class HumanSnakeEnemy : MonoBehaviour
         {
             _floatingHealthBar.SetWorldPositionAnchor(transform, healthBarHeightOffset, healthBarScale);
         }
+        _floatingHealthBar.SetWorldDimensions(healthBarLength, healthBarThickness);
     }
 
     public void Die()
@@ -1096,6 +1137,11 @@ public class HumanSnakeEnemy : MonoBehaviour
         if (!enableTerrainAlignment) return;
 
         Vector3 curPos = transform.position;
+
+        // ── NaN Position Guard — agar curPos invalid ho to skip karo ──
+        if (float.IsNaN(curPos.x) || float.IsNaN(curPos.y) || float.IsNaN(curPos.z) ||
+            float.IsInfinity(curPos.x) || float.IsInfinity(curPos.y) || float.IsInfinity(curPos.z))
+            return;
         float currentGroundY = curPos.y;
         bool hasGround = false;
 

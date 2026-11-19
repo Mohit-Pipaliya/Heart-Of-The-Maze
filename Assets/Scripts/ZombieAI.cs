@@ -94,9 +94,13 @@ public class ZombieAI : MonoBehaviour
     [Header("── Floating Health Bar ──")]
     [Tooltip("Show the world-space zombie health bar.")]
     public bool showFloatingHealthBar = true;
-    [Tooltip("Health bar ka size / scale (1.0 = normal, 1.5 = thoda bada, 0.8 = chhota)")]
+    [Tooltip("Overall size multiplier; length aur thickness neeche alag set kar sakte hain.")]
     [Range(0.2f, 5f)]
     public float healthBarScale = 1.0f;
+    [Min(0.1f), Tooltip("Zombie health bar ki length (meters)")]
+    public float healthBarLength = 3.2f;
+    [Min(0.01f), Tooltip("Zombie health bar ki height/thickness (meters)")]
+    public float healthBarThickness = 0.16f;
     [Tooltip("Health bar kitna upar float kare (meters) agar custom anchor na ho")]
     public float healthBarHeightOffset = 2.3f;
     [Tooltip("Aapne jo 'healthbar position' empty object banaya hai usko yahan drag karein (ya script auto-detect karegi)")]
@@ -401,6 +405,7 @@ public class ZombieAI : MonoBehaviour
         {
             _floatingHealthBar.SetWorldPositionAnchor(transform, healthBarHeightOffset, healthBarScale);
         }
+        _floatingHealthBar.SetWorldDimensions(healthBarLength, healthBarThickness);
     }
 
     private void Update()
@@ -410,6 +415,12 @@ public class ZombieAI : MonoBehaviour
         if (_floatingHealthBar != null && !Mathf.Approximately(_floatingHealthBar.worldScale, healthBarScale))
         {
             _floatingHealthBar.SetWorldScale(healthBarScale);
+        }
+        if (_floatingHealthBar != null &&
+            (!Mathf.Approximately(_floatingHealthBar.WorldLength, healthBarLength) ||
+             !Mathf.Approximately(_floatingHealthBar.WorldThickness, healthBarThickness)))
+        {
+            _floatingHealthBar.SetWorldDimensions(healthBarLength, healthBarThickness);
         }
 
         if (player == null)
