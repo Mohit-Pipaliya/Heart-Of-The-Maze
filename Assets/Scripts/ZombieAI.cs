@@ -94,9 +94,9 @@ public class ZombieAI : MonoBehaviour
     [Header("── Floating Health Bar ──")]
     [Tooltip("Show the world-space zombie health bar.")]
     public bool showFloatingHealthBar = true;
-    [Tooltip("Health bar ka size / scale (1.0 = normal, 2.0 = double, 3.0 = bada)")]
-    [Range(0.5f, 8f)]
-    public float healthBarScale = 2.0f;
+    [Tooltip("Health bar ka size / scale (1.0 = normal, 1.5 = thoda bada, 0.8 = chhota)")]
+    [Range(0.2f, 5f)]
+    public float healthBarScale = 1.0f;
     [Tooltip("Health bar kitna upar float kare (meters) agar custom anchor na ho")]
     public float healthBarHeightOffset = 2.3f;
     [Tooltip("Aapne jo 'healthbar position' empty object banaya hai usko yahan drag karein (ya script auto-detect karegi)")]

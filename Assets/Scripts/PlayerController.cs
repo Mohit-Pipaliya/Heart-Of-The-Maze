@@ -1523,6 +1523,8 @@ public class PlayerController : MonoBehaviour
             rt.pivot = new Vector2(0f, 1f);
             rt.anchoredPosition = new Vector2(24f, -24f);
             rt.sizeDelta = new Vector2(600f, 80f);
+            rt.localRotation = Quaternion.identity;
+            rt.localScale = Vector3.one;
 
             _playerHealthBar = barGO.AddComponent<HealthBar>();
             _playerHealthBar.barType = BarType.Player;

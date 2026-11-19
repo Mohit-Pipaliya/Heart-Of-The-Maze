@@ -39,9 +39,9 @@ public class HealthBar : MonoBehaviour
     public Sprite icon;
 
     [Header("World Space Sizing")]
-    [Tooltip("World space health bar scale multiplier (1.0 = normal, 2.0 = double size, 3.0 = bada)")]
-    [Range(0.2f, 10f)]
-    public float worldScale = 2.0f;
+    [Tooltip("World space health bar scale multiplier (1.0 = normal, 1.5 = thoda bada, 0.8 = chhota)")]
+    [Range(0.2f, 5f)]
+    public float worldScale = 1.0f;
 
     private const int ParticlePoolSize = 24;
     private const float DamageFillDuration = 0.3f;
@@ -261,8 +261,15 @@ public class HealthBar : MonoBehaviour
 
     private void LateUpdate()
     {
-        if (!_built)
+        if (!_built || !_isWorldSpace)
             return;
+
+        Transform target = _customAnchor != null ? _customAnchor : _anchor;
+        if (target == null)
+        {
+            Destroy(gameObject);
+            return;
+        }
 
         if (_customAnchor != null)
         {
@@ -368,10 +375,19 @@ public class HealthBar : MonoBehaviour
     /// </summary>
     public void PinScreenTopLeft()
     {
+        _isWorldSpace = false;
+        _anchor = null;
+        _customAnchor = null;
+
+        Canvas ownCanvas = GetComponent<Canvas>();
+        if (ownCanvas != null && ownCanvas.renderMode == RenderMode.WorldSpace)
+            ownCanvas.enabled = false;
+
         RectTransform rt = transform as RectTransform;
         if (rt == null)
             return;
 
+        rt.localRotation = Quaternion.identity;
         rt.anchorMin = new Vector2(0f, 1f);
         rt.anchorMax = new Vector2(0f, 1f);
         rt.pivot = new Vector2(0f, 1f);
@@ -380,6 +396,15 @@ public class HealthBar : MonoBehaviour
         rt.localScale = Vector3.one;
         _baseAnchoredPosition = rt.anchoredPosition;
         _baseScale = rt.localScale;
+
+        if (_canvasGroup == null)
+            _canvasGroup = GetComponent<CanvasGroup>();
+        if (_canvasGroup == null)
+            _canvasGroup = gameObject.AddComponent<CanvasGroup>();
+        _canvasGroup.interactable = false;
+        _canvasGroup.blocksRaycasts = false;
+        _canvasGroup.alpha = 1f;
+        _visibilityAlpha = 1f;
     }
 
     /// <summary>
@@ -440,9 +465,43 @@ public class HealthBar : MonoBehaviour
     public void ApplyWorldScale()
     {
         if (_root == null) return;
-        float baseFactor = barType == BarType.Boss ? 0.008f : 0.01f;
-        float s = baseFactor * worldScale;
-        _root.localScale = new Vector3(s, s, s);
+        if (!_isWorldSpace)
+        {
+            _root.localScale = Vector3.one;
+            _baseScale = Vector3.one;
+            return;
+        }
+
+        // Base width in meters for standard 1.0 scale:
+        // Zombie: ~1.8m
+        // Spider: ~2.0m
+        // Boss: ~4.0m
+        float targetWidthInMeters;
+        switch (barType)
+        {
+            case BarType.Zombie:
+                targetWidthInMeters = 1.8f;
+                break;
+            case BarType.Spider:
+                targetWidthInMeters = 2.0f;
+                break;
+            case BarType.Boss:
+                targetWidthInMeters = 4.0f;
+                break;
+            default:
+                targetWidthInMeters = 2.0f;
+                break;
+        }
+
+        float desiredWorldScale = (targetWidthInMeters / Mathf.Max(1f, _barWidth)) * worldScale;
+
+        // Compensate for parent's lossyScale (e.g. Spider=40x, Boss=12x)
+        Vector3 parentLossy = transform.parent != null ? transform.parent.lossyScale : Vector3.one;
+        float sx = desiredWorldScale / Mathf.Max(0.0001f, Mathf.Abs(parentLossy.x));
+        float sy = desiredWorldScale / Mathf.Max(0.0001f, Mathf.Abs(parentLossy.y));
+        float sz = desiredWorldScale / Mathf.Max(0.0001f, Mathf.Abs(parentLossy.z));
+
+        _root.localScale = new Vector3(sx, sy, sz);
         _baseScale = _root.localScale;
     }
 
@@ -450,7 +509,7 @@ public class HealthBar : MonoBehaviour
     /// Locks this health bar directly to a custom empty GameObject anchor (e.g. "healthbar position").
     /// Stays at that anchor's position, billboard-faces the camera, and scales cleanly in world space.
     /// </summary>
-    public void SetCustomAnchor(Transform anchorTransform, float scaleMultiplier = 2.0f)
+    public void SetCustomAnchor(Transform anchorTransform, float scaleMultiplier = 1.0f)
     {
         _customAnchor = anchorTransform;
         _anchor = anchorTransform;
@@ -478,7 +537,7 @@ public class HealthBar : MonoBehaviour
     /// Locks this bar to an enemy root with a height offset and scale multiplier.
     /// Follows enemy automatically and stays above ground.
     /// </summary>
-    public void SetWorldPositionAnchor(Transform enemyRoot, float heightOffset, float scaleMultiplier = 2.0f)
+    public void SetWorldPositionAnchor(Transform enemyRoot, float heightOffset, float scaleMultiplier = 1.0f)
     {
         _anchor = enemyRoot;
         _trackedSubject = enemyRoot;

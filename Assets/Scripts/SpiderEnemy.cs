@@ -19,9 +19,9 @@ public class SpiderEnemy : MonoBehaviour
     [Header("─── Floating Health Bar ─────────────────────────────────────")]
     [Tooltip("Spider ke upar floating health bar dikhaye")]
     public bool showFloatingHealthBar = true;
-    [Tooltip("Health bar ka size / scale (1.0 = normal, 2.0 = double, 3.0 = bada)")]
-    [Range(0.5f, 8f)]
-    public float healthBarScale = 2.5f;
+    [Tooltip("Health bar ka size / scale (1.0 = normal, 1.5 = thoda bada, 0.8 = chhota)")]
+    [Range(0.2f, 5f)]
+    public float healthBarScale = 1.0f;
     [Tooltip("Health bar spider ke center se kitna upar rahega agar custom anchor na ho (meters)")]
     public float healthBarHeightOffset = 4.8f;
     [Tooltip("Aapne jo 'healthbar position' empty object banaya hai usko yahan drag karein (ya script auto-detect karegi)")]
