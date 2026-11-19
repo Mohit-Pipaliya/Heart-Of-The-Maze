@@ -213,6 +213,13 @@ public class PlayerController : MonoBehaviour
         _anim   = GetComponent<Animator>();
         _cc     = GetComponent<CharacterController>();
         _health = maxHealth;
+
+        // Procedural low-health recovery box system. It spawns only after health becomes low.
+        if (GetComponent<LowHealthHealthBoxSystem>() == null)
+        {
+            gameObject.AddComponent<LowHealthHealthBoxSystem>();
+        }
+
         _swordSystem = GetComponentInChildren<SwordEquipSystem>();
         _gunSystem = GetComponentInChildren<GunEquipSystem>();
         if (_torchSystem == null)
