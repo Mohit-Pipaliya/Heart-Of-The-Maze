@@ -4,6 +4,15 @@ public static class HealthBarSprites
 {
     private const int Supersample = 4;
 
+    public const float PlayerWidth = 600f;
+    public const float PlayerHeight = 80f;
+    public const float ZombieWidth = 400f;
+    public const float ZombieHeight = 44f;
+    public const float SpiderWidth = 480f;
+    public const float SpiderHeight = 80f;
+    public const float BossWidth = 700f;
+    public const float BossHeight = 96f;
+
     // Cached procedural sprites
     private static Sprite _frame;
     private static Sprite _fill;

@@ -87,7 +87,7 @@ public static class HealthBarAutoSetup
         pRect.anchorMax = new Vector2(0f, 1f);
         pRect.pivot = new Vector2(0f, 1f);
         pRect.anchoredPosition = new Vector2(24f, -24f);
-        pRect.sizeDelta = new Vector2(600f, 80f);
+        pRect.sizeDelta = new Vector2(HealthBarSprites.PlayerWidth, HealthBarSprites.PlayerHeight);
 
         HealthBar pBar = playerBarGO.GetComponent<HealthBar>();
         if (pBar == null) pBar = playerBarGO.AddComponent<HealthBar>();
@@ -236,8 +236,8 @@ public static class HealthBarAutoSetup
         rect.anchorMin = new Vector2(0f, 1f);
         rect.anchorMax = new Vector2(0f, 1f);
         rect.pivot = new Vector2(0f, 1f);
-        rect.anchoredPosition = new Vector2(60f, -50f);
-        rect.sizeDelta = new Vector2(600f, 80f);
+        rect.anchoredPosition = new Vector2(18f, -12f);
+        rect.sizeDelta = new Vector2(HealthBarSprites.PlayerWidth, HealthBarSprites.PlayerHeight);
 
         HealthBar bar = root.AddComponent<HealthBar>();
         bar.barType = BarType.Player;
@@ -257,8 +257,8 @@ public static class HealthBarAutoSetup
         rect.anchorMin = new Vector2(0.5f, 0.5f);
         rect.anchorMax = new Vector2(0.5f, 0.5f);
         rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.anchoredPosition = new Vector2(-420f, 90f);
-        rect.sizeDelta = new Vector2(400f, 44f);
+        rect.anchoredPosition = new Vector2(-460f, 80f);
+        rect.sizeDelta = new Vector2(HealthBarSprites.ZombieWidth, HealthBarSprites.ZombieHeight);
 
         HealthBar bar = root.AddComponent<HealthBar>();
         bar.barType = BarType.Zombie;
@@ -278,8 +278,8 @@ public static class HealthBarAutoSetup
         rect.anchorMin = new Vector2(0.5f, 0.5f);
         rect.anchorMax = new Vector2(0.5f, 0.5f);
         rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.anchoredPosition = new Vector2(380f, 90f);
-        rect.sizeDelta = new Vector2(480f, 80f);
+        rect.anchoredPosition = new Vector2(420f, 80f);
+        rect.sizeDelta = new Vector2(HealthBarSprites.SpiderWidth, HealthBarSprites.SpiderHeight);
 
         HealthBar bar = root.AddComponent<HealthBar>();
         bar.barType = BarType.Spider;
@@ -299,8 +299,8 @@ public static class HealthBarAutoSetup
         rect.anchorMin = new Vector2(0.5f, 0f);
         rect.anchorMax = new Vector2(0.5f, 0f);
         rect.pivot = new Vector2(0.5f, 0f);
-        rect.anchoredPosition = new Vector2(0f, 75f);
-        rect.sizeDelta = new Vector2(700f, 96f);
+        rect.anchoredPosition = new Vector2(0f, 22f);
+        rect.sizeDelta = new Vector2(HealthBarSprites.BossWidth, HealthBarSprites.BossHeight);
 
         HealthBar bar = root.AddComponent<HealthBar>();
         bar.barType = BarType.Boss;
