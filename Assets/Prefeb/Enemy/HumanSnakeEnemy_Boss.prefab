@@ -292,14 +292,14 @@ MonoBehaviour:
   healthBarLength: 20
   healthBarThickness: 2
   healthBarHeightOffset: 8
-  healthBarPosition: {fileID: 0}
+  healthBarPosition: {fileID: 7433843251627583097}
   hitStunDuration: 0.35
   knockbackDistance: 0.35
   corpseDespawnDelay: 7
   attackRange: 20
   stoppingDistance: 0.5
   aggroDistance: 35
-  territoryTrigger: {fileID: 0}
+  territoryTrigger: {fileID: 3252142173534966707, guid: 4048218f236fa42a4a04be4f188a97ef, type: 3}
   patrolRadius: 12
   damageToPlayer: 20
   attackCooldown: 2
@@ -444,7 +444,7 @@ MonoBehaviour:
   - {fileID: 8300000, guid: c6d48557a90d847e48096f2f1f6f591f, type: 3}
   enableVFX: 1
   enableHitFlash: 1
-  player: {fileID: 0}
+  player: {fileID: 6506342385614542952, guid: b99474a10da764801b206e87e9a1402b, type: 3}
   showDebugGizmos: 0
   attackRangeColor: {r: 1, g: 0.2, b: 0.2, a: 0.6}
   stoppingDistanceColor: {r: 0.2, g: 1, b: 0.4, a: 0.6}

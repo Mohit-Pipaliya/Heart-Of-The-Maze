@@ -1996,14 +1996,6 @@ MonoBehaviour:
   boatDecelerationSmoothing: 0.85
   accelerationRate: 2
   turnSmoothing: 5
-  waveHeight: 0.55
-  boatWaterlineOffset: 0.2
-  enableHullDepthMask: 1
-  hullMaskSize: {x: 1.6, y: 1.7, z: 4.3}
-  hullMaskOffset: {x: 0, y: -0.15, z: 0.2}
-  hullDepthMaskMaterial: {fileID: 2100000, guid: 8c3534df8acef434e92157fe33df9889, type: 2}
-  waterBobAmount: 0.5
-  waterBobSpeed: 2
   forwardMovementAxis: 4
   boatEnterShiftOffset: {x: -0.5, y: 0, z: 0}
   paddleStateName: Paddle
