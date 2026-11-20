@@ -43,7 +43,6 @@ public static class GameAudio
         ZombieWalk,
         ZombieCrawl,
         BoatPaddle,
-        BoatWaterLap,
         GunDryFire,
         MagOut,
         MagIn,
@@ -70,7 +69,6 @@ public static class GameAudio
     private static AudioClip _pickupClip;
     private static AudioClip _equipClip;
     private static AudioClip _paddleClip;
-    private static AudioClip _boatWaterLapClip;
     private static AudioClip _hitClip;
     private static AudioClip _deathClip;
     private static AudioClip _uiClip;
@@ -98,7 +96,6 @@ public static class GameAudio
     private static float _lastPaddleTime = -1f;
     private static float _lastZombieWalkTime = -1f;
     private static float _lastZombieCrawlTime = -1f;
-    private static float _lastWaterLapTime = -1f;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     public static void ResetCache()
@@ -114,7 +111,7 @@ public static class GameAudio
         _bulletFleshClip = null;
         _bulletGroundClip = null;
         _footstepClip = _jumpClip = _landClip = _pickupClip = _equipClip = null;
-        _paddleClip = _boatWaterLapClip = _hitClip = _deathClip = _uiClip = null;
+        _paddleClip = _hitClip = _deathClip = _uiClip = null;
         _gunDryFireClip = _magOutClip = _magInClip = _gunCockClip = null;
         _zombieScreamClip = _zombieAttackClip = _zombieHurtClip = _zombieDeathClip = _zombieGroanClip = null;
         _zombieWalkClip = _zombieCrawlClip = null;
@@ -131,7 +128,6 @@ public static class GameAudio
         _lastPaddleTime = -1f;
         _lastZombieWalkTime = -1f;
         _lastZombieCrawlTime = -1f;
-        _lastWaterLapTime = -1f;
 
         // Force-preload core combat audio on startup
         PreloadCoreAudio();
@@ -146,7 +142,6 @@ public static class GameAudio
         GetClip(SoundType.BulletFlesh);
         GetClip(SoundType.BulletGround);
         GetClip(SoundType.Paddle);
-        GetClip(SoundType.BoatWaterLap);
     }
 
     public static AudioClip GetClip(SoundType type)
@@ -215,9 +210,6 @@ public static class GameAudio
             case SoundType.BoatPaddle:
                 if (_paddleClip == null) _paddleClip = LoadAudioClip("BoatPaddle") ?? MakeProcedural("Paddle", 0.25f, 120f, 0.5f);
                 return _paddleClip;
-            case SoundType.BoatWaterLap:
-                if (_boatWaterLapClip == null) _boatWaterLapClip = LoadAudioClip("BoatWaterLap") ?? MakeProcedural("BoatWaterLap", 0.6f, 180f, 0.4f);
-                return _boatWaterLapClip;
             case SoundType.Hit:
                 if (_hitClip == null) _hitClip = LoadAudioClip("BulletFlesh") ?? MakeProcedural("Hit", 0.2f, 140f, 0.6f);
                 return _hitClip;
@@ -490,15 +482,6 @@ public static class GameAudio
         }
     }
     public static void PlayZombieCrawl(Vector3 pos, AudioSource source = null, float volume = 0.6f) { }
-
-    public static void PlayBoatWaterLap(Vector3 pos, AudioSource source = null, float volume = 0.4f)
-    {
-        if (Time.time - _lastWaterLapTime < 0.65f) return;
-        _lastWaterLapTime = Time.time;
-        AudioClip clip = GetClip(SoundType.BoatWaterLap);
-        if (source != null && source.isActiveAndEnabled) { source.pitch = Random.Range(0.95f, 1.05f); source.PlayOneShot(clip, volume); }
-        else PlayAtPoint(clip, pos, volume, 0.95f, 1.05f, 0.45f);
-    }
 
     private static void EnsurePool()
     {
