@@ -475,21 +475,21 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ad17238848c1d449f8fabe7dbd65c041, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SpiderEnemy
-  maxHealth: 1500
+  maxHealth: 2500
   currentHealth: 0
   showFloatingHealthBar: 1
   healthBarScale: 1
   healthBarLength: 15
   healthBarThickness: 4
   healthBarHeightOffset: 10
-  healthBarPosition: {fileID: 0}
+  healthBarPosition: {fileID: 7621056971299903285}
   hitStunDuration: 0.45
   knockbackDistance: 0.35
   corpseDespawnDelay: 5
   attackRange: 30
   stoppingDistance: 8.2
   aggroDistance: 700.5
-  territoryTrigger: {fileID: 0}
+  territoryTrigger: {fileID: 6320515931458954012, guid: 2c3434f4b16f24359bbd2961447c6c1d, type: 3}
   patrolRadius: 15
   damageToPlayer: 100
   attackCooldown: 2.2
@@ -524,7 +524,7 @@ MonoBehaviour:
   attackClip: {fileID: 8300000, guid: e009bd48250ae40b2970b888290ec747, type: 3}
   enableVFX: 1
   enableHitFlash: 1
-  player: {fileID: 0}
+  player: {fileID: 6506342385614542952, guid: b99474a10da764801b206e87e9a1402b, type: 3}
   showDebugGizmos: 1
   attackRangeColor: {r: 1, g: 0.2, b: 0.2, a: 0.6}
   stoppingDistanceColor: {r: 0.2, g: 1, b: 0.4, a: 0.6}
