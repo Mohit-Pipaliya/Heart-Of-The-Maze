@@ -77,57 +77,6 @@ public class BoatSystem : MonoBehaviour
     public float accelerationRate = 2f;
     public float turnSmoothing = 5f;
 
-    [Header("Realistic Water Wave Physics")]
-    [Tooltip("Laher ki unchai / wave amplitude (meters) — jitna zyada, utna bada wave bobbing")]
-    [Range(0.05f, 1.5f)]
-    public float waveHeight = 0.55f;
-
-    [Tooltip("Laher ki raftaar / wave travel speed")]
-    [Range(0.2f, 5.0f)]
-    public float waveSpeed = 1.6f;
-
-    [Tooltip("Laher ki frequency / density")]
-    [Range(0.2f, 3.0f)]
-    public float waveFrequency = 1.0f;
-
-    [Tooltip("Boat aage-peeche kitni jhukegi laher ke sath (pitch strength)")]
-    [Range(0.2f, 3.0f)]
-    public float wavePitchStrength = 0.75f;
-
-    [Tooltip("Boat daayein-baayein kitni dolega laher ke sath (roll strength)")]
-    [Range(0.2f, 3.0f)]
-    public float waveRollStrength = 0.85f;
-
-    [Tooltip("Fast speed me boat ka bow (aage ka hissa) kitna upar uthega (planing angle in degrees)")]
-    [Range(0f, 8.0f)]
-    public float bowPlaningRise = 3.0f;
-
-    [Tooltip("Bow trim: boat ka aage ka hissa naturally thoda upar rahega taaki laherein andar na ghusein")]
-    [Range(0f, 6.0f)]
-    public float bowTrimAngle = 2.0f;
-
-    [Tooltip("Turning ke time boat kitni lean / bank karegi (degrees)")]
-    [Range(0f, 15.0f)]
-    public float turnBankAngle = 5.5f;
-
-    [Tooltip("Hull buoyancy responsiveness damping (0.05=instant floating on waves, 0.2=sluggish)")]
-    [Range(0.04f, 0.35f)]
-    public float buoyancyDamping = 0.08f;
-
-    [Tooltip("Clearance in meters; the lowest point of the hull stays above the highest sampled wave.")]
-    [Min(0f)]
-    public float boatWaterlineOffset = 0.2f;
-
-    [Header("No Water Inside Boat (Hull Depth Mask)")]
-    [Tooltip("Invisible depth mask jo boat ke andar paani dikhne se rokta hai")]
-    public bool enableHullDepthMask = true;
-    [Tooltip("Exact hull depth-mask size (Width, Height, Length) in meters; independent of boat scale")]
-    public Vector3 hullMaskSize = new Vector3(1.60f, 1.70f, 4.30f);
-    [Tooltip("Interior cavity position offset (X, Y, Z)")]
-    public Vector3 hullMaskOffset = new Vector3(0f, -0.15f, 0.20f);
-    [Tooltip("Depth-only material used to hide water rendered inside the hull.")]
-    public Material hullDepthMaskMaterial;
-
     public enum AxisDirection { Z_Forward, Y_Up, X_Right, Negative_Z, Negative_Y, Negative_X }
     
     [Tooltip("Boat model ka forward axis (Blender models ke liye Negative_Z ya Y_Up)")]
@@ -182,37 +131,12 @@ public class BoatSystem : MonoBehaviour
 
     private float _currentSpeed = 0f;
     private float _currentTurn  = 0f;
-    private float _waterRestY;
-    private bool  _hasWaterRest = false;
-    private float _nextSplashTime;
-    private float _nextWaterLapTime;
+    private float _nextPaddleTime;
     private float _boatYaw;
     private Quaternion _axisFix = Quaternion.identity;
-    private bool _poseReady;
-    private float _heaveVel;
-    private float _smoothedPitch;
-    private float _pitchVel;
-    private float _smoothedRoll;
-    private float _rollVel;
     private bool _snapBoatCam;
     private bool _cameraOnBoat;
-    private bool _hasSnappedWaterline;
     private Renderer[] _hullRenderers;
-    private GameObject _hullMaskObj;
-    private Mesh _hullMaskMesh;
-
-    private static readonly Vector2[] HullMaskOutline =
-    {
-        new Vector2(0f, 0.5f),
-        new Vector2(0.28f, 0.30f),
-        new Vector2(0.5f, 0.02f),
-        new Vector2(0.40f, -0.32f),
-        new Vector2(0.22f, -0.5f),
-        new Vector2(-0.22f, -0.5f),
-        new Vector2(-0.40f, -0.32f),
-        new Vector2(-0.5f, 0.02f),
-        new Vector2(-0.28f, 0.30f)
-    };
 
     private int _hashSitDown;
     private int _hashSitUp;
@@ -262,28 +186,6 @@ public class BoatSystem : MonoBehaviour
     private void OnDestroy()
     {
         if (Instance == this) Instance = null;
-        if (_hullMaskObj != null)
-        {
-            Destroy(_hullMaskObj);
-            _hullMaskObj = null;
-        }
-        if (_hullMaskMesh != null)
-        {
-            Destroy(_hullMaskMesh);
-            _hullMaskMesh = null;
-        }
-    }
-
-    private void OnDisable()
-    {
-        if (_hullMaskObj != null)
-            _hullMaskObj.SetActive(false);
-    }
-
-    private void OnEnable()
-    {
-        if (_hullMaskObj != null && enableHullDepthMask)
-            _hullMaskObj.SetActive(true);
     }
 
     private void Start()
@@ -297,7 +199,6 @@ public class BoatSystem : MonoBehaviour
             if (found != null) boatCameraPoint = found;
         }
 
-        EnsureHullDepthMask();
         HideUI();
     }
 
@@ -326,21 +227,13 @@ public class BoatSystem : MonoBehaviour
         if (_isOccupied)
         {
             if (_isExiting)
-            {
-                ApplyWaterPose(0f);
                 return;
-            }
 
             if (_canPaddle)
             {
                 HandleBoatMovement();
                 HandleExitInput();
             }
-
-            float speed01 = _canPaddle
-                ? Mathf.Clamp01(Mathf.Abs(_currentSpeed) / Mathf.Max(0.1f, boatForwardSpeed))
-                : 0f;
-            ApplyWaterPose(speed01);
 
             if (_cameraOnBoat && _snapBoatCam)
             {
@@ -351,10 +244,7 @@ public class BoatSystem : MonoBehaviour
         }
 
         if (!_isOccupied && !_isEntering && !_isExiting)
-        {
-            ApplyWaterPose(0f);
             HandleProximityCheck();
-        }
     }
 
     // ─── Proximity Detection & UI ──────────────────────────────────────────────
@@ -527,7 +417,7 @@ public class BoatSystem : MonoBehaviour
                 _playerAnimator.SetBool(_hashIsPaddling, false);
         }
 
-        // Steering (Smooth Turn) — yaw is applied in ApplyWaterPose so the hull axis stays upright
+        // Steering (Smooth Turn)
         float targetTurn = mouseX + (h * 2f);
         _currentTurn = Mathf.Lerp(_currentTurn, targetTurn, Time.deltaTime * turnSmoothing);
         if (Mathf.Abs(_currentTurn) > 0.01f)
@@ -539,21 +429,13 @@ public class BoatSystem : MonoBehaviour
         _currentSpeed = Mathf.Lerp(_currentSpeed, targetSpeed, Time.deltaTime * accRate);
 
         Vector3 boatFwd = HeadingForward();
-        Vector3 deltaMove = boatFwd * _currentSpeed * Time.deltaTime;
-        transform.position += deltaMove;
+        transform.rotation = Quaternion.Euler(0f, _boatYaw, 0f) * _axisFix;
+        transform.position += boatFwd * _currentSpeed * Time.deltaTime;
 
-        if (pressing && Time.time >= _nextSplashTime)
+        if (pressing && Time.time >= _nextPaddleTime)
         {
-            _nextSplashTime = Time.time + 0.45f;
-            VFXUtil.WaterSplash(transform.position + boatFwd * 0.8f, 0.7f);
+            _nextPaddleTime = Time.time + 0.45f;
             GameAudio.PlayPaddle(transform.position);
-        }
-
-        // Ambient boat hull water wave & lap sound while moving across the river
-        if (Mathf.Abs(_currentSpeed) > 0.8f && Time.time >= _nextWaterLapTime)
-        {
-            _nextWaterLapTime = Time.time + 0.95f;
-            GameAudio.PlayBoatWaterLap(transform.position, null, 0.35f);
         }
 
         if (boatRigidbody != null)
@@ -711,9 +593,6 @@ public class BoatSystem : MonoBehaviour
         _boatYaw = Mathf.Atan2(fwd.x, fwd.z) * Mathf.Rad2Deg;
         Quaternion flat = Quaternion.LookRotation(fwd, Vector3.up);
         _axisFix = Quaternion.Inverse(flat) * transform.rotation;
-        _poseReady = true;
-        _waterRestY = GetWaterSurfaceY(transform.position);
-        _hasWaterRest = true;
     }
 
     private Vector3 HeadingForward()
@@ -747,155 +626,6 @@ public class BoatSystem : MonoBehaviour
     private static float Support(Vector3 extents, Vector3 dir)
     {
         return Mathf.Abs(extents.x * dir.x) + Mathf.Abs(extents.y * dir.y) + Mathf.Abs(extents.z * dir.z);
-    }
-
-    /// <summary>
-    /// Evaluates rich multi-harmonic procedural ocean/river wave elevation at world coordinates (x, z).
-    /// Combining deep directional swell, diagonal chop, and surface ripples for a completely realistic feel.
-    /// </summary>
-    public float SampleWaveHeight(float x, float z, float t)
-    {
-        float freq = Mathf.Max(0.1f, waveFrequency);
-        float spd = waveSpeed;
-        float h = waveHeight;
-
-        // Wave 1: Primary deep directional swell (major rolling wave)
-        float phase1 = (x * 0.09f + z * 0.42f) * freq - t * (spd * 1.8f);
-        float w1 = Mathf.Sin(phase1) * (h * 0.45f);
-
-        // Wave 2: Secondary diagonal chop (creates natural undulating wave peaks & troughs)
-        float phase2 = (x * 0.32f - z * 0.26f) * freq - t * (spd * 2.5f);
-        float w2 = Mathf.Cos(phase2) * (h * 0.30f);
-
-        // Wave 3: Tertiary wind ripples (fine fluid surface detail)
-        float phase3 = (x * 0.65f + z * 0.55f) * freq - t * (spd * 3.6f);
-        float w3 = Mathf.Sin(phase3) * (h * 0.15f);
-
-        // Wave 4: Dynamic cross-ripple (prevents any repetitive loop)
-        float phase4 = (x * 0.18f + z * 0.85f) * freq - t * (spd * 1.2f);
-        float w4 = Mathf.Cos(phase4) * (h * 0.10f);
-
-        return w1 + w2 + w3 + w4;
-    }
-
-    private Renderer _cachedWaterRenderer;
-
-    private float GetWaterSurfaceY(Vector3 worldPos)
-    {
-        // 1. Raycast downwards & upwards to find water surface under the boat (handles slopes, rivers, rapids)
-        Ray ray = new Ray(worldPos + Vector3.up * 25f, Vector3.down);
-        RaycastHit[] hits = Physics.RaycastAll(ray, 50f, ~0, QueryTriggerInteraction.Collide);
-        for (int i = 0; i < hits.Length; i++)
-        {
-            if (hits[i].collider != null && hits[i].collider.gameObject.name.ToLower().Contains("water"))
-            {
-                return hits[i].point.y;
-            }
-        }
-
-        // 2. Fallback to water renderer bounds.max.y
-        if (_cachedWaterRenderer == null)
-        {
-            GameObject waterGo = GameObject.Find("water") ?? GameObject.Find("Water");
-            if (waterGo != null) _cachedWaterRenderer = waterGo.GetComponent<Renderer>();
-        }
-
-        if (_cachedWaterRenderer != null)
-        {
-            return _cachedWaterRenderer.bounds.max.y;
-        }
-
-        return _waterRestY != 0f ? _waterRestY : -4.70f;
-    }
-
-    private void ApplyWaterPose(float speed01)
-    {
-        if (!_poseReady) CaptureBoatAxes();
-
-        if (!_hasWaterRest)
-        {
-            _waterRestY = GetWaterSurfaceY(transform.position);
-            _hasWaterRest = true;
-        }
-
-        Vector3 p = transform.position;
-        Vector3 boatFwd = HeadingForward();
-        Vector3 boatRight = new Vector3(boatFwd.z, 0f, -boatFwd.x);
-
-        float t = Time.time;
-
-        // Sample at the visual hull edges so buoyancy follows inspector hull scaling.
-        Bounds hullBounds = CalculateHullBounds();
-        float halfLength = Mathf.Max(0.2f, Support(hullBounds.extents, boatFwd));
-        float halfWidth = Mathf.Max(0.2f, Support(hullBounds.extents, boatRight));
-
-        Vector3 bowPos = p + boatFwd * halfLength;
-        Vector3 sternPos = p - boatFwd * halfLength;
-        Vector3 portPos = p - boatRight * halfWidth;
-        Vector3 starPos = p + boatRight * halfWidth;
-
-        float bowWave = SampleWaveHeight(bowPos.x, bowPos.z, t);
-        float sternWave = SampleWaveHeight(sternPos.x, sternPos.z, t);
-        float portWave = SampleWaveHeight(portPos.x, portPos.z, t);
-        float starWave = SampleWaveHeight(starPos.x, starPos.z, t);
-
-        // The hull heaves with the wave at its center; edge samples control pitch and roll.
-        float centerWave = SampleWaveHeight(p.x, p.z, t);
-
-        // Dynamic speed effects: hydro-planing lift + speed chop
-        float hydroLift = speed01 * 0.14f;
-        float speedChop = speed01 > 0.05f ? Mathf.Sin(t * 14f) * (0.04f * speed01) : 0f;
-
-        float baseSurfaceY = GetWaterSurfaceY(p);
-
-        // 2. Pitch (Front-to-back wave rocking + bow planing rise + natural bow trim)
-        float wavePitch = Mathf.Atan2(bowWave - sternWave, halfLength * 2f) * Mathf.Rad2Deg * wavePitchStrength;
-        wavePitch = Mathf.Clamp(wavePitch, -4.5f, 5.5f); // Prevent nose from plunging underwater
-        float bowRise = speed01 * bowPlaningRise; // Lift nose up when moving fast
-        float targetPitch = wavePitch + bowRise + bowTrimAngle;
-        _smoothedPitch = Mathf.SmoothDampAngle(_smoothedPitch, targetPitch, ref _pitchVel, 0.10f);
-
-        // 3. Roll (Left-to-right wave rocking + centrifugal turn banking)
-        float waveRoll = Mathf.Atan2(starWave - portWave, halfWidth * 2f) * Mathf.Rad2Deg * waveRollStrength;
-        waveRoll = Mathf.Clamp(waveRoll, -6.0f, 6.0f);
-        float bankLean = -_currentTurn * turnBankAngle * speed01; // Lean into turns
-        float targetRoll = waveRoll + bankLean;
-        _smoothedRoll = Mathf.SmoothDampAngle(_smoothedRoll, targetRoll, ref _rollVel, 0.12f);
-
-        // 4. Orientation: Yaw heading + tilt + model axis protection
-        Quaternion yawRot = Quaternion.Euler(0f, _boatYaw, 0f);
-        Quaternion tiltRot = Quaternion.Euler(_smoothedPitch, 0f, -_smoothedRoll);
-        Quaternion targetRot = yawRot * tiltRot * _axisFix;
-
-        float tiltFollow = Mathf.Lerp(6.0f, 14.0f, speed01);
-        transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 1f - Mathf.Exp(-tiltFollow * Time.deltaTime));
-
-        float hullBottomOffset = CalculateHullBounds().min.y - transform.position.y;
-        float targetY = baseSurfaceY + centerWave + hydroLift + speedChop +
-                        boatWaterlineOffset - hullBottomOffset;
-
-        float damp = Mathf.Lerp(buoyancyDamping, buoyancyDamping * 0.55f, speed01);
-        Vector3 floatingPosition = transform.position;
-        if (!_hasSnappedWaterline)
-        {
-            floatingPosition.y = targetY;
-            _heaveVel = 0f;
-            _hasSnappedWaterline = true;
-        }
-        else
-        {
-            floatingPosition.y = Mathf.SmoothDamp(floatingPosition.y, targetY, ref _heaveVel, damp);
-        }
-        transform.position = floatingPosition;
-
-        // 5. Update Hull Depth Mask so zero water renders inside the boat
-        UpdateHullDepthMask(baseSurfaceY + centerWave);
-
-        if (boatRigidbody != null)
-        {
-            boatRigidbody.position = transform.position;
-            boatRigidbody.rotation = transform.rotation;
-        }
     }
 
     private void UpdateSeatedCamera(bool snap)
@@ -969,120 +699,6 @@ public class BoatSystem : MonoBehaviour
         }
     }
 
-    // ─── Hull Depth Mask (Dry Boat Interior) ──────────────────────────────────
-
-    private void EnsureHullDepthMask()
-    {
-        if (_hullMaskObj != null) return;
-
-        _hullMaskObj = new GameObject("Boat_HullDepthMask");
-        MeshFilter mf = _hullMaskObj.AddComponent<MeshFilter>();
-        MeshRenderer mr = _hullMaskObj.AddComponent<MeshRenderer>();
-        _hullMaskMesh = CreateHullMaskMesh();
-        mf.sharedMesh = _hullMaskMesh;
-
-        _hullMaskObj.transform.localScale = hullMaskSize;
-
-        Material maskMat = hullDepthMaskMaterial;
-#if UNITY_EDITOR
-        if (maskMat == null)
-            maskMat = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/HullDepthMask.mat");
-#endif
-
-        if (maskMat == null)
-        {
-            Shader maskShader = Shader.Find("Custom/Water/HullDepthMask");
-            if (maskShader != null)
-            {
-                maskMat = new Material(maskShader);
-                maskMat.name = "Runtime_HullDepthMask";
-                maskMat.renderQueue = 2450;
-            }
-        }
-
-        if (maskMat == null)
-            Debug.LogError("[BoatSystem] Hull depth-mask material or shader is missing; water may render inside the boat.");
-
-        if (maskMat != null) mr.sharedMaterial = maskMat;
-        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        mr.receiveShadows = false;
-        mr.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
-        mr.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
-    }
-
-    private static Mesh CreateHullMaskMesh()
-    {
-        int outlineCount = HullMaskOutline.Length;
-        Vector3[] vertices = new Vector3[outlineCount * 2];
-        for (int i = 0; i < outlineCount; i++)
-        {
-            Vector2 point = HullMaskOutline[i];
-            vertices[i] = new Vector3(point.x, 0.5f, point.y);
-            vertices[i + outlineCount] = new Vector3(point.x, -0.5f, point.y);
-        }
-
-        int[] triangles = new int[(outlineCount - 2) * 6 + outlineCount * 6];
-        int triangleIndex = 0;
-        for (int i = 1; i < outlineCount - 1; i++)
-        {
-            triangles[triangleIndex++] = 0;
-            triangles[triangleIndex++] = i;
-            triangles[triangleIndex++] = i + 1;
-            triangles[triangleIndex++] = outlineCount;
-            triangles[triangleIndex++] = outlineCount + i + 1;
-            triangles[triangleIndex++] = outlineCount + i;
-        }
-
-        for (int i = 0; i < outlineCount; i++)
-        {
-            int next = (i + 1) % outlineCount;
-            triangles[triangleIndex++] = i;
-            triangles[triangleIndex++] = i + outlineCount;
-            triangles[triangleIndex++] = next + outlineCount;
-            triangles[triangleIndex++] = i;
-            triangles[triangleIndex++] = next + outlineCount;
-            triangles[triangleIndex++] = next;
-        }
-
-        Mesh mesh = new Mesh { name = "BoatHullDepthMaskMesh" };
-        mesh.vertices = vertices;
-        mesh.triangles = triangles;
-        mesh.RecalculateNormals();
-        mesh.RecalculateBounds();
-        return mesh;
-    }
-
-    private Bounds CalculateHullDepthMaskBounds(float waterSurfaceY, Quaternion maskRotation)
-    {
-        Bounds hullBounds = CalculateHullBounds();
-        Vector3 center = hullBounds.center + maskRotation * hullMaskOffset;
-        float bottomY = waterSurfaceY + hullMaskOffset.y - hullMaskSize.y * 0.5f;
-        center.y = bottomY + hullMaskSize.y * 0.5f;
-        return new Bounds(center, hullMaskSize);
-    }
-
-    private void UpdateHullDepthMask(float waterSurfaceY)
-    {
-        if (!enableHullDepthMask)
-        {
-            if (_hullMaskObj != null && _hullMaskObj.activeSelf) _hullMaskObj.SetActive(false);
-            return;
-        }
-
-        EnsureHullDepthMask();
-        if (_hullMaskObj == null) return;
-        if (!_hullMaskObj.activeSelf) _hullMaskObj.SetActive(true);
-
-        Quaternion yawRot = Quaternion.Euler(0f, _boatYaw, 0f);
-        Quaternion tiltRot = Quaternion.Euler(_smoothedPitch, 0f, -_smoothedRoll);
-        Quaternion maskRot = yawRot * tiltRot;
-
-        Bounds maskBounds = CalculateHullDepthMaskBounds(waterSurfaceY, maskRot);
-        _hullMaskObj.transform.position = maskBounds.center;
-        _hullMaskObj.transform.rotation = maskRot;
-        _hullMaskObj.transform.localScale = maskBounds.size;
-    }
-
     private void OnDrawGizmosSelected()
     {
         if (boatCameraPoint != null)
@@ -1098,34 +714,5 @@ public class BoatSystem : MonoBehaviour
             Gizmos.DrawWireSphere(approxCam, 0.2f);
         }
 
-        Vector3 boatFwd = HeadingForward();
-        Vector3 boatRight = new Vector3(boatFwd.z, 0f, -boatFwd.x);
-        Vector3 p = transform.position;
-
-        // Draw waterline and wave sampling points
-        Gizmos.color = new Color(0f, 0.8f, 1f, 0.6f);
-        Gizmos.DrawWireSphere(p + boatFwd * 2.2f, 0.15f); // Bow
-        Gizmos.DrawWireSphere(p - boatFwd * 2.2f, 0.15f); // Stern
-        Gizmos.DrawWireSphere(p - boatRight * 0.85f, 0.12f); // Port
-        Gizmos.DrawWireSphere(p + boatRight * 0.85f, 0.12f); // Starboard
-
-        // Draw Hull Depth Mask (Dry interior volume)
-        if (enableHullDepthMask)
-        {
-            Gizmos.color = new Color(0.1f, 1f, 0.4f, 0.45f);
-            Matrix4x4 oldMat = Gizmos.matrix;
-            Quaternion yawRot = Quaternion.Euler(0f, _boatYaw, 0f);
-            Quaternion tiltRot = Quaternion.Euler(_smoothedPitch, 0f, -_smoothedRoll);
-            Quaternion maskRot = yawRot * tiltRot;
-            Bounds maskBounds = CalculateHullDepthMaskBounds(GetWaterSurfaceY(p), maskRot);
-            if (_hullMaskMesh != null)
-                Gizmos.DrawWireMesh(_hullMaskMesh, maskBounds.center, maskRot, maskBounds.size);
-            else
-            {
-                Gizmos.matrix = Matrix4x4.TRS(maskBounds.center, maskRot, maskBounds.size);
-                Gizmos.DrawWireCube(Vector3.zero, Vector3.one);
-                Gizmos.matrix = oldMat;
-            }
-        }
     }
 }

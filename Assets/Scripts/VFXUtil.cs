@@ -440,16 +440,6 @@ public static class VFXUtil
         return ps;
     }
 
-    public static void WaterSplash(Vector3 pos, float scale = 1f)
-    {
-        Burst(pos, Vector3.up, new Color(0.75f, 0.88f, 1f, 0.7f),
-            18, 1.5f * scale, 5f * scale, 0.08f * scale, 0.22f * scale, 0.25f, 0.5f,
-            false, false, 0.6f, 55f, 1.2f);
-        Burst(pos, Vector3.up, new Color(0.9f, 0.95f, 1f, 0.55f),
-            10, 2f * scale, 7f * scale, 0.04f * scale, 0.1f * scale, 0.2f, 0.4f,
-            true, true, 1.2f, 40f, 1.0f);
-    }
-
     /// <summary>
     /// AAA needle-sharp incandescent ricochet sparks using T_Spark texture.
     /// </summary>
