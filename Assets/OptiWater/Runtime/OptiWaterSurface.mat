@@ -1,0 +1,154 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: OptiWaterSurface
+  m_Shader: {fileID: 4800000, guid: 88ea1cdd19845084fa2de75a1352e266, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords:
+  - _BOTTOM_DISTORT
+  - _CAUSTICS_ON
+  - _CRESTGLOW_ON
+  - _FOAM_ON
+  - _GERSTNERWAVE_ON
+  - _NORMALPERTURB_ON
+  - _PLANARREFLECTION_ON
+  - _SHOREWAVENORMAL_ON
+  - _SHOREWAVE_ON
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: _Smoothness
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _CausticsTex:
+        m_Texture: {fileID: 2800000, guid: aafa5a79447405c44b575c2ab810438c, type: 3}
+        m_Scale: {x: 0.5, y: 0.5}
+        m_Offset: {x: 0, y: 0}
+    - _FoamTex:
+        m_Texture: {fileID: 2800000, guid: 63908915fe237494cb943fc8503a5083, type: 3}
+        m_Scale: {x: 0.5, y: 0.5}
+        m_Offset: {x: 0, y: 0}
+    - _NormalMap:
+        m_Texture: {fileID: 2800000, guid: c4bf6277408774942bcb8fd611fc5451, type: 3}
+        m_Scale: {x: 10, y: 10}
+        m_Offset: {x: 0, y: 0}
+    - _ReflectionTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: []
+    m_Floats:
+    - _A_Amplitude: 0.1
+    - _A_Frequency: 0.2
+    - _AlphaClearDepth: 0
+    - _AlphaEdgeMaxDepth: 0.5
+    - _AlphaEdgeWidth: 0.77
+    - _AlphaFalloffPower: 0.25
+    - _AlphaFullDepth: 0.165
+    - _AlphaSlopeSampleDist: 0.62
+    - _B_Amplitude: 0.5
+    - _B_Frequency: 0.45
+    - _BottomDistort: 0
+    - _BottomDistortDepth: 3
+    - _BottomDistortSpeed: 0.115
+    - _BottomDistortStrength: 0.0123
+    - _BottomDistortTint: 0.097
+    - _C_Amplitude: 0.15
+    - _C_Frequency: 0.33
+    - _Caustics: 1
+    - _CausticsSpeed: 0.1
+    - _CausticsStrength: 0.02
+    - _CrestGlow: 1
+    - _CrestGlowIntensity: 8.96
+    - _CrestGlowPower: 0.5
+    - _CrestGlowThreshold: 0.908
+    - _D_Amplitude: 0.1
+    - _D_Frequency: 1.8
+    - _DeepFoamFade: 4.1
+    - _DeepFoamIntensity: 4.44
+    - _DeepFoamStart: 0.3
+    - _DepthBlendFactor: 5
+    - _DistortionStrength: 0.15
+    - _Foam: 1
+    - _FoamDepthThreshold: 1.1
+    - _FoamIntensity: 8
+    - _FoamPulseSpeed: 0.005
+    - _FoamScalePulse: 0.2
+    - _FoamShorelineBoost: 0.622
+    - _FresnelBias: 2
+    - _FresnelPower: 0.7
+    - _GerstnerWave: 1
+    - _MicroNormal: 0
+    - _NormalBlend: 1
+    - _NormalPerturb: 1
+    - _NormalStrength: 2
+    - _NormalWorldScale: 2
+    - _PlanarOffset: 0
+    - _PlanarReflection: 1
+    - _ReflectionIntensity: 0.02
+    - _RefractionStrength: 0.071
+    - _ShallowDeepBlendDepth: 3
+    - _ShoreWave: 1
+    - _ShoreWaveFalloff: 1.53
+    - _ShoreWaveFoamMaskFloor: 0
+    - _ShoreWaveFoamMaskPower: 4.36
+    - _ShoreWaveFoamMaskSpeed: 0.008
+    - _ShoreWaveFoamStrength: 4782
+    - _ShoreWaveFoamTexTiling: 733
+    - _ShoreWaveFrequency: 2
+    - _ShoreWaveMix: 0.253
+    - _ShoreWaveNormal: 1
+    - _ShoreWaveNormalStrength: 2
+    - _ShoreWaveRange: 0.8
+    - _ShoreWaveSlopeReach: 0.33
+    - _ShoreWaveSlopeRef: 1
+    - _ShoreWaveSpeed: 0.5
+    - _ShoreWaveStart: 0
+    - _ShoreWaveWidth: 0.272
+    - _Shoreline: 0
+    - _ShorelineAlphaFalloff: 34.7
+    - _ShorelineBias: 0
+    - _ShorelineDepthFade: 4.96
+    - _ShorelineFadeRange: 6.6
+    - _ShorelineFoamBlend: 0.168
+    - _ShorelineRefractionBoost: 4.52
+    - _Smoothness: 0.686
+    - _SpecularIntensity: 0.59
+    - _SunGlitterRoughness: 0.432
+    - _SunGlitterSparkle: 0.19
+    - _SunGlitterStrength: 1.9
+    - _WaterClipThreshold: 4.8
+    - _WaterSurfaceHeight: 7.1
+    - _WaveAmplitude: 1
+    - _WaveDirSpeed: 0.15
+    - _WaveFoamIntensity: 2.58
+    - _WaveFoamThreshold: 3.43
+    - _WaveFreqMod: 0.35
+    - _WaveFreqSpeed: 0.2
+    - _WaveFrequency: 0.05
+    - _WaveSpeed: 0.02
+    - _WaveSteepness: 0.181
+    m_Colors:
+    - _A_Direction: {r: 1, g: -1, b: 0, a: 0}
+    - _B_Direction: {r: 2, g: -1, b: 0, a: 0}
+    - _C_Direction: {r: 0.7, g: 0, b: 0, a: 0}
+    - _CrestGlowColor: {r: 1, g: 1, b: 1, a: 1}
+    - _D_Direction: {r: -0.5, g: 0, b: 0, a: 0}
+    - _DeepWaterColor: {r: 0.0117647005, g: 0.15597038, b: 0.21960784, a: 1}
+    - _PlaneNormalWS: {r: 0, g: 1, b: 0, a: 0}
+    - _PlanePosWS: {r: 0, g: 0, b: 0, a: 0}
+    - _WaterColor: {r: 0.011764702, g: 0.39607844, b: 0.33041734, a: 1}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1

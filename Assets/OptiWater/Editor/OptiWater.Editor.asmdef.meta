@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 2917a58a94768154e8cbb32a7ee769a1
+AssemblyDefinitionImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 396550
+  packageName: Opti Water URP
+  packageVersion: 1.0
+  assetPath: Assets/OptiWater/Editor/OptiWater.Editor.asmdef
+  uploadId: 963448

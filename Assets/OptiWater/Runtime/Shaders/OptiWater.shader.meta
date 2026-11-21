@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 88ea1cdd19845084fa2de75a1352e266
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 396550
+  packageName: Opti Water URP
+  packageVersion: 1.0
+  assetPath: Assets/OptiWater/Runtime/Shaders/OptiWater.shader
+  uploadId: 963448

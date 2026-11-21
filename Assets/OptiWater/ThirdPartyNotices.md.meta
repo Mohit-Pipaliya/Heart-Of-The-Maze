@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 3557ff9abe9bb9e4a9c8d02941a4bc2b
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 396550
+  packageName: Opti Water URP
+  packageVersion: 1.0
+  assetPath: Assets/OptiWater/ThirdPartyNotices.md
+  uploadId: 963448

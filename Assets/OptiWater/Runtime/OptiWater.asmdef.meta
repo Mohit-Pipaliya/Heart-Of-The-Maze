@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 7a857a4550499434d9502af5a2bf9f69
+AssemblyDefinitionImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 396550
+  packageName: Opti Water URP
+  packageVersion: 1.0
+  assetPath: Assets/OptiWater/Runtime/OptiWater.asmdef
+  uploadId: 963448

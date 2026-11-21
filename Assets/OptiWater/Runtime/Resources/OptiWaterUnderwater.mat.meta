@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: f7e4f7dba799cbd458bce920446b4206
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 396550
+  packageName: Opti Water URP
+  packageVersion: 1.0
+  assetPath: Assets/OptiWater/Runtime/Resources/OptiWaterUnderwater.mat
+  uploadId: 963448

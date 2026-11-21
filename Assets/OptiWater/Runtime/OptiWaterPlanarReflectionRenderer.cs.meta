@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 5b11f25745060d5459253660e3451dde
+AssetOrigin:
+  serializedVersion: 1
+  productId: 396550
+  packageName: Opti Water URP
+  packageVersion: 1.0
+  assetPath: Assets/OptiWater/Runtime/OptiWaterPlanarReflectionRenderer.cs
+  uploadId: 963448
