@@ -213,6 +213,7 @@ public class PlayerController : MonoBehaviour
         _anim   = GetComponent<Animator>();
         _cc     = GetComponent<CharacterController>();
         _health = maxHealth;
+        _lastGroundedPosition = transform.position;
 
         // Procedural low-health recovery box system. It spawns only after health becomes low.
         if (GetComponent<LowHealthHealthBoxSystem>() == null)
@@ -1487,6 +1488,7 @@ public class PlayerController : MonoBehaviour
     public void ResetHealth()
     {
         _health = maxHealth;
+        _lastGroundedPosition = transform.position;
         _isDead = false;
         if (_playerHealthBar != null)
         {

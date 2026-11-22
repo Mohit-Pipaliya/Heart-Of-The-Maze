@@ -109,8 +109,21 @@ public class DayNightController : MonoBehaviour
     [SerializeField] private float sunMaxIntensity = 1.65f;
 
     [Tooltip("Maximum intensity of the Moon at midnight.")]
-    [Range(0.01f, 1.5f)]
-    [SerializeField] private float moonMaxIntensity = 0.38f;
+    [Range(0.01f, 2.5f)]
+    [SerializeField] private float moonMaxIntensity = 0.85f;
+
+    [Header("── 4b. Night Terrain & Ambient Visibility ─────────")]
+    [Tooltip("Minimum directional light intensity at night so terrain is always illuminated.")]
+    [Range(0.1f, 1.5f)]
+    [SerializeField] private float minNightLightIntensity = 0.52f;
+
+    [Tooltip("Night shadow softness (lower = softer, more light penetrates shadowed terrain).")]
+    [Range(0.1f, 0.9f)]
+    [SerializeField] private float nightShadowStrength = 0.38f;
+
+    [Tooltip("Night ambient light boost multiplier for painted terrain visibility.")]
+    [Range(0.5f, 3.0f)]
+    [SerializeField] private float nightTerrainAmbientBoost = 1.35f;
 
     [Header("── 5. Atmospheric Sunlight & Moonlight Colors ────")]
     [Tooltip("Sunlight color at dawn sunrise.")]
@@ -590,7 +603,7 @@ public class DayNightController : MonoBehaviour
         {
             if (!directionalLight.enabled) directionalLight.enabled = true;
             directionalLight.shadows = LightShadows.Soft;
-            directionalLight.shadowStrength = (cycleTime <= 0.50f) ? 0.95f : 0.78f;
+            directionalLight.shadowStrength = (cycleTime <= 0.50f) ? 0.95f : nightShadowStrength;
             directionalLight.shadowNormalBias = 0.4f;
             directionalLight.shadowBias = 0.05f;
 
@@ -598,9 +611,10 @@ public class DayNightController : MonoBehaviour
             float sunAltitudeSin = Mathf.Clamp01(Mathf.Sin(Mathf.Clamp01(sunArcProgress) * Mathf.PI));
             float sunCurrentIntensity = (cycleTime <= 0.50f) ? (sunMaxIntensity * sunAltitudeSin * sunHorizonFade) : 0f;
 
-            // Continuous Moon Light Intensity (Scales naturally with Moon Height, fades to exact 0.0 at moonset)
+            // Continuous Moon Light Intensity (Scales naturally with Moon Height, keeps minimum floor so terrain is never pitch black)
             float moonAltitudeSin = Mathf.Clamp01(Mathf.Sin(Mathf.Clamp01(moonArcProgress) * Mathf.PI));
-            float moonCurrentIntensity = (cycleTime >= 0.50f) ? (moonMaxIntensity * moonAltitudeSin * moonHorizonFade) : 0f;
+            float baseMoonIntensity = moonMaxIntensity * moonAltitudeSin * moonHorizonFade;
+            float moonCurrentIntensity = (cycleTime >= 0.50f) ? Mathf.Max(baseMoonIntensity, minNightLightIntensity * Mathf.Max(0.75f, moonHorizonFade)) : 0f;
 
             // Direct Light Ray Vector & Color Interpolation
             Vector3 lightSourcePos;
@@ -693,24 +707,32 @@ public class DayNightController : MonoBehaviour
             {
                 // Dusk twilight
                 float f = (cycleTime - 0.52f) / 0.08f;
-                skyAmb = Color.Lerp(new Color(0.45f, 0.22f, 0.32f), new Color(0.06f, 0.09f, 0.16f), f);
-                eqAmb = Color.Lerp(new Color(0.65f, 0.30f, 0.12f), new Color(0.04f, 0.06f, 0.10f), f);
-                gndAmb = Color.Lerp(new Color(0.15f, 0.09f, 0.06f), new Color(0.02f, 0.025f, 0.035f), f);
+                Color targetSky = new Color(0.30f, 0.36f, 0.48f) * nightTerrainAmbientBoost;
+                Color targetEq  = new Color(0.24f, 0.28f, 0.36f) * nightTerrainAmbientBoost;
+                Color targetGnd = new Color(0.18f, 0.20f, 0.24f) * nightTerrainAmbientBoost;
+
+                skyAmb = Color.Lerp(new Color(0.45f, 0.22f, 0.32f), targetSky, f);
+                eqAmb  = Color.Lerp(new Color(0.65f, 0.30f, 0.12f), targetEq, f);
+                gndAmb = Color.Lerp(new Color(0.15f, 0.09f, 0.06f), targetGnd, f);
             }
             else if (cycleTime < 0.92f)
             {
-                // Midnight
-                skyAmb = new Color(0.06f, 0.09f, 0.16f);
-                eqAmb = new Color(0.04f, 0.06f, 0.10f);
-                gndAmb = new Color(0.02f, 0.025f, 0.035f);
+                // Midnight - Beautiful clear terrain visibility (Preserves painted terrain textures!)
+                skyAmb = new Color(0.32f, 0.38f, 0.52f) * nightTerrainAmbientBoost;
+                eqAmb  = new Color(0.26f, 0.30f, 0.40f) * nightTerrainAmbientBoost;
+                gndAmb = new Color(0.20f, 0.23f, 0.27f) * nightTerrainAmbientBoost;
             }
             else
             {
                 // Pre-dawn twilight
                 float f = (cycleTime - 0.92f) / 0.08f;
-                skyAmb = Color.Lerp(new Color(0.06f, 0.09f, 0.16f), new Color(0.14f, 0.18f, 0.32f), f);
-                eqAmb = Color.Lerp(new Color(0.04f, 0.06f, 0.10f), new Color(0.25f, 0.16f, 0.20f), f);
-                gndAmb = Color.Lerp(new Color(0.02f, 0.025f, 0.035f), new Color(0.05f, 0.04f, 0.05f), f);
+                Color startSky = new Color(0.32f, 0.38f, 0.52f) * nightTerrainAmbientBoost;
+                Color startEq  = new Color(0.26f, 0.30f, 0.40f) * nightTerrainAmbientBoost;
+                Color startGnd = new Color(0.20f, 0.23f, 0.27f) * nightTerrainAmbientBoost;
+
+                skyAmb = Color.Lerp(startSky, new Color(0.14f, 0.18f, 0.32f), f);
+                eqAmb  = Color.Lerp(startEq, new Color(0.25f, 0.16f, 0.20f), f);
+                gndAmb = Color.Lerp(startGnd, new Color(0.05f, 0.04f, 0.05f), f);
             }
 
             RenderSettings.ambientMode = AmbientMode.Trilight;

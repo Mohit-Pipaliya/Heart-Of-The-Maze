@@ -158,8 +158,9 @@ public class ZombieAI : MonoBehaviour
             _agent.baseOffset = 0f;
             _agent.updatePosition = true;
             _agent.updateRotation = true;
-            _agent.acceleration = 14f;
-            _agent.angularSpeed = 260f;
+            _agent.acceleration = 16f;
+            _agent.angularSpeed = 360f;
+            _agent.radius = 0.45f;
             _agent.autoBraking = true;
             _agent.obstacleAvoidanceType = ObstacleAvoidanceType.HighQualityObstacleAvoidance;
             _avoidancePriority = Random.Range(28, 72);
@@ -784,8 +785,11 @@ public class ZombieAI : MonoBehaviour
         }
 
         bool close = _canSee && distanceToPlayer < melee * 1.7f;
-        SetAgentFacing(!close);
-        if (close) FacePlayer();
+        bool hasClearLine = _canSee && CanSeePlayer(distanceToPlayer);
+        // Only override agent rotation to face player directly when line of sight is clear!
+        // If an obstacle or wall blocks view, let NavMeshAgent steer around it!
+        SetAgentFacing(!close || !hasClearLine);
+        if (close && hasClearLine) FacePlayer();
 
         _agent.isStopped = false;
         _agent.speed = _isSliding ? slideSpeed : runSpeed;
@@ -1244,8 +1248,12 @@ public class ZombieAI : MonoBehaviour
     private bool SetGoal(Vector3 world, float sampleRadius)
     {
         if (_agent == null || !_agent.enabled || !_agent.isOnNavMesh) return false;
-        if (!NavMesh.SamplePosition(world, out NavMeshHit hit, sampleRadius, NavMesh.AllAreas))
-            return false;
+        Vector3 steerTarget = ApplyDynamicObstacleAvoidance(world);
+        if (!NavMesh.SamplePosition(steerTarget, out NavMeshHit hit, sampleRadius, NavMesh.AllAreas))
+        {
+            if (!NavMesh.SamplePosition(world, out hit, sampleRadius, NavMesh.AllAreas))
+                return false;
+        }
 
         _agent.isStopped = false;
         _agent.SetDestination(hit.position);
@@ -1255,7 +1263,11 @@ public class ZombieAI : MonoBehaviour
     private bool SetChaseGoal(Vector3 world)
     {
         if (_agent == null || !_agent.enabled || !_agent.isOnNavMesh) return false;
-        EnemyChaseAudioSystem.SetChaseDestination(_agent, world);
+        Vector3 steerTarget = ApplyDynamicObstacleAvoidance(world);
+        if (NavMesh.SamplePosition(steerTarget, out NavMeshHit hit, 2.5f, NavMesh.AllAreas))
+            EnemyChaseAudioSystem.SetChaseDestination(_agent, hit.position);
+        else
+            EnemyChaseAudioSystem.SetChaseDestination(_agent, world);
         return true;
     }
 
@@ -1264,11 +1276,54 @@ public class ZombieAI : MonoBehaviour
         if (_agent == null || !_agent.enabled || !_agent.isOnNavMesh) return;
         bool blocked = _agent.velocity.sqrMagnitude < 0.04f && _agent.remainingDistance > 1.25f && !_agent.pathPending;
         _stuckTimer = blocked ? _stuckTimer + Time.deltaTime : 0f;
-        if (_stuckTimer < 1.05f) return;
+        if (_stuckTimer < 0.45f) return;
 
         _stuckTimer = 0f;
-        Vector3 side = transform.right * Random.Range(-2.4f, 2.4f) + transform.forward * Random.Range(1.2f, 2.8f);
-        SetGoal(transform.position + side, 3f);
+        // Cast whiskers around to find an open unblocked direction around the obstacle
+        for (int i = 0; i < 8; i++)
+        {
+            float angle = (i % 2 == 0 ? 1 : -1) * (35f + (i / 2) * 35f);
+            Vector3 dir = Quaternion.Euler(0f, angle, 0f) * transform.forward;
+            Vector3 checkPoint = transform.position + dir * 2.8f;
+            if (NavMesh.SamplePosition(checkPoint, out NavMeshHit hit, 2.5f, NavMesh.AllAreas))
+            {
+                if (!Physics.Raycast(transform.position + Vector3.up * 0.9f, (hit.position - transform.position).normalized, 2.2f, ~LayerMask.GetMask("Ignore Raycast", "Enemy"), QueryTriggerInteraction.Ignore))
+                {
+                    _agent.SetDestination(hit.position);
+                    return;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Proactively checks forward whiskers and steers destination away from obstacles (walls, props, boxes).
+    /// </summary>
+    private Vector3 ApplyDynamicObstacleAvoidance(Vector3 destination)
+    {
+        Vector3 forward = transform.forward;
+        Vector3 origin = transform.position + Vector3.up * 0.9f;
+        float checkDist = 2.2f;
+
+        RaycastHit hit;
+        bool hitObstacle = Physics.SphereCast(origin, 0.4f, forward, out hit, checkDist, ~LayerMask.GetMask("Ignore Raycast"), QueryTriggerInteraction.Ignore);
+        if (hitObstacle && hit.transform != transform && !hit.transform.IsChildOf(transform))
+        {
+            if (player != null && (hit.transform == player || hit.transform.IsChildOf(player)))
+                return destination; // Don't avoid player during combat
+            if (hit.transform.GetComponentInParent<ZombieAI>() != null)
+                return destination; // Pack separation already separates zombie bodies
+
+            Vector3 normal = hit.normal;
+            normal.y = 0f;
+            normal.Normalize();
+
+            Vector3 lateral = Vector3.Cross(Vector3.up, forward);
+            float side = Vector3.Dot(lateral, normal) >= 0 ? 1f : -1f;
+            Vector3 steerOffset = (lateral * side + normal).normalized * 2.0f;
+            return destination + steerOffset;
+        }
+        return destination;
     }
 
     private void SeparateFromPack()

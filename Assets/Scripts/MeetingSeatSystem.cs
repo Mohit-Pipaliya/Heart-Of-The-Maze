@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -14,10 +15,10 @@ using UnityEngine.AI;
 ///
 ///   3. "SeatFaceTarget" — Jis direction mein player ka munh hoga jab baithega (e.g. table).
 ///
-///   4. Player par "Player" Tag lagao.
+///   4. Player par PlayerController aur CharacterController hona chahiye.
 ///
-///   5. Player par NavMeshAgent component lagao (Inspector mein):
-///      Speed = 2 | Angular Speed = 180 | Stopping Distance = 0.2 | Auto Braking ON
+///   5. Baked NavMesh ho to seat tak obstacles ke around route calculate hoga.
+///      NavMeshAgent optional hai; meeting sequence ke dauran CharacterController move karta hai.
 ///
 /// ANIMATOR SETUP:
 ///   Parameters banao:
@@ -63,7 +64,7 @@ public class MeetingSeatSystem : MonoBehaviour
     // ── Walk Settings ────────────────────────────────────────────────────────
     [Header("── Walk To Seat Settings ───────────────────────────────────")]
     [Tooltip("Player ki speed jab seat tak chal raha ho")]
-    public float walkToSeatSpeed = 2.0f;
+    public float walkToSeatSpeed = 4.2f;
 
     [Tooltip("Kitna paas aane par ruk jaaye")]
     public float stoppingDistance = 0.3f;
@@ -89,6 +90,13 @@ public class MeetingSeatSystem : MonoBehaviour
     private CharacterController _cc;
     private bool _playerInRange = false;
     private bool _busy          = false;
+    private bool _reachedSeat;
+    private readonly HashSet<Collider> _playerCollidersInRange = new HashSet<Collider>();
+    private readonly NavMeshPath _seatPath = new NavMeshPath();
+    private Vector3[] _seatPathCorners = new Vector3[0];
+    private int _seatPathCornerIndex;
+    private bool _hasSeatPath;
+    private float _nextSeatPathRefresh;
 
     private static readonly int HashSpeed       = Animator.StringToHash("Speed");
     private static readonly int HashWeaponState = Animator.StringToHash("WeaponState");
@@ -98,17 +106,47 @@ public class MeetingSeatSystem : MonoBehaviour
     {
         GetComponent<Collider>().isTrigger = true;
         if (joinPromptUI != null) joinPromptUI.SetActive(false);
+        EnsureObstaclesCarved();
+    }
+
+    private void EnsureObstaclesCarved()
+    {
+        // Nearby wood benches, chairs, and campfire colliders ko NavMeshObstacle with carving assign karo
+        Collider[] nearbyCols = Physics.OverlapSphere(transform.position, 12f, ~0, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < nearbyCols.Length; i++)
+        {
+            Collider col = nearbyCols[i];
+            if (col == null || col.isTrigger) continue;
+            if (col.CompareTag("Player") || col.GetComponentInParent<PlayerController>() != null) continue;
+
+            string objName = col.gameObject.name.ToLower();
+            string rootName = col.transform.root.gameObject.name.ToLower();
+            bool isObstacle = objName.Contains("bench") || objName.Contains("chair") || objName.Contains("table") ||
+                              objName.Contains("campfire") || rootName.Contains("bench") || rootName.Contains("chair") ||
+                              rootName.Contains("table") || rootName.Contains("campfire");
+
+            if (isObstacle)
+            {
+                if (col.GetComponentInParent<NavMeshObstacle>() != null) continue;
+
+                NavMeshObstacle obs = col.GetComponent<NavMeshObstacle>();
+                if (obs == null) obs = col.gameObject.AddComponent<NavMeshObstacle>();
+                obs.carving = true;
+                obs.carveOnlyStationary = false;
+            }
+        }
     }
 
     private void OnTriggerEnter(Collider other)
     {
-        if (_busy || !other.CompareTag("Player")) return;
+        PlayerController player = other.GetComponentInParent<PlayerController>();
+        if (_busy || player == null || (_pc != null && _pc != player)) return;
 
-        GameObject go = other.gameObject;
-        _pc    = go.GetComponentInParent<PlayerController>()   ?? go.GetComponent<PlayerController>();
-        _anim  = go.GetComponentInParent<Animator>()           ?? go.GetComponent<Animator>();
-        _agent = go.GetComponentInParent<NavMeshAgent>()        ?? go.GetComponent<NavMeshAgent>();
-        _cc    = go.GetComponentInParent<CharacterController>() ?? go.GetComponent<CharacterController>();
+        _pc = player;
+        _anim = player.GetComponentInChildren<Animator>();
+        _agent = player.GetComponent<NavMeshAgent>() ?? player.GetComponentInChildren<NavMeshAgent>();
+        _cc = player.CharacterController;
+        _playerCollidersInRange.Add(other);
 
         _playerInRange = true;
         if (joinPromptUI != null) joinPromptUI.SetActive(true);
@@ -116,9 +154,21 @@ public class MeetingSeatSystem : MonoBehaviour
 
     private void OnTriggerExit(Collider other)
     {
-        if (!other.CompareTag("Player")) return;
+        PlayerController player = other.GetComponentInParent<PlayerController>();
+        if (player == null || player != _pc) return;
+
+        _playerCollidersInRange.Remove(other);
+        if (_playerCollidersInRange.Count > 0) return;
+
         _playerInRange = false;
-        if (!_busy && joinPromptUI != null) joinPromptUI.SetActive(false);
+        if (!_busy)
+        {
+            if (joinPromptUI != null) joinPromptUI.SetActive(false);
+            _pc = null;
+            _anim = null;
+            _agent = null;
+            _cc = null;
+        }
     }
 
     private void Update()
@@ -149,35 +199,43 @@ public class MeetingSeatSystem : MonoBehaviour
 
         if (_pc != null) _pc.SetFrozen(true, lockWorldPosition: false);
 
-        // 3. NavMeshAgent ON karo, CharacterController ko OFF karo (dono ek saath ladenge)
-        if (_cc != null) _cc.enabled = false;
-        if (_agent != null)
+        // 3. CharacterController ko HAMESHA ENABLED rakhein taaki PhysX collisions bench aur props se ho!
+        if (_cc != null) _cc.enabled = true;
+        if (_agent != null && _agent.enabled)
         {
-            _agent.enabled = true;
-            _agent.speed = walkToSeatSpeed;
-            _agent.stoppingDistance = stoppingDistance;
+            if (_agent.isOnNavMesh) _agent.ResetPath();
+            _agent.enabled = false;
         }
 
         if (seatArrivalPoint != null)
         {
-            if (_agent != null)
-                yield return StartCoroutine(WalkToSeat());
-            else
-                yield return StartCoroutine(WalkToSeatFallback());
+            _reachedSeat = false;
+            yield return StartCoroutine(WalkToSeatPhysX());
+            if (!_reachedSeat)
+            {
+                Debug.LogWarning("[MeetingSeatSystem] Could not find a clear route to the meeting seat.", this);
+                if (_anim != null)
+                {
+                    _anim.SetFloat(HashSpeed, 0f);
+                    _anim.applyRootMotion = originalRootMotion;
+                }
+                if (_pc != null) _pc.SetFrozen(false);
+                if (_cc != null) _cc.enabled = true;
+                _busy = false;
+                if (_playerInRange && joinPromptUI != null) joinPromptUI.SetActive(true);
+                else ClearPlayerReferences();
+                yield break;
+            }
         }
 
-        // 5. NavMeshAgent band karo
-        if (_agent != null) { _agent.ResetPath(); _agent.enabled = false; }
-        // Note: CharacterController abhi bhi band hai taaki smooth move perfectly kaam kare
-
-        // 6. Seat ki taraf munh karo aur EXACT position par aao
+        // 5. Seat ki taraf munh karo aur EXACT position par aao
         if (seatArrivalPoint != null && seatFaceTarget != null && _pc != null)
         {
             Vector3 dir = seatFaceTarget.position - seatArrivalPoint.position;
             dir.y = 0f;
             if (dir.sqrMagnitude > 0.001f)
             {
-                yield return StartCoroutine(SmoothMoveAndRotate(seatArrivalPoint.position, dir.normalized, faceRotateDuration));
+                yield return StartCoroutine(SmoothAlignToSeat(seatArrivalPoint.position, dir.normalized, faceRotateDuration));
             }
         }
 
@@ -277,87 +335,258 @@ public class MeetingSeatSystem : MonoBehaviour
         if (_cc != null) _cc.enabled = true;
 
         _busy = false;
+        if (_playerInRange && joinPromptUI != null)
+            joinPromptUI.SetActive(true);
+        else if (!_playerInRange)
+            ClearPlayerReferences();
     }
 
-    // ── Walk To Seat via NavMesh ─────────────────────────────────────────────
-    private IEnumerator WalkToSeat()
-    {
-        _agent.SetDestination(seatArrivalPoint.position);
-        if (_anim != null) _anim.SetFloat(HashSpeed, 0.5f);
-
-        float timeout = 15f, elapsed = 0f;
-
-        while (elapsed < timeout)
-        {
-            elapsed += Time.deltaTime;
-            if (_agent.pathPending) { yield return null; continue; }
-            if (!_agent.pathPending && _agent.remainingDistance <= stoppingDistance) break;
-
-            // Walk blend tree update (0.5 = normal WASD walk speed)
-            if (_anim != null)
-            {
-                // Jaise PlayerController mein smooth hota hai, waisa hi same feel
-                float currentSpeed = _anim.GetFloat(HashSpeed);
-                float smoothSpeed = Mathf.MoveTowards(currentSpeed, 0.5f, Time.deltaTime / 0.1f);
-                _anim.SetFloat(HashSpeed, smoothSpeed);
-            }
-            yield return null;
-        }
-
-        if (_anim != null) _anim.SetFloat(HashSpeed, 0f);
-    }
-
-    private IEnumerator WalkToSeatFallback()
+    // ── Walk To Seat via CharacterController (PhysX Collision + Whisker Avoidance) ──
+    private IEnumerator WalkToSeatPhysX()
     {
         if (_pc == null || seatArrivalPoint == null) yield break;
         if (_anim != null) _anim.SetFloat(HashSpeed, 0.5f);
 
-        Vector3 target = seatArrivalPoint.position;
-        float timeout = 8f, elapsed = 0f;
+        float timeout = 30f, elapsed = 0f;
+        float speed = Mathf.Clamp(walkToSeatSpeed, 1f, 8.5f);
+
+        Vector3 lastPos = _pc.transform.position;
+        float stuckTimer = 0f;
+        _hasSeatPath = false;
+        _nextSeatPathRefresh = 0f;
+
         while (elapsed < timeout)
         {
             elapsed += Time.deltaTime;
-            Vector3 pos = _pc.transform.position;
-            Vector3 flat = target;
-            flat.y = pos.y;
-            if (Vector3.Distance(new Vector3(pos.x, 0f, pos.z), new Vector3(target.x, 0f, target.z)) <= stoppingDistance)
-                break;
+            Vector3 currentPos = _pc.transform.position;
+            Vector3 target = seatArrivalPoint.position;
 
-            Vector3 dir = (flat - pos);
-            dir.y = 0f;
-            if (dir.sqrMagnitude > 0.0001f)
+            Vector3 flatCurrent = new Vector3(currentPos.x, 0f, currentPos.z);
+            Vector3 flatTarget = new Vector3(target.x, 0f, target.z);
+            float distToTarget = Vector3.Distance(flatCurrent, flatTarget);
+
+            if (distToTarget <= stoppingDistance)
             {
-                dir.Normalize();
-                _pc.transform.rotation = Quaternion.Slerp(_pc.transform.rotation, Quaternion.LookRotation(dir), Time.deltaTime * 8f);
-                _pc.transform.position = Vector3.MoveTowards(pos, flat, walkToSeatSpeed * Time.deltaTime);
+                _reachedSeat = true;
+                break;
             }
+
+            if (!_hasSeatPath && Time.time >= _nextSeatPathRefresh)
+            {
+                _hasSeatPath = TryBuildSeatPath(currentPos, target);
+                _nextSeatPathRefresh = Time.time + 0.25f;
+            }
+
+            Vector3 waypoint = GetSeatWaypoint(currentPos, target);
+            Vector3 flatWaypoint = new Vector3(waypoint.x, 0f, waypoint.z);
+            Vector3 toTarget = flatWaypoint - flatCurrent;
+            if (toTarget.sqrMagnitude > 0.0001f)
+            {
+                toTarget.Normalize();
+
+                Vector3 avoidSteer = ComputeObstacleSteer(currentPos, flatWaypoint);
+                Vector3 moveDir = avoidSteer.sqrMagnitude > 0.001f ? avoidSteer : toTarget;
+
+                // Smooth rotation towards move direction
+                Quaternion targetRot = Quaternion.LookRotation(moveDir, Vector3.up);
+                _pc.transform.rotation = Quaternion.Slerp(_pc.transform.rotation, targetRot, Time.deltaTime * 10f);
+
+                // PhysX Sweep movement: CC physically slides against solid colliders without penetrating
+                Vector3 motion = moveDir * (speed * Time.deltaTime) + Vector3.down * (9.8f * Time.deltaTime);
+                if (_cc != null && _cc.enabled)
+                {
+                    _cc.Move(motion);
+                }
+                else
+                {
+                    _pc.transform.position += moveDir * (speed * Time.deltaTime);
+                }
+
+                // Stuck detection: if CC is physically pressed against a collider
+                if (Vector3.Distance(_pc.transform.position, lastPos) < 0.02f * Time.deltaTime * speed)
+                {
+                    stuckTimer += Time.deltaTime;
+                    if (stuckTimer > 0.35f)
+                    {
+                        _hasSeatPath = false;
+                        _nextSeatPathRefresh = 0f;
+                        stuckTimer = 0f;
+                    }
+                }
+                else
+                {
+                    stuckTimer = Mathf.Max(0f, stuckTimer - Time.deltaTime);
+                    lastPos = _pc.transform.position;
+                }
+            }
+
+            // Keep walk blend tree active
+            if (_anim != null)
+            {
+                float curSpeed = _anim.GetFloat(HashSpeed);
+                _anim.SetFloat(HashSpeed, Mathf.MoveTowards(curSpeed, 0.7f, Time.deltaTime * 5f));
+            }
+
             yield return null;
         }
 
         if (_anim != null) _anim.SetFloat(HashSpeed, 0f);
     }
 
-    // ── Smooth Move & Face Rotation (Exact Snapping) ─────────────────────────
-    private IEnumerator SmoothMoveAndRotate(Vector3 targetPos, Vector3 targetForward, float duration)
+    private bool TryBuildSeatPath(Vector3 currentPosition, Vector3 targetPosition)
+    {
+        if (!NavMesh.SamplePosition(currentPosition, out NavMeshHit start, 2f, NavMesh.AllAreas) ||
+            !NavMesh.SamplePosition(targetPosition, out NavMeshHit destination, 2f, NavMesh.AllAreas))
+            return false;
+
+        if (!NavMesh.CalculatePath(start.position, destination.position, NavMesh.AllAreas, _seatPath) ||
+            _seatPath.status != NavMeshPathStatus.PathComplete)
+            return false;
+
+        _seatPathCorners = _seatPath.corners;
+        if (_seatPathCorners.Length == 0)
+            return false;
+
+        _seatPathCornerIndex = Mathf.Min(1, _seatPathCorners.Length - 1);
+        return true;
+    }
+
+    private Vector3 GetSeatWaypoint(Vector3 currentPosition, Vector3 finalTarget)
+    {
+        if (!_hasSeatPath || _seatPathCorners.Length == 0)
+            return finalTarget;
+
+        Vector3 flatCurrent = new Vector3(currentPosition.x, 0f, currentPosition.z);
+        while (_seatPathCornerIndex < _seatPathCorners.Length - 1)
+        {
+            Vector3 corner = _seatPathCorners[_seatPathCornerIndex];
+            Vector3 flatCorner = new Vector3(corner.x, 0f, corner.z);
+            if (Vector3.Distance(flatCurrent, flatCorner) > 0.45f)
+                break;
+
+            _seatPathCornerIndex++;
+        }
+
+        if (_seatPathCornerIndex == _seatPathCorners.Length - 1)
+        {
+            Vector3 lastCorner = _seatPathCorners[_seatPathCornerIndex];
+            Vector3 flatLastCorner = new Vector3(lastCorner.x, 0f, lastCorner.z);
+            if (Vector3.Distance(flatCurrent, flatLastCorner) <= 0.75f)
+                return finalTarget;
+        }
+
+        return _seatPathCorners[_seatPathCornerIndex];
+    }
+
+    /// <summary>
+    /// Computes lateral steering vector to navigate around obstacles (chairs, tables, props, walls).
+    /// </summary>
+    private Vector3 ComputeObstacleSteer(Vector3 currentPos, Vector3 targetPos)
+    {
+        Vector3 forward = (targetPos - currentPos);
+        forward.y = 0f;
+        if (forward.sqrMagnitude < 0.001f) return Vector3.zero;
+        forward.Normalize();
+
+        Vector3 leftWhisker = Quaternion.Euler(0f, -38f, 0f) * forward;
+        Vector3 rightWhisker = Quaternion.Euler(0f, 38f, 0f) * forward;
+
+        Vector3 rayOrigin = currentPos + Vector3.up * 0.8f;
+        float checkDist = 1.6f;
+        LayerMask mask = ~LayerMask.GetMask("Ignore Raycast");
+
+        bool hitCenter = Physics.SphereCast(rayOrigin, 0.35f, forward, out RaycastHit hitC, checkDist, mask, QueryTriggerInteraction.Ignore);
+        bool hitLeft   = Physics.Raycast(rayOrigin, leftWhisker, out RaycastHit hitL, checkDist, mask, QueryTriggerInteraction.Ignore);
+        bool hitRight  = Physics.Raycast(rayOrigin, rightWhisker, out RaycastHit hitR, checkDist, mask, QueryTriggerInteraction.Ignore);
+
+        // Ignore self colliders
+        if (hitCenter && IsPlayerCollider(hitC.collider)) hitCenter = false;
+        if (hitLeft && IsPlayerCollider(hitL.collider)) hitLeft = false;
+        if (hitRight && IsPlayerCollider(hitR.collider)) hitRight = false;
+
+        if (!hitCenter && !hitLeft && !hitRight)
+            return Vector3.zero;
+
+        // If obstacle ahead, steer towards the side with more clearance
+        float leftClearance = hitLeft ? hitL.distance : checkDist;
+        float rightClearance = hitRight ? hitR.distance : checkDist;
+
+        Vector3 normal = hitCenter ? hitC.normal : (hitLeft ? hitL.normal : hitR.normal);
+        normal.y = 0f;
+        normal.Normalize();
+
+        Vector3 left = -Vector3.Cross(Vector3.up, forward);
+        Vector3 right = Vector3.Cross(Vector3.up, forward);
+        // Commit to the side with more clearance; blending both directions caused
+        // left-right oscillation and made the player appear to walk very slowly.
+        Vector3 chosen = leftClearance >= rightClearance ? left : right;
+        Vector3 candidate = (chosen + normal * 0.25f).normalized;
+        if (Physics.SphereCast(rayOrigin, 0.3f, candidate, out _, 0.85f, mask, QueryTriggerInteraction.Ignore))
+        {
+            Vector3 other = chosen == left ? right : left;
+            candidate = other;
+        }
+        return candidate;
+    }
+
+    private bool IsPlayerCollider(Collider collider)
+    {
+        return collider != null && _pc != null &&
+               (collider.transform == _pc.transform || collider.transform.IsChildOf(_pc.transform));
+    }
+
+    private void OnGUI()
+    {
+        if (joinPromptUI == null && _playerInRange && !_busy && _pc != null && !_pc.IsDead)
+            GameHUDPrompt.DrawPromptBox("[C] Join Meeting");
+    }
+
+    private void ClearPlayerReferences()
+    {
+        _pc = null;
+        _anim = null;
+        _agent = null;
+        _cc = null;
+        _playerCollidersInRange.Clear();
+    }
+
+    // ── Smooth Align To Seat (Exact Physical Snapping) ──────────────────────
+    private IEnumerator SmoothAlignToSeat(Vector3 targetPos, Vector3 targetForward, float duration)
     {
         if (_pc == null) yield break;
-        
+
         Vector3 startPos = _pc.transform.position;
         Quaternion startRot = _pc.transform.rotation;
         Quaternion targetRot = Quaternion.LookRotation(targetForward, Vector3.up);
-        
+
         float elapsed = 0f;
         while (elapsed < duration)
         {
             elapsed += Time.deltaTime;
             float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / duration));
-            
-            _pc.transform.position = Vector3.Lerp(startPos, targetPos, t);
+
+            Vector3 desiredPos = Vector3.Lerp(startPos, targetPos, t);
+            if (_cc != null && _cc.enabled)
+            {
+                Vector3 delta = desiredPos - _pc.transform.position;
+                _cc.Move(delta);
+            }
+            else
+            {
+                _pc.transform.position = desiredPos;
+            }
+
             _pc.transform.rotation = Quaternion.Slerp(startRot, targetRot, t);
             yield return null;
         }
-        
+
+        // CharacterController.Move correctly respects the bench during approach, but
+        // its collision skin can prevent the final few centimetres of seat alignment.
+        // Disable it for this single final placement, then restore it for the pose.
+        bool ccWasEnabled = _cc != null && _cc.enabled;
+        if (ccWasEnabled) _cc.enabled = false;
         _pc.transform.position = targetPos;
         _pc.transform.rotation = targetRot;
+        if (ccWasEnabled) _cc.enabled = true;
     }
 }

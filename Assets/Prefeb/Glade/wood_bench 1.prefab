@@ -103,7 +103,7 @@ MonoBehaviour:
   sitDownDuration: 2
   seatIdleDuration: 10
   standUpDuration: 2
-  walkToSeatSpeed: 15
+  walkToSeatSpeed: 4.2
   stoppingDistance: 0.3
   faceRotateDuration: 0.35
   sitDownParam: SitDown

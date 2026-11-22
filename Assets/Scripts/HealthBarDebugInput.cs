@@ -10,21 +10,32 @@ public class HealthBarDebugInput : MonoBehaviour
             healthBar = GetComponent<HealthBar>();
     }
 
+    [Header("Debug Controls (Require Left/Right Ctrl)")]
+    [SerializeField] private bool enableDebugKeys = false; // Disabled by default so normal gameplay keys are never affected
+    [SerializeField] private KeyCode damageKey = KeyCode.F9;
+    [SerializeField] private KeyCode healKey = KeyCode.F10;
+    [SerializeField] private KeyCode resetKey = KeyCode.F11;
+
     private void Update()
     {
-        if (Input.GetKeyDown(KeyCode.D))
+        if (!enableDebugKeys) return;
+
+        bool ctrlHeld = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+        if (!ctrlHeld) return;
+
+        if (Input.GetKeyDown(damageKey))
         {
             if (PlayerController.Instance != null)
                 PlayerController.Instance.TakeDamage(Mathf.Max(1, (int)(PlayerController.Instance.MaxHealth * 0.15f)));
             ApplyToBars(bar => bar.SetHealth(bar.CurrentHealth - bar.MaxHealth * 0.15f));
         }
-        else if (Input.GetKeyDown(KeyCode.H))
+        else if (Input.GetKeyDown(healKey))
         {
             if (PlayerController.Instance != null)
                 PlayerController.Instance.Heal(Mathf.Max(1, (int)(PlayerController.Instance.MaxHealth * 0.25f)));
             ApplyToBars(bar => bar.SetHealth(bar.CurrentHealth + bar.MaxHealth * 0.25f));
         }
-        else if (Input.GetKeyDown(KeyCode.R))
+        else if (Input.GetKeyDown(resetKey))
         {
             if (PlayerController.Instance != null)
                 PlayerController.Instance.ResetHealth();

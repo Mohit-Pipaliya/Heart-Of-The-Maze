@@ -123,12 +123,13 @@ public class ZombieLocomotion : MonoBehaviour
             _rb.interpolation = RigidbodyInterpolation.None;
         }
 
-        // Configure NavMeshAgent for AAA Heavy Feel
+        // Configure NavMeshAgent with High Quality Obstacle Avoidance and responsive cornering
         if (_agent != null)
         {
             _agent.baseOffset = 0f;
-            _agent.acceleration = 9.0f;       // Heavy natural acceleration
-            _agent.angularSpeed = 135f;      // Heavy, menacing turn speed (no instant robotic pivot)
+            _agent.acceleration = 14.0f;
+            _agent.angularSpeed = 320f;      // Responsive cornering around obstacles
+            _agent.radius = 0.45f;
             _agent.autoBraking = true;
             _agent.obstacleAvoidanceType = ObstacleAvoidanceType.HighQualityObstacleAvoidance;
         }

@@ -14,7 +14,6 @@ public static class MissingScriptCleaner
     private static void AutoClean()
     {
         CleanSceneObjects();
-        CleanAllPrefabs();
     }
 
     [MenuItem("Tools/Fix/Clean Missing Scripts From All Prefabs & Scenes %#m")]
@@ -68,24 +67,38 @@ public static class MissingScriptCleaner
             string path = AssetDatabase.GUIDToAssetPath(guid);
             if (string.IsNullOrEmpty(path)) continue;
 
+            GameObject contents = null;
             try
             {
-                GameObject contents = PrefabUtility.LoadPrefabContents(path);
+                contents = PrefabUtility.LoadPrefabContents(path);
                 if (contents != null)
                 {
                     int removed = CleanGameObjectRecursive(contents);
                     if (removed > 0)
                     {
-                        PrefabUtility.SaveAsPrefabAsset(contents, path);
-                        totalRemoved += removed;
-                        Debug.Log($"<color=#00FF88><b>[MissingScriptCleaner]</b></color> Cleaned {removed} missing script(s) in Prefab: {path}");
+                        try
+                        {
+                            PrefabUtility.SaveAsPrefabAsset(contents, path);
+                            totalRemoved += removed;
+                            Debug.Log($"<color=#00FF88><b>[MissingScriptCleaner]</b></color> Cleaned {removed} missing script(s) in Prefab: {path}");
+                        }
+                        catch (System.Exception saveEx)
+                        {
+                            Debug.LogWarning($"[MissingScriptCleaner] Could not save prefab {path}: {saveEx.Message}");
+                        }
                     }
-                    PrefabUtility.UnloadPrefabContents(contents);
                 }
             }
             catch (System.Exception ex)
             {
                 Debug.LogWarning($"[MissingScriptCleaner] Could not process prefab at {path}: {ex.Message}");
+            }
+            finally
+            {
+                if (contents != null)
+                {
+                    PrefabUtility.UnloadPrefabContents(contents);
+                }
             }
         }
 

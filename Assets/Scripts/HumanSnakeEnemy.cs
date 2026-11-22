@@ -212,6 +212,8 @@ public class HumanSnakeEnemy : MonoBehaviour
     private float _hitStunUntil;
     private float _lastRescueTime;
     private SnakeTriggerZone _triggerZone;
+    private float _smoothedBaseOffset;
+    private float _smoothedBaseOffsetVel;
 
     public bool IsDead => isDead;
     public bool IsChasing => !isDead && (_isChasing || _isAttacking);
@@ -343,6 +345,9 @@ public class HumanSnakeEnemy : MonoBehaviour
         FindPlayer();
 
         SetupFloatingHealthBar();
+
+        _smoothedBaseOffset = groundOffset;
+        _smoothedBaseOffsetVel = 0f;
 
         if (agent != null)
         {
@@ -573,20 +578,30 @@ public class HumanSnakeEnemy : MonoBehaviour
 
     private void Update()
     {
-        // ── EMERGENCY NaN POSITION GUARD ──────────────────────────────────────
-        // Agar boss ki position NaN ya Infinity ho jaaye (physics crash se)
-        // toh turant startPos pe warp karo taaki Invalid AABB cascade band ho
+        // ── EMERGENCY NaN/INFINITY POSITION & ROTATION GUARD ─────────────────
         Vector3 curTransPos = transform.position;
-        if (float.IsNaN(curTransPos.x) || float.IsNaN(curTransPos.y) || float.IsNaN(curTransPos.z) ||
-            float.IsInfinity(curTransPos.x) || float.IsInfinity(curTransPos.y) || float.IsInfinity(curTransPos.z))
+        Quaternion curRot = transform.rotation;
+        bool isPosNan = float.IsNaN(curTransPos.x) || float.IsNaN(curTransPos.y) || float.IsNaN(curTransPos.z) ||
+                        float.IsInfinity(curTransPos.x) || float.IsInfinity(curTransPos.y) || float.IsInfinity(curTransPos.z);
+        bool isRotNan = float.IsNaN(curRot.x) || float.IsNaN(curRot.y) || float.IsNaN(curRot.z) || float.IsNaN(curRot.w);
+        bool isAgentNan = agent != null && agent.enabled && (
+                          float.IsNaN(agent.nextPosition.x) || float.IsNaN(agent.nextPosition.y) || float.IsNaN(agent.nextPosition.z) ||
+                          float.IsInfinity(agent.nextPosition.x) || float.IsInfinity(agent.nextPosition.y) || float.IsInfinity(agent.nextPosition.z));
+
+        if (isPosNan || isRotNan || isAgentNan)
         {
-            Debug.LogWarning("[HumanSnakeEnemy] NaN position detected! Emergency warp to startPos.");
+            Debug.LogWarning("[HumanSnakeEnemy] NaN/Infinity detected! Emergency recovery to startPos.");
+            _smoothedBaseOffset = groundOffset;
+            _smoothedBaseOffsetVel = 0f;
+            transform.rotation = Quaternion.identity;
             if (agent != null && agent.enabled)
             {
                 agent.enabled = false;
                 transform.position = startPos;
                 agent.enabled = true;
-                if (NavMesh.SamplePosition(startPos, out NavMeshHit nhit, 10f, NavMesh.AllAreas))
+                agent.baseOffset = groundOffset;
+                agent.velocity = Vector3.zero;
+                if (NavMesh.SamplePosition(startPos, out NavMeshHit nhit, 15f, NavMesh.AllAreas))
                     agent.Warp(nhit.position);
             }
             else
@@ -599,7 +614,6 @@ public class HumanSnakeEnemy : MonoBehaviour
 
         if (isDead)
         {
-            ProcessTerrainAlignment();
             return;
         }
 
@@ -940,7 +954,7 @@ public class HumanSnakeEnemy : MonoBehaviour
         }
 
         // Visceral Hit Knockback — enemy player se door hota hai
-        // Note: Boss ka knockback bahut chhota rakho (0.35f) taaki NavMesh se baahar na jaye
+        // Note: Boss ka knockback bahut chhota rakho (0.2f) taaki NavMesh se baahar na jaye
         if (player != null && knockbackDistance > 0.001f)
         {
             Vector3 pushDir = (transform.position - player.position);
@@ -950,14 +964,24 @@ public class HumanSnakeEnemy : MonoBehaviour
             if (mag > 0.001f && !float.IsNaN(mag) && !float.IsInfinity(mag))
             {
                 pushDir /= mag; // normalize safely
-                Vector3 newPos = transform.position + pushDir * knockbackDistance;
+                float actualKnockback = Mathf.Min(knockbackDistance, 0.2f);
+                Vector3 newPos = transform.position + pushDir * actualKnockback;
                 // Sirf tab move karo jab result valid position ho
-                if (!float.IsNaN(newPos.x) && !float.IsInfinity(newPos.x))
+                if (!float.IsNaN(newPos.x) && !float.IsInfinity(newPos.x) &&
+                    !float.IsNaN(newPos.y) && !float.IsInfinity(newPos.y) &&
+                    !float.IsNaN(newPos.z) && !float.IsInfinity(newPos.z))
                 {
                     if (agent != null && agent.enabled && agent.isOnNavMesh)
-                        agent.Move(pushDir * knockbackDistance);
+                    {
+                        if (NavMesh.SamplePosition(newPos, out NavMeshHit kHit, 0.8f, NavMesh.AllAreas))
+                        {
+                            agent.Move(pushDir * actualKnockback);
+                        }
+                    }
                     else
+                    {
                         transform.position = newPos;
+                    }
                 }
             }
         }
@@ -1250,7 +1274,7 @@ public class HumanSnakeEnemy : MonoBehaviour
             if (float.IsNaN(targetGroundY) || float.IsInfinity(targetGroundY)) return;
 
             // Anti-fall rescue
-            if (curPos.y < currentGroundY - 3.0f && Time.time > _lastRescueTime + 2.5f)
+            if (curPos.y < currentGroundY - 4.0f && Time.time > _lastRescueTime + 2.5f)
             {
                 _lastRescueTime = Time.time;
                 Vector3 rescuePos = new Vector3(curPos.x, targetGroundY, curPos.z);
@@ -1258,34 +1282,69 @@ public class HumanSnakeEnemy : MonoBehaviour
                     agent.Warp(rescuePos);
                 else
                     transform.position = rescuePos;
+
+                _smoothedBaseOffset = groundOffset;
+                _smoothedBaseOffsetVel = 0f;
+            }
+            else if (agent != null && agent.enabled && agent.isOnNavMesh)
+            {
+                Vector3 nextPos = agent.nextPosition;
+                if (!float.IsNaN(nextPos.x) && !float.IsNaN(nextPos.y) && !float.IsNaN(nextPos.z) &&
+                    !float.IsInfinity(nextPos.x) && !float.IsInfinity(nextPos.y) && !float.IsInfinity(nextPos.z))
+                {
+                    // Calculate height error relative to stable NavMesh nextPosition (NEVER feedback on transform.position!)
+                    float heightError = targetGroundY - nextPos.y;
+                    // Clamp strictly so baseOffset can never blow up
+                    heightError = Mathf.Clamp(heightError, groundOffset - 1.2f, groundOffset + 1.2f);
+
+                    if (Mathf.Abs(heightError - _smoothedBaseOffset) >= 0.02f)
+                    {
+                        _smoothedBaseOffset = Mathf.SmoothDamp(
+                            _smoothedBaseOffset,
+                            heightError,
+                            ref _smoothedBaseOffsetVel,
+                            smoothTime: 0.25f,
+                            maxSpeed: 2.5f
+                        );
+                    }
+
+                    if (!float.IsNaN(_smoothedBaseOffset) && !float.IsInfinity(_smoothedBaseOffset))
+                    {
+                        agent.baseOffset = _smoothedBaseOffset;
+                    }
+                }
             }
             else
             {
-                // Smooth snap to ground surface
-                float newY = Mathf.MoveTowards(curPos.y, targetGroundY, groundSnapSpeed * Time.deltaTime);
-                if (float.IsNaN(newY) || float.IsInfinity(newY)) return; // Extra guard
-
-                float baseOffsetValue = groundOffset + (newY - targetGroundY);
-                if (agent != null && agent.enabled && agent.isOnNavMesh
-                    && !float.IsNaN(baseOffsetValue) && !float.IsInfinity(baseOffsetValue))
-                {
-                    agent.baseOffset = baseOffsetValue;
-                }
-                else if (agent == null || !agent.enabled || !agent.isOnNavMesh)
-                {
-                    transform.position = new Vector3(curPos.x, newY, curPos.z);
-                }
+                curPos.y = Mathf.Lerp(curPos.y, targetGroundY, Time.deltaTime * Mathf.Min(groundSnapSpeed, 8f));
+                if (!float.IsNaN(curPos.y) && !float.IsInfinity(curPos.y))
+                    transform.position = curPos;
             }
 
             // Slope tilt alignment
-            if (surfaceNormal.sqrMagnitude > 0.001f)
+            if (surfaceNormal.sqrMagnitude > 0.001f && !float.IsNaN(surfaceNormal.x) && !float.IsInfinity(surfaceNormal.x) &&
+                !float.IsNaN(surfaceNormal.y) && !float.IsInfinity(surfaceNormal.y) &&
+                !float.IsNaN(surfaceNormal.z) && !float.IsInfinity(surfaceNormal.z))
             {
-                Vector3 projectedForward = Vector3.ProjectOnPlane(transform.forward, surfaceNormal).normalized;
-                if (projectedForward.sqrMagnitude > 0.001f)
+                Vector3 projectedForward = Vector3.ProjectOnPlane(transform.forward, surfaceNormal);
+                if (projectedForward.sqrMagnitude > 0.01f)
                 {
+                    projectedForward.Normalize();
                     Quaternion targetRot = Quaternion.LookRotation(projectedForward, surfaceNormal);
-                    transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, slopeAlignSpeed * Time.deltaTime);
+                    if (!float.IsNaN(targetRot.x) && !float.IsNaN(targetRot.y) && !float.IsNaN(targetRot.z) && !float.IsNaN(targetRot.w))
+                    {
+                        transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, slopeAlignSpeed * Time.deltaTime);
+                    }
                 }
+            }
+        }
+        else
+        {
+            if (agent != null && agent.enabled && agent.isOnNavMesh)
+            {
+                _smoothedBaseOffset = Mathf.SmoothDamp(_smoothedBaseOffset, groundOffset, ref _smoothedBaseOffsetVel, 0.3f);
+                if (!float.IsNaN(_smoothedBaseOffset) && !float.IsInfinity(_smoothedBaseOffset))
+                    agent.baseOffset = _smoothedBaseOffset;
             }
         }
     }
