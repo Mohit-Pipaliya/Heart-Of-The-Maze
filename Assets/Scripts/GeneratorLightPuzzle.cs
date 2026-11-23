@@ -1,4 +1,5 @@
 using UnityEngine;
+using System;
 
 [RequireComponent(typeof(Collider))]
 public class GeneratorLightPuzzle : MonoBehaviour
@@ -6,7 +7,6 @@ public class GeneratorLightPuzzle : MonoBehaviour
     private enum PuzzleState
     {
         Idle,
-        WalkingToWheel,
         RotatingWheel,
         Completed
     }
@@ -18,11 +18,13 @@ public class GeneratorLightPuzzle : MonoBehaviour
     [SerializeField] private Transform wheelPivot;
     [SerializeField] private Transform wheelMarker;
     [SerializeField] private Transform targetWheelMarker;
-    [SerializeField] private Light[] poweredLights;
+    [SerializeField] private ParticleSystem wheelStandBeacon;
+    [Tooltip("House trigger volumes powered by this generator. Each trigger controls its own house lights.")]
+    [SerializeField] private HouseLightTrigger[] houseLightTriggers;
 
     [Header("Interaction")]
-    [SerializeField, Min(0.1f)] private float walkSpeed = 4.2f;
-    [SerializeField, Min(1f)] private float walkTimeout = 20f;
+    [Tooltip("Player manually walks this close to the stand point; movement then locks for the wheel puzzle.")]
+    [SerializeField, Min(0.2f)] private float wheelInteractionRadius = 1.8f;
     [SerializeField, Min(1f)] private float wheelRotationSpeed = 75f;
     [SerializeField, Min(0.1f)] private float alignmentAngleThreshold = 8f;
     [SerializeField] private Vector3 wheelLocalRotationAxis = Vector3.forward;
@@ -32,14 +34,16 @@ public class GeneratorLightPuzzle : MonoBehaviour
     private CharacterController _characterController;
     private Animator _animator;
     private CameraController _cameraController;
-    private float _walkElapsed;
     private float _currentPuzzleAngle;
     private float _signedPuzzleAngle;
     private float _lastPuzzleAngle;
     private bool _isMovingCloser;
     private bool _isRotatingKeyPressed;
+    private bool _lastPowerAvailability;
 
     private bool IsNight => dayNightController != null && dayNightController.IsNight;
+    public bool IsPowerAvailable => _state == PuzzleState.Completed && IsNight;
+    public event Action<bool> OnPowerAvailabilityChanged;
 
     private void Awake()
     {
@@ -54,7 +58,11 @@ public class GeneratorLightPuzzle : MonoBehaviour
         if (dayNightController == null)
             dayNightController = FindFirstObjectByType<DayNightController>();
 
-        SetPoweredLights(false);
+        if (houseLightTriggers != null)
+            foreach (HouseLightTrigger houseTrigger in houseLightTriggers)
+                if (houseTrigger != null) houseTrigger.SetPowerSource(this);
+
+        CreateWheelStandBeaconIfNeeded();
     }
 
     private void Start()
@@ -65,8 +73,11 @@ public class GeneratorLightPuzzle : MonoBehaviour
         if (wheelStandPoint == null || wheelPivot == null || wheelMarker == null || targetWheelMarker == null)
             Debug.LogError($"[{nameof(GeneratorLightPuzzle)}] Assign the wheel stand, wheel pivot, moving marker, and target marker.", this);
 
-        if (poweredLights == null || poweredLights.Length == 0)
-            Debug.LogError($"[{nameof(GeneratorLightPuzzle)}] Assign at least one Light to power when the wheel is aligned.", this);
+        if (houseLightTriggers == null || houseLightTriggers.Length == 0)
+            Debug.LogWarning($"[{nameof(GeneratorLightPuzzle)}] No HouseLightTrigger components are assigned; solving the wheel will not power house lights.", this);
+
+        RefreshPowerAvailability();
+        UpdateBeaconVisibility();
 
         if (wheelLocalRotationAxis.sqrMagnitude < 0.0001f)
             Debug.LogError($"[{nameof(GeneratorLightPuzzle)}] Wheel rotation axis must not be zero.", this);
@@ -74,20 +85,27 @@ public class GeneratorLightPuzzle : MonoBehaviour
 
     private void Update()
     {
-        if (_state == PuzzleState.WalkingToWheel)
-        {
-            WalkPlayerToWheel();
-            return;
-        }
+        RefreshPowerAvailability();
 
         if (_state == PuzzleState.RotatingWheel)
         {
+            // Keep locomotion idle throughout the wheel interaction. The player is
+            // frozen, but a blend tree can otherwise retain its previous walk value.
+            if (_animator != null)
+                _animator.SetFloat("Speed", 0f);
             RotateWheel();
             return;
         }
 
-        if (_state == PuzzleState.Idle && _player != null && IsNight && Input.GetKeyDown(KeyCode.L))
-            BeginWheelInteraction();
+        if (_state == PuzzleState.Idle && _player != null && IsNight && wheelStandPoint != null)
+        {
+            Vector3 toStand = wheelStandPoint.position - _player.transform.position;
+            toStand.y = 0f;
+            if (toStand.sqrMagnitude <= wheelInteractionRadius * wheelInteractionRadius)
+                BeginWheelInteraction();
+        }
+
+        UpdateBeaconVisibility();
     }
 
     private void OnTriggerEnter(Collider other)
@@ -118,61 +136,16 @@ public class GeneratorLightPuzzle : MonoBehaviour
         if (!HasWheelSetup())
             return;
 
-        if (_player == null || _characterController == null || !_characterController.enabled)
+        if (_player == null || _characterController == null || !_characterController.enabled || wheelPivot == null)
             return;
 
-        _player.SetFrozen(true);
-        if (_animator != null)
-        {
-            _animator.applyRootMotion = false;
-            _animator.SetFloat("Speed", 0f);
-        }
-
-        _walkElapsed = 0f;
-        _state = PuzzleState.WalkingToWheel;
-    }
-
-    private void WalkPlayerToWheel()
-    {
-        if (_player == null || _characterController == null || !_characterController.enabled)
-        {
-            CancelInteraction();
-            return;
-        }
-
-        Vector3 destination = wheelStandPoint.position;
-        Vector3 toDestination = destination - _player.transform.position;
-        toDestination.y = 0f;
-
-        _walkElapsed += Time.deltaTime;
-        if (_walkElapsed >= walkTimeout)
-        {
-            Debug.LogWarning($"[{nameof(GeneratorLightPuzzle)}] Player could not reach the wheel stand point before the walk timed out.", this);
-            CancelInteraction();
-            return;
-        }
-
-        if (toDestination.sqrMagnitude > 0.01f)
-        {
-            Vector3 direction = toDestination.normalized;
-            _characterController.Move(direction * (walkSpeed * Time.deltaTime));
-            _player.transform.rotation = Quaternion.RotateTowards(
-                _player.transform.rotation,
-                Quaternion.LookRotation(direction, Vector3.up),
-                540f * Time.deltaTime);
-
-            if (_animator != null)
-                _animator.SetFloat("Speed", 1f);
-
-            return;
-        }
-
-        _characterController.Move(toDestination);
         Vector3 facing = wheelPivot.position - _player.transform.position;
         facing.y = 0f;
         if (facing.sqrMagnitude > 0.001f)
             _player.transform.rotation = Quaternion.LookRotation(facing, Vector3.up);
 
+        // The player walked here manually. Freeze their current position and enter
+        // the wheel view immediately; there is no scripted/autowalk phase.
         _player.SetFrozen(true, true);
         if (_animator != null)
         {
@@ -194,6 +167,8 @@ public class GeneratorLightPuzzle : MonoBehaviour
         _lastPuzzleAngle = _currentPuzzleAngle;
         _isMovingCloser = false;
         _state = PuzzleState.RotatingWheel;
+        UpdateBeaconVisibility();
+        Debug.Log($"[{nameof(GeneratorLightPuzzle)}] Player reached the wheel. Press A/D to align it.", this);
     }
 
     private void RotateWheel()
@@ -253,8 +228,9 @@ public class GeneratorLightPuzzle : MonoBehaviour
         if (Mathf.Abs(finalAdjustment) > 0.01f)
             wheelPivot.Rotate(wheelLocalRotationAxis.normalized, finalAdjustment, Space.Self);
 
-        SetPoweredLights(true);
         _state = PuzzleState.Completed;
+        RefreshPowerAvailability();
+        UpdateBeaconVisibility();
 
         if (_cameraController != null)
             _cameraController.ExitStandMode();
@@ -267,23 +243,6 @@ public class GeneratorLightPuzzle : MonoBehaviour
             _animator.applyRootMotion = false;
             _animator.SetFloat("Speed", 0f);
         }
-    }
-
-    private void CancelInteraction()
-    {
-        if (_cameraController != null)
-            _cameraController.ExitStandMode();
-
-        if (_player != null)
-            _player.SetFrozen(false);
-
-        if (_animator != null)
-        {
-            _animator.applyRootMotion = false;
-            _animator.SetFloat("Speed", 0f);
-        }
-
-        _state = PuzzleState.Idle;
     }
 
     private bool HasWheelSetup()
@@ -297,16 +256,12 @@ public class GeneratorLightPuzzle : MonoBehaviour
         return configured;
     }
 
-    private void SetPoweredLights(bool powered)
+    private void RefreshPowerAvailability()
     {
-        if (poweredLights == null)
-            return;
-
-        foreach (Light poweredLight in poweredLights)
-        {
-            if (poweredLight != null)
-                poweredLight.enabled = powered;
-        }
+        bool available = IsPowerAvailable;
+        if (available == _lastPowerAvailability) return;
+        _lastPowerAvailability = available;
+        OnPowerAvailabilityChanged?.Invoke(available);
     }
 
     private void OnGUI()
@@ -316,28 +271,77 @@ public class GeneratorLightPuzzle : MonoBehaviour
 
         if (_state == PuzzleState.RotatingWheel)
         {
-            bool keyPressed = Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.D);
-            if (!keyPressed)
-            {
-                GameHUDPrompt.DrawAlignmentHUD(
-                    _currentPuzzleAngle,
-                    _signedPuzzleAngle,
-                    alignmentAngleThreshold,
-                    _currentPuzzleAngle <= alignmentAngleThreshold,
-                    _isMovingCloser,
-                    false,
-                    "GENERATOR WHEEL",
-                    new Color(1f, 0.78f, 0.18f));
-            }
+            GameHUDPrompt.DrawAlignmentHUD(
+                _currentPuzzleAngle,
+                _signedPuzzleAngle,
+                alignmentAngleThreshold,
+                _currentPuzzleAngle <= alignmentAngleThreshold,
+                _isMovingCloser,
+                false,
+                "GENERATOR WHEEL — A / D TO ALIGN",
+                new Color(1f, 0.78f, 0.18f));
             return;
         }
 
-        if (_state == PuzzleState.WalkingToWheel)
-            return;
-
         if (_player != null)
-            GameHUDPrompt.DrawPromptBox("[L] Walk to the generator wheel");
+            GameHUDPrompt.DrawPromptBox("Follow the glowing beacon to the generator wheel");
         else
             GameHUDPrompt.DrawPromptBox("Night has fallen. Turn on the generator to restore the lights.");
+    }
+
+    private void CreateWheelStandBeaconIfNeeded()
+    {
+        if (wheelStandPoint == null || wheelStandBeacon != null)
+            return;
+
+        GameObject beaconObject = new GameObject("Generator Wheel Stand Beacon");
+        beaconObject.transform.SetParent(wheelStandPoint, false);
+        beaconObject.transform.localPosition = Vector3.up * 0.15f;
+        wheelStandBeacon = beaconObject.AddComponent<ParticleSystem>();
+
+        ParticleSystem.MainModule main = wheelStandBeacon.main;
+        main.loop = true;
+        main.playOnAwake = false;
+        main.duration = 1f;
+        main.simulationSpace = ParticleSystemSimulationSpace.Local;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(1.1f, 1.8f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(0.7f, 1.35f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.12f, 0.28f);
+        main.startColor = new ParticleSystem.MinMaxGradient(new Color(0.25f, 0.82f, 1f, 0.95f), new Color(0.9f, 1f, 1f, 0.85f));
+        main.maxParticles = 100;
+
+        ParticleSystem.EmissionModule emission = wheelStandBeacon.emission;
+        emission.rateOverTime = 24f;
+
+        ParticleSystem.ShapeModule shape = wheelStandBeacon.shape;
+        shape.shapeType = ParticleSystemShapeType.Cone;
+        shape.angle = 5f;
+        shape.radius = 0.32f;
+        shape.rotation = new Vector3(-90f, 0f, 0f);
+
+        ParticleSystem.ColorOverLifetimeModule color = wheelStandBeacon.colorOverLifetime;
+        color.enabled = true;
+        Gradient fade = new Gradient();
+        fade.SetKeys(
+            new[] { new GradientColorKey(new Color(0.3f, 0.85f, 1f), 0f), new GradientColorKey(Color.white, 1f) },
+            new[] { new GradientAlphaKey(0f, 0f), new GradientAlphaKey(0.9f, 0.18f), new GradientAlphaKey(0f, 1f) });
+        color.color = fade;
+
+        ParticleSystem.SizeOverLifetimeModule size = wheelStandBeacon.sizeOverLifetime;
+        size.enabled = true;
+        size.size = new ParticleSystem.MinMaxCurve(1f, new AnimationCurve(
+            new Keyframe(0f, 0.15f), new Keyframe(0.2f, 1f), new Keyframe(1f, 0.45f)));
+    }
+
+    private void UpdateBeaconVisibility()
+    {
+        if (wheelStandBeacon == null)
+            return;
+
+        bool shouldShow = IsNight && _state != PuzzleState.Completed && _state != PuzzleState.RotatingWheel;
+        if (shouldShow && !wheelStandBeacon.isPlaying)
+            wheelStandBeacon.Play();
+        else if (!shouldShow && wheelStandBeacon.isPlaying)
+            wheelStandBeacon.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
     }
 }

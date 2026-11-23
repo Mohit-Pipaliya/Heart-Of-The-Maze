@@ -40,10 +40,9 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 2310430071869362904}
-  - component: {fileID: 849645031537320438}
   - component: {fileID: 3717852520200225298}
   m_Layer: 0
-  m_Name: MeetingTrigger
+  m_Name: MeetingSeatSystem
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -64,27 +63,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 988268088748938224}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!65 &849645031537320438
-BoxCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1952881756010200614}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 1
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 3
-  m_Size: {x: 116.32606, y: 26.851793, z: 137.80495}
-  m_Center: {x: -27.730993, y: -2.1557877, z: -2.7651384}
 --- !u!114 &3717852520200225298
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -100,11 +78,12 @@ MonoBehaviour:
   seatArrivalPoint: {fileID: 6811709037367269206}
   seatFaceTarget: {fileID: 4089281363561126226}
   joinPromptUI: {fileID: 0}
+  generatorPowerSource: {fileID: 0}
+  seatArrivalBeacon: {fileID: 0}
+  seatPromptRadius: 1.5
   sitDownDuration: 2
   seatIdleDuration: 10
   standUpDuration: 2
-  walkToSeatSpeed: 4.2
-  stoppingDistance: 0.3
   faceRotateDuration: 0.35
   sitDownParam: SitDown
   seatIdleParam: SeatIdle

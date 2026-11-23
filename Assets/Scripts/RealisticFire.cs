@@ -22,6 +22,12 @@ public class RealisticFire : MonoBehaviour
     [Tooltip("If true, fire automatically starts burning as soon as Game Play starts (no lighter needed).")]
     public bool autoIgniteOnStart = true;
 
+    [Header("Generator Power")]
+    [Tooltip("When enabled, this fire can burn only while its GeneratorLightPuzzle reports power available.")]
+    public bool requiresGeneratorPower;
+    [Tooltip("Generator that powers this fire. If empty, the first GeneratorLightPuzzle in the scene is found automatically.")]
+    public GeneratorLightPuzzle generatorPowerSource;
+
     [Tooltip("Overall size multiplier for the entire fire flame, sparks, and light.")]
     [Range(0.05f, 10f)] public float fireScale = 1.0f;
 
@@ -165,6 +171,7 @@ public class RealisticFire : MonoBehaviour
     public AudioSource audioSource;
 
     private float _randomSeed;
+    private float _nextGeneratorSearchTime;
     [SerializeField] private bool _isBurning = false;
 
     public bool IsBurning => _isBurning;
@@ -184,7 +191,12 @@ public class RealisticFire : MonoBehaviour
 
         if (Application.isPlaying)
         {
-            if (autoIgniteOnStart)
+            if (requiresGeneratorPower)
+            {
+                FindGeneratorPowerSource();
+                SyncGeneratorPower();
+            }
+            else if (autoIgniteOnStart)
             {
                 Ignite();
             }
@@ -199,7 +211,12 @@ public class RealisticFire : MonoBehaviour
     {
         if (Application.isPlaying)
         {
-            if (autoIgniteOnStart && !_isBurning)
+            if (requiresGeneratorPower)
+            {
+                FindGeneratorPowerSource();
+                SyncGeneratorPower();
+            }
+            else if (autoIgniteOnStart && !_isBurning)
             {
                 Ignite();
             }
@@ -224,6 +241,12 @@ public class RealisticFire : MonoBehaviour
 
     private void Update()
     {
+        if (requiresGeneratorPower)
+        {
+            FindGeneratorPowerSource();
+            SyncGeneratorPower();
+        }
+
         // Light flicker calculation
         if (_isBurning && enableLight && pointLight != null)
         {
@@ -240,6 +263,25 @@ public class RealisticFire : MonoBehaviour
         }
     }
 
+    private void FindGeneratorPowerSource()
+    {
+        if (generatorPowerSource != null || Time.time < _nextGeneratorSearchTime)
+            return;
+
+        generatorPowerSource = FindFirstObjectByType<GeneratorLightPuzzle>();
+        _nextGeneratorSearchTime = Time.time + 1f;
+    }
+
+    private void SyncGeneratorPower()
+    {
+        bool shouldBurn = generatorPowerSource != null && generatorPowerSource.IsPowerAvailable;
+        if (shouldBurn == _isBurning)
+            return;
+
+        if (shouldBurn) Ignite();
+        else Extinguish();
+    }
+
     private void OnValidate()
     {
         ApplyVisualSettings();
@@ -250,6 +292,16 @@ public class RealisticFire : MonoBehaviour
     /// </summary>
     public void Ignite()
     {
+        if (requiresGeneratorPower)
+        {
+            FindGeneratorPowerSource();
+            if (generatorPowerSource == null || !generatorPowerSource.IsPowerAvailable)
+            {
+                Extinguish();
+                return;
+            }
+        }
+
         _isBurning = true;
 
         EnsureVFXRig();

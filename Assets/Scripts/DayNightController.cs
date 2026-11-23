@@ -204,6 +204,8 @@ public class DayNightController : MonoBehaviour
     public float NightDuration { get => fullCycleDuration * 0.5f; set => fullCycleDuration = Mathf.Max(10f, value * 2f); }
     public Transform EastPoint => eastSunPoint;
     public Transform WestPoint => westSunPoint;
+    /// <summary>Current scene sun transform, used by solar panel tracking.</summary>
+    public Transform SunTransform => sunInstance;
 
     private Material _starMaterialInstance;
     private Material _cloudCanopyMaterialInstance;
